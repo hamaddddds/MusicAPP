@@ -2,11 +2,12 @@
   --bg-color: #000000;
   --surface-color: rgba(30, 30, 30, 0.6);
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --accent-color: #fa243c; /* Apple Music Red */
-  --border-color: rgba(255, 255, 255, 0.1);
-  --glass-bg: rgba(40, 40, 40, 0.6);
-  --glass-blur: blur(20px);
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --accent-color: #fa243c;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(28, 28, 30, 0.75);
+  --glass-blur: blur(24px);
+  --hover-bg: rgba(255, 255, 255, 0.08);
 }
 
 * {
@@ -16,16 +17,17 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-color);
   color: var(--text-primary);
   overflow: hidden;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar {
-  display: none;
-}
+/* Hide all scrollbars */
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }
 
 /* Glassmorphism utility */
 .glass {
@@ -35,28 +37,39 @@ body {
   border: 1px solid var(--border-color);
 }
 
-/* Main Layout */
+/* ── Main Layout ─────────────────────────────────── */
 .app-container {
   display: flex;
   height: 100vh;
   width: 100vw;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-/* Sidebar */
+/* ── Sidebar ─────────────────────────────────────── */
 .sidebar {
   width: 260px;
-  background-color: rgba(20, 20, 20, 0.8);
+  min-width: 260px;
+  background-color: rgba(18, 18, 18, 0.95);
   border-right: 1px solid var(--border-color);
-  padding: 24px 16px;
+  padding: 0 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
+}
+
+.drag-region {
+  height: 38px;
+  width: 100%;
+  -webkit-app-region: drag;
+  app-region: drag;
+  cursor: grab;
 }
 
 .sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .sidebar-title {
@@ -64,111 +77,198 @@ body {
   text-transform: uppercase;
   color: var(--text-secondary);
   font-weight: 600;
-  letter-spacing: 0.5px;
-  padding-left: 8px;
-  margin-bottom: 4px;
+  letter-spacing: 0.8px;
+  padding: 0 8px;
+  margin-bottom: 8px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px;
+  padding: 8px 10px;
   border-radius: 8px;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   text-decoration: none;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 .nav-item.active {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(250, 36, 60, 0.15);
   color: var(--accent-color);
 }
 
 .nav-item svg {
   width: 20px;
   height: 20px;
+  flex-shrink: 0;
 }
 
-/* Main Content */
+/* ── Main Content ────────────────────────────────── */
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   position: relative;
   overflow-y: auto;
-  padding-bottom: 90px; /* Space for player */
+  padding-bottom: 96px;
 }
 
+/* ── Header ──────────────────────────────────────── */
 .header {
-  padding: 32px 40px;
+  padding: 0 40px;
+  height: 70px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   position: sticky;
   top: 0;
   z-index: 10;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0) 100%);
+}
+
+.header-drag {
+  flex: 1;
+  -webkit-app-region: drag;
+  app-region: drag;
+  cursor: grab;
+  padding: 16px 0;
 }
 
 .header h1 {
-  font-size: 34px;
+  font-size: 30px;
   font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
-/* Grid Layout for Albums */
+/* ── Search Box ──────────────────────────────────── */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  width: 220px;
+  transition: all 0.2s ease;
+}
+
+.search-box:focus-within {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.search-box svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.search-box input {
+  background: transparent;
+  border: none;
+  color: white;
+  outline: none;
+  width: 100%;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.search-box input::placeholder {
+  color: var(--text-secondary);
+}
+
+/* ── Window Controls ─────────────────────────────── */
+.window-controls {
+  display: flex;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.win-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.win-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.win-btn-close:hover {
+  background-color: rgba(250, 36, 60, 0.8);
+  color: white;
+}
+
+/* ── Grid Layout ─────────────────────────────────── */
 .grid-container {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 24px;
-  padding: 0 40px;
+  padding: 8px 40px 40px;
 }
 
 .album-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   cursor: pointer;
-  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .album-card:hover {
-  transform: scale(1.03);
+  transform: scale(1.04);
+}
+
+.album-card:active {
+  transform: scale(0.98);
 }
 
 .album-artwork {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 12px;
+  border-radius: 10px;
   object-fit: cover;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-  background: #333; /* Placeholder color */
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  background: #222;
 }
 
 .album-info h3 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
 .album-info p {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Player Bar */
+/* ── Player Bar ──────────────────────────────────── */
 .player-bar {
   position: fixed;
   bottom: 0;
@@ -181,37 +281,48 @@ body {
   padding: 0 24px;
   border-top: 1px solid var(--border-color);
   z-index: 100;
+  background: rgba(18, 18, 18, 0.92);
+  backdrop-filter: blur(30px);
 }
 
 .player-info {
   display: flex;
   align-items: center;
-  gap: 16px;
-  width: 30%;
+  gap: 14px;
+  width: 28%;
+  min-width: 200px;
 }
 
 .player-artwork {
-  width: 56px;
-  height: 56px;
-  border-radius: 8px;
-  background: #444;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  width: 52px;
+  height: 52px;
+  border-radius: 6px;
+  background: #333;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  object-fit: cover;
 }
 
 .player-text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  overflow: hidden;
 }
 
 .player-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .player-artist {
   font-size: 12px;
   color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .player-controls {
@@ -219,13 +330,13 @@ body {
   flex-direction: column;
   align-items: center;
   width: 40%;
-  gap: 8px;
+  gap: 6px;
 }
 
 .control-buttons {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
 }
 
 .btn-icon {
@@ -236,42 +347,58 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.2s;
+  padding: 4px;
+  transition: opacity 0.15s, transform 0.15s;
 }
 
 .btn-icon:hover {
   opacity: 0.7;
 }
 
+.btn-icon:active {
+  transform: scale(0.92);
+}
+
 .btn-play {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background-color: var(--text-primary);
   color: var(--bg-color);
+  padding: 0;
 }
 
 .btn-play:hover {
-  transform: scale(1.05);
+  transform: scale(1.06);
   opacity: 1;
+}
+
+.btn-play:active {
+  transform: scale(0.96);
 }
 
 .progress-container {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   font-size: 11px;
   color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .progress-bar {
   flex: 1;
   height: 4px;
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
   position: relative;
   cursor: pointer;
+  transition: height 0.1s;
+}
+
+.progress-bar:hover {
+  height: 6px;
 }
 
 .progress-fill {
@@ -281,13 +408,22 @@ body {
   height: 100%;
   background-color: var(--text-primary);
   border-radius: 2px;
-  width: 30%; /* Mock progress */
+  transition: width 0.1s linear;
+}
+
+.progress-bar:hover .progress-fill {
+  background-color: var(--accent-color);
 }
 
 .player-extras {
-  width: 30%;
+  width: 28%;
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
+}
+
+.volume-bar {
+  width: 100px;
+  flex: none;
 }

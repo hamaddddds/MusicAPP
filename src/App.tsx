@@ -1,13 +1,11 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { motion, AnimatePresence } from "framer-motion";
-import _ReactPlayer from 'react-player';
-const ReactPlayer = _ReactPlayer as any;
-import { 
-  Play, Pause, SkipForward, SkipBack, 
-  Volume2, Search, Home, Library, Radio, 
-  Menu, Maximize2, X, Minus, Square
+import {
+  Play, Pause, SkipForward, SkipBack,
+  Volume2, VolumeX, Search, Home, Library, Radio,
+  Menu, X, Minus, Square, Maximize
 } from "lucide-react";
 
 // Types
@@ -18,65 +16,208 @@ interface Track {
   artwork: string;
 }
 
+// Detect if running inside Tauri
+const isTauri = '__TAURI_INTERNALS__' in window;
+
+// API URL: relative for web (Vercel), absolute for desktop
+const API_URL = isTauri ? "https://musicvenue.vercel.app/api" : "/api";
+
 export default function App() {
-  const [coreVersion, setCoreVersion] = useState("Loading...");
+  const [coreVersion, setCoreVersion] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
   const [searchQuery, setSearchQuery] = useState("");
-  
-  const [played, setPlayed] = useState(0);
+
+  // Audio state
+  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const playerRef = useRef<any>(null);
-  
-  const appWindow = getCurrentWindow();
+  const [volume, setVolume] = useState(0.8);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
 
-  // Vercel API URL
-  // If running in browser (Vercel), use "/api". If running in Tauri desktop app, use the full deployed URL.
-  // Ganti URL ini dengan URL Vercel asli Anda nantinya untuk versi Desktop!
-  const API_URL = '__TAURI_INTERNALS__' in window ? "https://music-venue-api.vercel.app/api" : "/api";
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const trackListRef = useRef<Track[]>([]);
+  const currentIndexRef = useRef(0);
 
-  const fetchTracks = async (action: string, query: string = "") => {
+  // ── Data Fetching ──────────────────────────────────────
+
+  const fetchTracks = useCallback(async (action: string, query: string = "") => {
     setLoading(true);
     try {
-      const url = query ? `${API_URL}?action=${action}&query=${encodeURIComponent(query)}` : `${API_URL}?action=${action}`;
+      const url = query
+        ? `${API_URL}?action=${action}&query=${encodeURIComponent(query)}`
+        : `${API_URL}?action=${action}`;
       const response = await fetch(url);
       const data = await response.json();
-      
+
       if (Array.isArray(data)) {
-        const mappedTracks = data
-          .filter(item => item.videoId) // Ensure it's playable
-          .map(item => ({
+        const mappedTracks: Track[] = data
+          .filter((item: any) => item.videoId)
+          .map((item: any) => ({
             videoId: item.videoId,
             title: item.name || item.title || "Unknown Title",
             artist: item.artist?.name || (item.artists && item.artists[0]?.name) || "Unknown Artist",
             artwork: item.thumbnails?.[0]?.url || item.thumbnails?.[item.thumbnails.length - 1]?.url || "https://picsum.photos/300"
           }));
         setTracks(mappedTracks);
+        trackListRef.current = mappedTracks;
       }
     } catch (e) {
       console.error("Failed to fetch tracks", e);
     }
     setLoading(false);
-  };
+  }, []);
+
+  // ── Init ────────────────────────────────────────────────
 
   useEffect(() => {
     const initApp = async () => {
-      try {
-        const version = await invoke("get_core_version");
-        setCoreVersion(version as string);
-        await invoke("show_window", { window: appWindow });
-      } catch (e) {
-        console.error("Tauri invoke error", e);
+      if (isTauri) {
+        try {
+          const version = await invoke("get_core_version");
+          setCoreVersion(version as string);
+          await invoke("show_main_window");
+        } catch (e) {
+          console.error("Tauri invoke error", e);
+        }
       }
     };
-    setTimeout(initApp, 100);
-    
-    // Initial fetch for home
+    setTimeout(initApp, 150);
     fetchTracks("home");
-  }, []);
+  }, [fetchTracks]);
+
+  // ── Audio Playback (HTML5 Audio via Piped API) ──────────
+
+  const getAudioUrl = async (videoId: string): Promise<string | null> => {
+    try {
+      // Use Piped API to get audio stream URL
+      const res = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
+      const data = await res.json();
+      // Find best audio stream
+      if (data.audioStreams && data.audioStreams.length > 0) {
+        // Sort by bitrate descending, prefer opus/mp4
+        const sorted = data.audioStreams.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+        return sorted[0].url;
+      }
+      return null;
+    } catch (e) {
+      console.error("Failed to get audio stream", e);
+      return null;
+    }
+  };
+
+  const playTrack = async (track: Track) => {
+    setCurrentTrack(track);
+    setIsPlaying(false);
+
+    const idx = trackListRef.current.findIndex(t => t.videoId === track.videoId);
+    if (idx !== -1) currentIndexRef.current = idx;
+
+    const url = await getAudioUrl(track.videoId);
+    if (url && audioRef.current) {
+      audioRef.current.src = url;
+      audioRef.current.volume = isMuted ? 0 : volume;
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+    }
+  };
+
+  const togglePlay = () => {
+    if (!audioRef.current || !currentTrack) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+    }
+  };
+
+  const playNext = () => {
+    const list = trackListRef.current;
+    if (list.length === 0) return;
+    currentIndexRef.current = (currentIndexRef.current + 1) % list.length;
+    playTrack(list[currentIndexRef.current]);
+  };
+
+  const playPrev = () => {
+    const list = trackListRef.current;
+    if (list.length === 0) return;
+    currentIndexRef.current = (currentIndexRef.current - 1 + list.length) % list.length;
+    playTrack(list[currentIndexRef.current]);
+  };
+
+  const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    audioRef.current.currentTime = pos * duration;
+  };
+
+  const changeVolume = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setVolume(pos);
+    setIsMuted(pos === 0);
+    if (audioRef.current) audioRef.current.volume = pos;
+  };
+
+  const toggleMute = () => {
+    if (audioRef.current) {
+      if (isMuted) {
+        audioRef.current.volume = volume;
+        setIsMuted(false);
+      } else {
+        audioRef.current.volume = 0;
+        setIsMuted(true);
+      }
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds) || seconds === 0) return "0:00";
+    const mm = Math.floor(seconds / 60);
+    const ss = Math.floor(seconds % 60).toString().padStart(2, '0');
+    return `${mm}:${ss}`;
+  };
+
+  // ── Window Controls (Tauri only) ────────────────────────
+
+  const handleMinimize = async () => {
+    if (!isTauri) return;
+    const win = getCurrentWindow();
+    await win.minimize();
+  };
+
+  const handleMaximize = async () => {
+    if (!isTauri) return;
+    const win = getCurrentWindow();
+    const max = await win.isMaximized();
+    if (max) {
+      await win.unmaximize();
+      setIsMaximized(false);
+    } else {
+      await win.maximize();
+      setIsMaximized(true);
+    }
+  };
+
+  const handleClose = async () => {
+    if (!isTauri) return;
+    const win = getCurrentWindow();
+    await win.close();
+  };
+
+  const handleDrag = async (e: React.MouseEvent) => {
+    if (!isTauri) return;
+    // Only drag on left mouse button
+    if (e.button !== 0) return;
+    const win = getCurrentWindow();
+    await win.startDragging();
+  };
+
+  // ── Search ──────────────────────────────────────────────
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,133 +227,132 @@ export default function App() {
     }
   };
 
-  const playTrack = (track: Track) => {
-    setCurrentTrack(track);
-    setIsPlaying(true);
+  // ── Tab Navigation ──────────────────────────────────────
+
+  const handleTabClick = (tab: string, query?: string) => {
+    setActiveTab(tab);
+    if (tab === "home") fetchTracks("home");
+    else if (tab === "browse") fetchTracks("search", query || "Trending music 2025");
+    else if (tab === "radio") fetchTracks("search", query || "Lo-fi radio chill");
   };
 
-  const handleProgress = (state: any) => {
-    setPlayed(state.played);
-  };
-
-  const formatTime = (seconds: number) => {
-    const date = new Date(seconds * 1000);
-    const hh = date.getUTCHours();
-    const mm = date.getUTCMinutes();
-    const ss = date.getUTCSeconds().toString().padStart(2, '0');
-    if (hh) {
-      return `${hh}:${mm.toString().padStart(2, '0')}:${ss}`;
+  const getPageTitle = () => {
+    switch (activeTab) {
+      case "home": return "Listen Now";
+      case "browse": return "Browse";
+      case "radio": return "Radio";
+      case "search": return "Search Results";
+      default: return "Music Venue";
     }
-    return `${mm}:${ss}`;
   };
 
-  // Window controls
-  const handleMinimize = () => appWindow.minimize();
-  const handleMaximize = async () => {
-    const isMax = await appWindow.isMaximized();
-    if (isMax) appWindow.unmaximize();
-    else appWindow.maximize();
-  };
-  const handleClose = () => appWindow.close();
+  // ── Render ──────────────────────────────────────────────
 
   return (
     <div className="app-container">
-      {/* Hidden YouTube Player for Audio Streaming */}
-      {currentTrack && (
-        <div style={{ display: 'none' }}>
-          <ReactPlayer 
-            ref={playerRef}
-            url={`https://www.youtube.com/watch?v=${currentTrack.videoId}`}
-            playing={isPlaying}
-            onProgress={handleProgress}
-            onDuration={(d: number) => setDuration(d)}
-            onEnded={() => setIsPlaying(false)}
-            volume={1}
-          />
-        </div>
-      )}
+      {/* Hidden HTML5 Audio Element */}
+      <audio
+        ref={audioRef}
+        onTimeUpdate={() => {
+          if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+        }}
+        onLoadedMetadata={() => {
+          if (audioRef.current) setDuration(audioRef.current.duration);
+        }}
+        onEnded={playNext}
+      />
 
-      {/* Sidebar - Made draggable by data-tauri-drag-region */}
-      <motion.div 
+      {/* Sidebar */}
+      <motion.div
         className="sidebar glass"
         initial={{ x: -260 }}
         animate={{ x: 0 }}
         transition={{ type: "spring", stiffness: 100, damping: 20 }}
-        data-tauri-drag-region
       >
-        <div className="sidebar-section" data-tauri-drag-region>
-          <div className="sidebar-title" data-tauri-drag-region>Music Venue</div>
-          <div className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => { setActiveTab('home'); fetchTracks('home'); }}>
-            <Home /> Listen Now
+        {/* Draggable area at top of sidebar */}
+        <div className="drag-region" onMouseDown={handleDrag}></div>
+
+        <div className="sidebar-section">
+          <div className="sidebar-title">Music Venue</div>
+          <div className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => handleTabClick('home')}>
+            <Home size={20} /> Listen Now
           </div>
-          <div className={`nav-item ${activeTab === 'browse' ? 'active' : ''}`} onClick={() => { setActiveTab('browse'); fetchTracks('search', 'Top Tracks'); }}>
-            <Menu /> Browse
+          <div className={`nav-item ${activeTab === 'browse' ? 'active' : ''}`} onClick={() => handleTabClick('browse')}>
+            <Menu size={20} /> Browse
           </div>
-          <div className={`nav-item ${activeTab === 'radio' ? 'active' : ''}`} onClick={() => { setActiveTab('radio'); fetchTracks('search', 'Radio Mix'); }}>
-            <Radio /> Radio
+          <div className={`nav-item ${activeTab === 'radio' ? 'active' : ''}`} onClick={() => handleTabClick('radio')}>
+            <Radio size={20} /> Radio
           </div>
         </div>
 
-        <div className="sidebar-section" style={{ marginTop: '20px' }} data-tauri-drag-region>
+        <div className="sidebar-section" style={{ marginTop: '20px' }}>
           <div className="sidebar-title">Library</div>
           <div className="nav-item">
-            <Library /> Recently Added
+            <Library size={20} /> Recently Added
           </div>
           <div className="nav-item">
-            <Play /> Songs
+            <Play size={20} /> Songs
           </div>
         </div>
-        
-        <div style={{ marginTop: 'auto', fontSize: '10px', color: 'gray', padding: '0 8px' }}>
-          Core: {coreVersion}
-        </div>
+
+        {coreVersion && (
+          <div style={{ marginTop: 'auto', fontSize: '10px', color: '#555', padding: '0 8px' }}>
+            Core: {coreVersion}
+          </div>
+        )}
       </motion.div>
 
       {/* Main Content Area */}
       <div className="main-content">
-        {/* Header - Made draggable */}
-        <div className="header" data-tauri-drag-region>
-          <h1 data-tauri-drag-region>
-            {activeTab === 'home' ? 'Listen Now' : activeTab === 'browse' ? 'Browse' : activeTab === 'radio' ? 'Radio' : 'Search Results'}
-          </h1>
-          
-          <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-            <form onSubmit={handleSearch} className="nav-item" style={{ width: '240px', backgroundColor: 'rgba(255,255,255,0.1)' }}>
-              <Search size={16} /> 
-              <input 
-                type="text" 
-                placeholder="Search songs..." 
+        {/* Header with drag region and window controls */}
+        <div className="header">
+          {/* Left side - draggable title area */}
+          <div className="header-drag" onMouseDown={handleDrag}>
+            <h1>{getPageTitle()}</h1>
+          </div>
+
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            {/* Search */}
+            <form onSubmit={handleSearch} className="search-box">
+              <Search size={16} />
+              <input
+                type="text"
+                placeholder="Search songs..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ background: 'transparent', border: 'none', color: 'white', outline: 'none', width: '100%' }}
               />
             </form>
 
-            {/* Custom Window Controls */}
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={handleMinimize} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}><Minus size={18} /></button>
-              <button onClick={handleMaximize} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}><Square size={14} /></button>
-              <button onClick={handleClose} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
+            {/* Window Controls (only shown in Tauri) */}
+            {isTauri && (
+              <div className="window-controls">
+                <button className="win-btn" onClick={handleMinimize} title="Minimize"><Minus size={16} /></button>
+                <button className="win-btn" onClick={handleMaximize} title="Maximize">
+                  {isMaximized ? <Square size={12} /> : <Maximize size={14} />}
+                </button>
+                <button className="win-btn win-btn-close" onClick={handleClose} title="Close"><X size={16} /></button>
+              </div>
+            )}
           </div>
         </div>
 
+        {/* Grid Content */}
         <div className="grid-container">
           {loading ? (
-            <div style={{ padding: '40px', color: 'gray' }}>Loading tracks...</div>
+            <div style={{ padding: '40px', color: '#666', gridColumn: '1 / -1' }}>Loading tracks...</div>
           ) : tracks.length > 0 ? (
             <AnimatePresence>
               {tracks.map((track, index) => (
-                <motion.div 
+                <motion.div
                   key={track.videoId + index}
                   className="album-card"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: index * 0.05 }}
+                  transition={{ delay: index * 0.04, duration: 0.3 }}
                   onClick={() => playTrack(track)}
                 >
-                  <img src={track.artwork} alt={track.title} className="album-artwork" />
+                  <img src={track.artwork} alt={track.title} className="album-artwork" loading="lazy" />
                   <div className="album-info">
                     <h3>{track.title}</h3>
                     <p>{track.artist}</p>
@@ -221,20 +361,20 @@ export default function App() {
               ))}
             </AnimatePresence>
           ) : (
-            <div style={{ padding: '40px', color: 'gray' }}>No results found.</div>
+            <div style={{ padding: '40px', color: '#666', gridColumn: '1 / -1' }}>No results found. Try searching for something.</div>
           )}
         </div>
       </div>
 
       {/* Bottom Player Bar */}
-      <motion.div 
+      <motion.div
         className="player-bar glass"
         initial={{ y: 90 }}
         animate={{ y: 0 }}
         transition={{ type: "spring", stiffness: 100, damping: 20, delay: 0.2 }}
-        data-tauri-drag-region
       >
-        <div className="player-info" data-tauri-drag-region>
+        {/* Track Info */}
+        <div className="player-info">
           {currentTrack ? (
             <>
               <img src={currentTrack.artwork} alt={currentTrack.title} className="player-artwork" />
@@ -244,39 +384,36 @@ export default function App() {
               </div>
             </>
           ) : (
-            <div className="player-text" style={{ color: 'gray' }}>Not Playing</div>
+            <div className="player-text" style={{ color: '#555' }}>Not Playing</div>
           )}
         </div>
 
+        {/* Playback Controls */}
         <div className="player-controls">
           <div className="control-buttons">
-            <button className="btn-icon"><SkipBack size={20} fill="currentColor" /></button>
-            <button className="btn-icon btn-play" onClick={() => currentTrack && setIsPlaying(!isPlaying)}>
+            <button className="btn-icon" onClick={playPrev}><SkipBack size={20} fill="currentColor" /></button>
+            <button className="btn-icon btn-play" onClick={togglePlay}>
               {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" style={{ marginLeft: '2px' }} />}
             </button>
-            <button className="btn-icon"><SkipForward size={20} fill="currentColor" /></button>
+            <button className="btn-icon" onClick={playNext}><SkipForward size={20} fill="currentColor" /></button>
           </div>
           <div className="progress-container">
-            <span>{formatTime(played * duration)}</span>
-            <div className="progress-bar" onClick={(e) => {
-              if (playerRef.current) {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const pos = (e.clientX - rect.left) / rect.width;
-                playerRef.current.seekTo(pos);
-              }
-            }}>
-              <div className="progress-fill" style={{ width: `${played * 100}%` }}></div>
+            <span>{formatTime(currentTime)}</span>
+            <div className="progress-bar" onClick={seekTo}>
+              <div className="progress-fill" style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}></div>
             </div>
             <span>{formatTime(duration)}</span>
           </div>
         </div>
 
-        <div className="player-extras" data-tauri-drag-region>
-          <Volume2 size={20} />
-          <div className="progress-bar" style={{ width: '100px' }}>
-            <div className="progress-fill" style={{ width: '100%' }}></div>
+        {/* Volume Controls */}
+        <div className="player-extras">
+          <button className="btn-icon" onClick={toggleMute} style={{ color: 'white' }}>
+            {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+          </button>
+          <div className="progress-bar volume-bar" onClick={changeVolume}>
+            <div className="progress-fill" style={{ width: `${isMuted ? 0 : volume * 100}%` }}></div>
           </div>
-          <Maximize2 size={16} style={{ marginLeft: '8px' }} />
         </div>
       </motion.div>
     </div>
