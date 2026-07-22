@@ -2,6 +2,13 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
+use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use std::net::TcpListener;
+use std::io::{Read, Write};
+
+static DISCORD_IPC: Lazy<Mutex<Option<DiscordIpcClient>>> = Lazy::new(|| Mutex::new(None));
 
 extern "C" {
     fn GetAppVersion() -> *const c_char;
@@ -99,6 +106,91 @@ fn show_main_window(app: tauri::AppHandle) {
     }
 }
 
+// ============================
+// DISCORD RPC COMMANDS
+// ============================
+
+#[tauri::command]
+fn connect_rpc(client_id: String) -> Result<(), String> {
+    let mut client = DiscordIpcClient::new(&client_id)
+        .map_err(|e| format!("Gagal inisialisasi RPC: {}", e))?;
+    
+    client.connect().map_err(|e| format!("Gagal terhubung ke Discord RPC: {}", e))?;
+    
+    let mut guard = DISCORD_IPC.lock().unwrap();
+    *guard = Some(client);
+    Ok(())
+}
+
+#[tauri::command]
+fn disconnect_rpc() -> Result<(), String> {
+    let mut guard = DISCORD_IPC.lock().unwrap();
+    if let Some(mut client) = guard.take() {
+        let _ = client.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_rpc_activity(details: String, state: String, large_image: String, large_text: String) -> Result<(), String> {
+    let mut guard = DISCORD_IPC.lock().unwrap();
+    if let Some(client) = guard.as_mut() {
+        let assets = activity::Assets::new()
+            .large_image(&large_image)
+            .large_text(&large_text);
+
+        let activity = activity::Activity::new()
+            .details(&details)
+            .state(&state)
+            .assets(assets);
+
+        client.set_activity(activity).map_err(|e| format!("Gagal set activity: {}", e))?;
+    }
+    Ok(())
+}
+
+// ============================
+// OAUTH DEV SERVER
+// ============================
+
+#[tauri::command]
+fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
+    // Bind to any available ephemeral port
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    let port = listener.local_addr().unwrap().port();
+    
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            if let Ok(mut stream) = stream {
+                let mut buffer = [0; 4096];
+                if stream.read(&mut buffer).is_ok() {
+                    let req = String::from_utf8_lossy(&buffer);
+                    if let Some(line) = req.lines().next() {
+                        if line.starts_with("GET /") {
+                            // Extract payload query string parameter
+                            if let Some(start) = line.find("payload=") {
+                                let payload_part = &line[start + 8..];
+                                let end = payload_part.find(' ').unwrap_or(payload_part.len());
+                                let payload = &payload_part[..end];
+                                
+                                // Emit to frontend
+                                let _ = app.emit("oauth-payload", payload);
+                                
+                                // Send response and close window
+                                let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE html><html><body><h2 style='font-family:sans-serif;text-align:center;margin-top:20%'>Berhasil! Anda bisa menutup jendela ini.</h2><script>window.close();</script></body></html>";
+                                let _ = stream.write_all(response.as_bytes());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    Ok(port)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     unsafe {
@@ -113,9 +205,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_core_version,
-            show_main_window,
             resolve_audio_url,
-            download_track
+            download_track,
+            show_main_window,
+            connect_rpc,
+            disconnect_rpc,
+            set_rpc_activity,
+            start_oauth_server
         ])
         .on_window_event(|_window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } => {

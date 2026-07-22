@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, Pause, SkipForward, SkipBack,
@@ -431,11 +432,18 @@ export default function App() {
   }, [loadHome, buildQuickPicks, region, flashToast]);
 
   // ── Discord RPC ─────────────────────────────────────────
-  // The native IPC bridge ships in a follow-up build; the settings + live
-  // preview are active now. pushRpc is a guarded no-op until then.
-  const pushRpc = useCallback(async (_track: Track) => {
-    if (rpcStatusRef.current !== "on") return;
-    // native invoke wired in a later build
+  const pushRpc = useCallback(async (track: Track) => {
+    if (rpcStatusRef.current !== "on" || !isTauri) return;
+    try {
+      await invoke("set_rpc_activity", {
+        details: track.title,
+        state: track.artist,
+        largeImage: track.artwork || "https://musicvenue.vercel.app/icon.png",
+        largeText: "Sedang diputar di Music Venue",
+      });
+    } catch (e) {
+      console.error("Gagal push RPC", e);
+    }
   }, []);
 
   const DiscordIcon = ({ size = 24 }: { size?: number }) => (
@@ -505,9 +513,17 @@ export default function App() {
        return;
     }
 
-    const authUrl = `${API_URL}/auth?action=login&provider=${p.id}`;
+    let authUrl = `${API_URL}/auth?action=login&provider=${p.id}`;
     if (isTauri) {
-      try { await openUrl(authUrl); } catch (e) { console.error(e); flashToast("Gagal membuka browser."); }
+      try { 
+        // Spin up temporary dev server and get port
+        const port = await invoke<number>("start_oauth_server");
+        authUrl += `&port=${port}`;
+        await openUrl(authUrl); 
+      } catch (e) { 
+        console.error(e); 
+        flashToast("Gagal membuka browser."); 
+      }
     } else {
       const w = 500;
       const h = 600;
@@ -518,12 +534,26 @@ export default function App() {
   }, [accounts, flashToast]);
 
   const connectDiscord = useCallback(async () => {
-    // Also trigger the actual web OAuth login for profile syncing
-    toggleAccount({ id: "discord", label: "Discord" });
-    flashToast("Discord RPC native sedang difinalisasi untuk build desktop. Preview & setelan sudah tersimpan.");
-  }, [toggleAccount, flashToast]);
+    setRpcStatus("connecting");
+    rpcStatusRef.current = "connecting";
+    try {
+      await invoke("connect_rpc", { clientId: rpcClientId });
+      setRpcStatus("on");
+      rpcStatusRef.current = "on";
+      setRpcEnabled(true);
+      if (currentTrackRef.current) pushRpc(currentTrackRef.current);
+    } catch (e) {
+      console.error(e);
+      setRpcStatus("error");
+      rpcStatusRef.current = "error";
+      flashToast("Gagal terhubung ke Discord.");
+    }
+  }, [pushRpc]);
 
   const disconnectDiscord = useCallback(async () => {
+    try {
+      if (isTauri) await invoke("disconnect_rpc");
+    } catch (e) { console.error(e); }
     setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
   }, []);
 
@@ -536,7 +566,7 @@ export default function App() {
           setCoreVersion(version as string);
           await invoke("show_main_window");
 
-          // Register deep link listener
+          // Register deep link listener (for Prod)
           onOpenUrl((urls) => {
             if (urls.length > 0) {
               const url = new URL(urls[0]);
@@ -548,6 +578,13 @@ export default function App() {
               }
             }
           }).catch(console.error);
+
+          // Listen for dev server payload
+          listen<string>("oauth-payload", (event) => {
+            if (event.payload) {
+              handleAuthPayload(event.payload);
+            }
+          });
 
         } catch (e) { console.error("Tauri invoke error", e); }
       }
@@ -1355,10 +1392,10 @@ export default function App() {
                       <>
                         {rpcStatus === "on"
                           ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> Putuskan RPC</button>
-                          : <button className="btn-primary" onClick={() => { flashToast("Discord RPC native sedang difinalisasi untuk build desktop."); }} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? "Menghubungkan…" : "Hubungkan RPC"}</button>}
+                          : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? "Menghubungkan…" : "Hubungkan RPC"}</button>}
                       </>
                     ) : (
-                      <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</button>
+                      <button className="btn-primary" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</button>
                     )}
                     <span className={`rpc-dot ${rpcStatus}`} />
                     <span className="rpc-status-text">{rpcStatus === "on" ? "Terhubung ke Client Desktop" : rpcStatus === "connecting" ? "Menghubungkan" : rpcStatus === "error" ? "Gagal" : "Tidak aktif"}</span>

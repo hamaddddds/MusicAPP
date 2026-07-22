@@ -22,11 +22,11 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { action, provider, code, state, error } = req.query;
+  const { action, provider, code, state, error, port } = req.query;
 
   // 1. LOGIN REDIRECT
   if (action === 'login') {
-    const stateParam = provider;
+    const stateParam = port ? `${provider}:${port}` : provider;
     
     if (provider === 'discord' && (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET)) {
       return renderInstructionPage(res, 'Discord');
@@ -54,10 +54,17 @@ export default async function handler(req, res) {
   }
 
   // 2. CALLBACK HANDLING
-  const actualProvider = provider || state;
+  // state might be "discord:14562"
+  let actualProvider = provider || state;
+  let devPort = null;
+  if (actualProvider && actualProvider.includes(':')) {
+    const parts = actualProvider.split(':');
+    actualProvider = parts[0];
+    devPort = parts[1];
+  }
 
   if (error) {
-    const html = buildCallbackPage(null, error);
+    const html = buildCallbackPage(null, error, devPort);
     res.setHeader('Content-Type', 'text/html');
     return res.status(200).send(html);
   }
@@ -172,12 +179,12 @@ export default async function handler(req, res) {
       }
 
       const payload = Buffer.from(JSON.stringify(profile)).toString('base64');
-      const html = buildCallbackPage(payload, null);
+      const html = buildCallbackPage(payload, null, devPort);
       res.setHeader('Content-Type', 'text/html');
       return res.status(200).send(html);
     } catch (e) {
       console.error(e);
-      const html = buildCallbackPage(null, 'server_error');
+      const html = buildCallbackPage(null, 'server_error', devPort);
       res.setHeader('Content-Type', 'text/html');
       return res.status(200).send(html);
     }
@@ -186,10 +193,16 @@ export default async function handler(req, res) {
   res.status(400).send('Bad Request');
 }
 
-function buildCallbackPage(payload, error) {
+function buildCallbackPage(payload, error, devPort) {
   const providerName = payload ? (() => {
     try { return JSON.parse(Buffer.from(payload, 'base64').toString()).provider || ''; } catch { return ''; }
   })() : '';
+
+  // If a devPort is provided, we instantly redirect to the localhost dev server!
+  const devRedirectScript = devPort && payload && !error ? `
+    // Localhost Dev Redirect
+    window.location.href = "http://127.0.0.1:${devPort}/?payload=${payload}";
+  ` : '';
 
   return `<!DOCTYPE html>
 <html lang="id">
@@ -213,6 +226,7 @@ function buildCallbackPage(payload, error) {
   </style>
   <script>
     (function() {
+      ${devRedirectScript}
       ${error ? `
         // Error case
         if (window.opener) {
@@ -226,7 +240,7 @@ function buildCallbackPage(payload, error) {
           window.opener.postMessage({ type: "MUSICVENUE_AUTH", payload: payload }, "*");
           setTimeout(function() { window.close(); }, 1500);
         } else {
-          // Not a popup — try deep link for desktop app
+          // Not a popup — try deep link for desktop app (fallback)
           setTimeout(function() {
             window.location.href = "musicvenue://auth?payload=" + payload;
           }, 500);
