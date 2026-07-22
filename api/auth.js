@@ -220,7 +220,7 @@ function buildCallbackPage(payload, error) {
           setTimeout(function() { window.close(); }, 2000);
         }
       ` : `
-        // Success case: ALWAYS postMessage first (for web popups)
+        // Success case
         var payload = "${payload}";
         if (window.opener) {
           window.opener.postMessage({ type: "MUSICVENUE_AUTH", payload: payload }, "*");
@@ -233,6 +233,14 @@ function buildCallbackPage(payload, error) {
         }
       `}
     })();
+    function copyManualToken() {
+      navigator.clipboard.writeText("${payload}").then(() => {
+        var btn = document.getElementById('copyBtn');
+        btn.innerText = 'Tersalin!';
+        btn.style.background = '#4ade80';
+        btn.style.color = '#111';
+      });
+    }
   </script>
 </head>
 <body>
@@ -243,7 +251,11 @@ function buildCallbackPage(payload, error) {
       ? `<p>Terjadi kesalahan: <strong>${error}</strong></p><p class="hint">Silakan coba lagi.</p>` 
       : `<p>Terhubung dengan <span class="provider">${providerName}</span></p>
          <p>Menutup jendela ini<span class="spinner"></span></p>
-         <p class="hint">Jika jendela tidak menutup otomatis, Anda bisa menutupnya secara manual.</p>`}
+         <div class="hint" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #333;">
+           <p style="margin-bottom: 12px;">Jika aplikasi tidak merespons otomatis (karena mode Dev), gunakan sinkronisasi manual:</p>
+           <button id="copyBtn" onclick="copyManualToken()" style="background: #333; color: #fff; border: 1px solid #444; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; font-weight: 500;">Salin Token Manual</button>
+           <p style="font-size: 11px; margin-top: 8px;">Paste token ini di tab Akun pada aplikasi.</p>
+         </div>`}
   </div>
 </body>
 </html>`;

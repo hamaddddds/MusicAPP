@@ -1290,6 +1290,22 @@ export default function App() {
                         );
                       })}
                     </div>
+                    {isTauri && (
+                      <div style={{ marginTop: 12 }}>
+                        <input 
+                          type="text" 
+                          placeholder="Mode Dev: Paste Token Manual di sini..." 
+                          style={{ width: '100%', padding: '10px 14px', background: '#111', border: '1px solid #333', borderRadius: 8, color: '#fff', fontSize: 13 }}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            if (val.length > 50) {
+                              handleAuthPayload(val);
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className="setting-block">
                     <h3>Cadangan Konfigurasi</h3><p className="setting-desc">Simpan semua setelan (tema, CSS, liked music, RPC) ke file dan pulihkan kapan saja — berfungsi penuh tanpa backend.</p>
