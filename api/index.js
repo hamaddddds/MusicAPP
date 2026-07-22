@@ -96,6 +96,21 @@ export default async function handler(req, res) {
       return;
     }
 
+    // SUGGEST
+    if (action === 'suggest' && query) {
+      try {
+        const s = await yt.music.getSearchSuggestions(query);
+        let suggestions = [];
+        if (s && s.length > 0 && s[0].contents) {
+          suggestions = s[0].contents.map(x => x.suggestion?.text || (x.suggestion?.runs && x.suggestion.runs.map(r=>r.text).join('')) || x.title?.text).filter(Boolean);
+        }
+        res.status(200).json({ suggestions });
+      } catch (e) {
+        res.status(200).json({ suggestions: [] });
+      }
+      return;
+    }
+
     // STREAM
     if (action === 'stream' && videoId) {
       try {
@@ -149,10 +164,20 @@ export default async function handler(req, res) {
       return;
     }
 
+    const extractItems = (res) => {
+      if (!res || !res.contents) return [];
+      let items = [];
+      for (const section of res.contents) {
+        if (section.contents) items.push(...section.contents);
+        else items.push(section);
+      }
+      return items;
+    };
+
     // SEARCH (mixed videos/songs)
     if (action === 'search') {
       const results = await yt.music.search(query || 'Top hits');
-      const tracks = (results.contents || []).map(mapTrack).filter(Boolean);
+      const tracks = extractItems(results).map(mapTrack).filter(Boolean);
       res.status(200).json(tracks);
       return;
     }
@@ -165,11 +190,11 @@ export default async function handler(req, res) {
         yt.music.search(query, { type: 'artist' }).catch(() => ({ contents: [] }))
       ]);
 
-      const songs = (songRes.contents || []).map(mapTrack).filter(Boolean);
-      const videos = (videoRes.contents || []).map(mapTrack).filter(Boolean);
+      const songs = extractItems(songRes).map(mapTrack).filter(Boolean);
+      const videos = extractItems(videoRes).map(mapTrack).filter(Boolean);
       
       let artistObj = null;
-      const topArtist = artistRes.contents?.[0];
+      const topArtist = extractItems(artistRes)[0];
       if (topArtist && topArtist.name) {
         artistObj = {
           artistId: topArtist.id,
@@ -198,7 +223,7 @@ export default async function handler(req, res) {
           let finalSongs = songs;
           if (!finalSongs.length) {
              const fallbackSearch = await yt.music.search(artistPage.header?.title?.text || query, { type: 'song' });
-             finalSongs = (fallbackSearch.contents || []).map(mapTrack).filter(Boolean);
+             finalSongs = extractItems(fallbackSearch).map(mapTrack).filter(Boolean);
           }
 
           res.status(200).json({
@@ -216,7 +241,7 @@ export default async function handler(req, res) {
       }
       // ultimate fallback
       const fallbackSongsRes = await yt.music.search(query || id, { type: 'song' });
-      res.status(200).json({ artist: null, songs: (fallbackSongsRes.contents || []).map(mapTrack).filter(Boolean) });
+      res.status(200).json({ artist: null, songs: extractItems(fallbackSongsRes).map(mapTrack).filter(Boolean) });
       return;
     }
 
