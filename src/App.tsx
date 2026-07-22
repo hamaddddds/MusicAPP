@@ -427,15 +427,6 @@ export default function App() {
     </svg>
   );
 
-  const connectDiscord = useCallback(async () => {
-    // Also trigger the actual web OAuth login for profile syncing
-    toggleAccount({ id: "discord", label: "Discord" });
-    flashToast("Discord RPC native sedang difinalisasi untuk build desktop. Preview & setelan sudah tersimpan.");
-  }, [toggleAccount, flashToast]);
-
-  const disconnectDiscord = useCallback(async () => {
-    setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
-  }, []);
 
   // ── Manual update check ─────────────────────────────────
   const checkUpdateManually = useCallback(async () => {
@@ -508,6 +499,16 @@ export default function App() {
       window.open(authUrl, "MusicVenueAuth", `width=${w},height=${h},top=${top},left=${left}`);
     }
   }, [accounts, flashToast]);
+
+  const connectDiscord = useCallback(async () => {
+    // Also trigger the actual web OAuth login for profile syncing
+    toggleAccount({ id: "discord", label: "Discord" });
+    flashToast("Discord RPC native sedang difinalisasi untuk build desktop. Preview & setelan sudah tersimpan.");
+  }, [toggleAccount, flashToast]);
+
+  const disconnectDiscord = useCallback(async () => {
+    setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
+  }, []);
 
   // ── Init ────────────────────────────────────────────────
   useEffect(() => {
