@@ -94,23 +94,16 @@ export default async function handler(req, res) {
           });
           const userData = await userRes.json();
 
-          const avatarUrl = userData.avatar
-            ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.${userData.avatar.startsWith('a_') ? 'gif' : 'png'}?size=256`
-            : null;
-          const bannerUrl = userData.banner
-            ? `https://cdn.discordapp.com/banners/${userData.id}/${userData.banner}.${userData.banner.startsWith('a_') ? 'gif' : 'png'}?size=600`
-            : null;
-
           profile = {
-            provider: 'discord',
             id: userData.id,
             name: userData.global_name || userData.username,
+            email: userData.email,
+            avatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.${userData.avatar.startsWith('a_') ? 'gif' : 'png'}?size=1024` : null,
+            banner: userData.banner ? `https://cdn.discordapp.com/banners/${userData.id}/${userData.banner}.${userData.banner.startsWith('a_') ? 'gif' : 'png'}?size=2048` : null,
             username: userData.username,
-            avatar: avatarUrl,
-            banner: bannerUrl,
-            accent_color: userData.accent_color ? `#${userData.accent_color.toString(16).padStart(6, '0')}` : null,
             bio: userData.bio || null,
-            discriminator: userData.discriminator,
+            accent_color: userData.accent_color ? `#${userData.accent_color.toString(16).padStart(6, '0')}` : null,
+            provider: 'discord'
           };
         }
       } else if (actualProvider === 'github') {

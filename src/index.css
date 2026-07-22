@@ -62,7 +62,7 @@
 html, body, #root { height: 100%; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
   overflow: hidden;
@@ -116,9 +116,10 @@ button { font-family: inherit; }
   display: flex; align-items: center; gap: 12px;
   padding: 9px 10px; border-radius: 8px;
   color: var(--text-secondary); font-size: 14px; font-weight: 500;
-  cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+  cursor: pointer; transition: all 0.2s ease;
 }
 .nav-item:hover { background: var(--hover); color: var(--text-primary); }
+.nav-item:active { transform: scale(0.98); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); }
 .nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
 .nav-count {
@@ -511,13 +512,29 @@ button { font-family: inherit; }
 .update-text span { font-size: 12.5px; color: var(--text-secondary); }
 .update-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .btn-ghost, .btn-primary {
-  border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px;
-  font-weight: 600; cursor: pointer; font-family: inherit; transition: opacity 0.15s, background 0.15s;
+  border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s ease;
 }
 .btn-ghost { background: rgba(255,255,255,0.1); color: var(--text-primary); }
 .btn-ghost:hover { background: rgba(255,255,255,0.16); }
+.btn-ghost:active { transform: scale(0.97); }
 .btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { opacity: 0.88; }
+.btn-primary:hover { opacity: 0.88; box-shadow: 0 4px 12px rgba(250, 36, 60, 0.3); }
+.btn-primary:active { transform: scale(0.97); }
+
+/* ── Animations ────────────────────────────────────── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin { animation: spin 1s linear infinite; }
+
+@keyframes pulse-skeleton {
+  0% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+  100% { opacity: 0.6; }
+}
+.skeleton { animation: pulse-skeleton 1.5s ease-in-out infinite; background: var(--hover); border-radius: 8px; }
 
 /* ── Toast ───────────────────────────────────────── */
 .toast {
@@ -567,12 +584,13 @@ button { font-family: inherit; }
 
 .profile-tabs { display: flex; gap: 8px; padding: 0 32px; flex-wrap: wrap; }
 .ptab {
-  display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 15px;
   border-radius: 20px; border: 1px solid var(--border); background: var(--input-bg);
   color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer;
-  font-family: inherit; transition: all 0.15s;
+  font-family: inherit; transition: all 0.2s ease;
 }
-.ptab:hover { color: var(--text-primary); }
+.ptab:hover { color: var(--text-primary); background: var(--hover); }
+.ptab:active { transform: scale(0.95); }
 .ptab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .profile-content { padding: 0 32px; display: flex; flex-direction: column; gap: 18px; max-width: 720px; }

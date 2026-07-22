@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getTranslation, Language } from "./i18n";
 
 // ── Types ────────────────────────────────────────────────
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
@@ -40,23 +41,11 @@ const HOME_SHELVES = [
   { id: "viral", title: "Viral Hits", subtitle: "Lagu viral yang wajib didengar", query: "viral hits 2026" },
 ];
 
-const PROFILE_TABS = [
-  { id: "appearance", label: "Tampilan", Icon: Palette },
-  { id: "accounts", label: "Akun", Icon: User },
-  { id: "discord", label: "Discord RPC", Icon: Gamepad2 },
-  { id: "updates", label: "Update", Icon: RefreshCw },
-  { id: "about", label: "Tentang", Icon: Sparkles },
-];
 const PROVIDERS = [
   { id: "google", label: "Google", Icon: LogIn },
   { id: "github", label: "GitHub", Icon: LogIn },
   { id: "email", label: "Email", Icon: Mail },
   { id: "discord", label: "Discord", Icon: Gamepad2 },
-];
-const THEME_OPTIONS = [
-  { id: "light", label: "Light", Icon: Sun },
-  { id: "dark", label: "Dark (Abu-abu)", Icon: Moon },
-  { id: "amoled", label: "AMOLED", Icon: Monitor },
 ];
 
 // ── localStorage helpers ─────────────────────────────────
@@ -182,6 +171,8 @@ export default function App() {
   // Appearance / profile / accounts / RPC
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [customCss, setCustomCss] = useState<string>(() => load("mv:customcss", ""));
+  const [lang, setLang] = useState<Language>(() => (localStorage.getItem("mv:lang") as Language) || "id");
+  const t = useCallback((k: keyof typeof import('./i18n').translations['id']) => getTranslation(lang, k), [lang]);
   const [profileTab, setProfileTab] = useState("appearance");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null }[]>(() => load("mv:accounts", []));
@@ -189,6 +180,7 @@ export default function App() {
   const [rpcEnabled, setRpcEnabled] = useState<boolean>(() => load("mv:rpc-enabled", false));
   const [rpcStatus, setRpcStatus] = useState<"off" | "connecting" | "on" | "error">("off");
   const [updateStatus, setUpdateStatus] = useState<string>("");
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
   // Audio
   const [currentTime, setCurrentTime] = useState(0);
@@ -454,8 +446,9 @@ export default function App() {
 
 
   // ── Manual update check ─────────────────────────────────
-  const checkUpdateManually = useCallback(async () => {
+  const checkForUpdate = useCallback(async () => {
     if (!isTauri) { setUpdateStatus("Update otomatis hanya tersedia di aplikasi desktop."); return; }
+    setIsCheckingUpdate(true);
     setUpdateStatus("Memeriksa pembaruan…");
     try {
       const { check } = await import("@tauri-apps/plugin-updater");
@@ -465,6 +458,7 @@ export default function App() {
         setUpdateStatus(`Versi ${update.version} tersedia!`);
       } else setUpdateStatus("Kamu sudah memakai versi terbaru.");
     } catch (e) { console.error(e); setUpdateStatus("Gagal memeriksa pembaruan."); }
+    finally { setIsCheckingUpdate(false); }
   }, []);
 
   // ── Config export / import (portable settings) ──────────
@@ -1270,25 +1264,43 @@ export default function App() {
               </div>
             </div>
 
-            <div className="profile-tabs">
-              {PROFILE_TABS.map((t) => (
-                <button key={t.id} className={`ptab ${profileTab === t.id ? "active" : ""}`} onClick={() => setProfileTab(t.id)}>
-                  <t.Icon size={15} /> {t.label}
+            <motion.div className="profile-tabs" layout>
+              {[
+                { id: "appearance", label: t("themes"), Icon: Palette },
+                { id: "accounts", label: t("accounts"), Icon: User },
+                { id: "discord", label: t("discordRpc"), Icon: Gamepad2 },
+                { id: "updates", label: t("update"), Icon: RefreshCw },
+                { id: "about", label: t("about"), Icon: Sparkles },
+              ].map((tb) => (
+                <button key={tb.id} className={`ptab ${profileTab === tb.id ? "active" : ""}`} onClick={() => setProfileTab(tb.id)}>
+                  <tb.Icon size={15} /> {tb.label}
                 </button>
               ))}
-            </div>
+            </motion.div>
 
-            <div className="profile-content">
+            <AnimatePresence mode="wait">
+              <motion.div 
+                key={profileTab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="profile-content"
+              >
               {profileTab === "appearance" && (
                 <>
                   <div className="setting-block">
-                    <h3>Tema</h3><p className="setting-desc">Ubah tampilan aplikasi. Dark abu-abu bikin efek kaca player lebih terlihat.</p>
+                    <h3>{t("themes")}</h3><p className="setting-desc">Ubah tampilan aplikasi. Dark abu-abu bikin efek kaca player lebih terlihat.</p>
                     <div className="theme-grid">
-                      {THEME_OPTIONS.map((t) => (
-                        <button key={t.id} className={`theme-card ${theme === t.id ? "active" : ""}`} onClick={() => setTheme(t.id)}>
-                          <span className={`theme-swatch th-${t.id}`}><span className="tsw-bar" /></span>
-                          <div className="theme-card-label"><t.Icon size={15} /> {t.label}</div>
-                          {theme === t.id && <Check size={16} className="theme-check" />}
+                      {[
+                        { id: "light", label: t("themeLight"), Icon: Sun },
+                        { id: "dark", label: t("themeDark"), Icon: Moon },
+                        { id: "amoled", label: t("themeAmoled"), Icon: Monitor },
+                      ].map((tOpt) => (
+                        <button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
+                          <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
+                          <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
+                          {theme === tOpt.id && <Check size={16} className="theme-check" />}
                         </button>
                       ))}
                     </div>
@@ -1301,13 +1313,30 @@ export default function App() {
                       <button className="btn-ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS dihapus"); }}>Reset</button>
                     </div>
                   </div>
+                  <div className="setting-block">
+                    <h3>{t("language")}</h3>
+                    <div className="setting-actions">
+                      <select 
+                        value={lang} 
+                        onChange={(e) => {
+                          const v = e.target.value as Language;
+                          setLang(v);
+                          localStorage.setItem("mv:lang", v);
+                        }}
+                        style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--border)', outline: 'none', cursor: 'pointer' }}
+                      >
+                        <option value="id" style={{ color: '#000' }}>Bahasa Indonesia</option>
+                        <option value="en" style={{ color: '#000' }}>English</option>
+                      </select>
+                    </div>
+                  </div>
                 </>
               )}
 
               {profileTab === "accounts" && (
                 <>
                   <div className="setting-block">
-                    <h3>Hubungkan Akun</h3>
+                    <h3>{t("accounts")}</h3>
                     <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi.</p>
                     <div className="provider-list">
                       {PROVIDERS.map((p) => {
@@ -1322,7 +1351,7 @@ export default function App() {
                               <p.Icon size={18} />
                             )}
                             <span className="prov-name">{p.label}</span>
-                            {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">Hubungkan</span>}
+                            {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">{t("connectAccount")}</span>}
                           </button>
                         );
                       })}
@@ -1347,8 +1376,8 @@ export default function App() {
                   <div className="setting-block">
                     <h3>Cadangan Konfigurasi</h3><p className="setting-desc">Simpan semua setelan (tema, CSS, liked music, RPC) ke file dan pulihkan kapan saja — berfungsi penuh tanpa backend.</p>
                     <div className="setting-actions">
-                      <button className="btn-primary" onClick={exportConfig}><Download size={15} /> Ekspor</button>
-                      <label className="btn-ghost file-btn"><Upload size={15} /> Impor<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
+                      <button className="btn-primary" onClick={exportConfig}><Download size={15} /> {t("export")}</button>
+                      <label className="btn-ghost file-btn"><Upload size={15} /> {t("import")}<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
                     </div>
                   </div>
                 </>
@@ -1356,30 +1385,25 @@ export default function App() {
 
               {profileTab === "discord" && (
                 <div className="setting-block">
-                  <h3>Discord Rich Presence</h3>
-                  <p className="setting-desc">Tampilkan lagu yang sedang diputar di status Discord-mu.{!isTauri && " (hanya di aplikasi desktop)"}</p>
+                  <h3>{t("rpcTitle")}</h3>
+                  <p className="setting-desc">{t("rpcDesc")}{!isTauri && ` ${t("rpcDesktopOnly")}`}</p>
                   
-                  {/* Discord Profile Card */}
                   {(() => {
                     const dc = accounts.find(a => a.provider === "discord");
                     if (dc) {
                       return (
                         <div className="discord-profile-card" style={{ marginTop: 16, background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #222' }}>
-                          {/* Banner */}
-                          <div style={{ height: 80, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
-                            {/* Avatar overlapping banner */}
-                            <div style={{ position: 'absolute', bottom: -30, left: 16 }}>
-                              <img src={dc.avatar || ''} alt="" style={{ width: 64, height: 64, borderRadius: '50%', border: '4px solid #111', objectFit: 'cover' }} />
+                          <div style={{ height: 120, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
+                            <div style={{ position: 'absolute', bottom: -40, left: 24 }}>
+                              <img src={dc.avatar || ''} alt="" style={{ width: 80, height: 80, borderRadius: '50%', border: '6px solid #111', objectFit: 'cover' }} />
                             </div>
                           </div>
-                          {/* Info */}
-                          <div style={{ padding: '36px 16px 16px' }}>
+                          <div style={{ padding: '46px 24px 20px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
+                              <span style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
                             </div>
-                            <span style={{ fontSize: 13, color: '#888' }}>@{dc.username} · {dc.id}</span>
-                            {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 8, lineHeight: 1.5 }}>{dc.bio}</p>}
-                            <button className="btn-ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ marginTop: 12, color: '#f87171', borderColor: '#f87171', fontSize: 12 }}>Putuskan Akun Discord</button>
+                            <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} · {dc.id}</span>
+                            {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 12, lineHeight: 1.5 }}>{dc.bio}</p>}
                           </div>
                         </div>
                       );
@@ -1391,20 +1415,21 @@ export default function App() {
                     {accounts.some(a => a.provider === "discord") ? (
                       <>
                         {rpcStatus === "on"
-                          ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> Putuskan RPC</button>
-                          : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? "Menghubungkan…" : "Hubungkan RPC"}</button>}
+                          ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {t("disconnectRpc")}</button>
+                          : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? t("connecting") : t("connectRpc")}</button>}
+                        <button className="btn-ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>{t("disconnectAccount")}</button>
                       </>
                     ) : (
-                      <button className="btn-primary" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</button>
+                      <button className="btn-primary" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> {t("loginDiscord")}</button>
                     )}
                     <span className={`rpc-dot ${rpcStatus}`} />
-                    <span className="rpc-status-text">{rpcStatus === "on" ? "Terhubung ke Client Desktop" : rpcStatus === "connecting" ? "Menghubungkan" : rpcStatus === "error" ? "Gagal" : "Tidak aktif"}</span>
+                    <span className="rpc-status-text">{rpcStatus === "on" ? t("rpcStatusConnected") : rpcStatus === "connecting" ? t("rpcStatusConnecting") : rpcStatus === "error" ? t("rpcStatusError") : t("rpcStatusOff")}</span>
                   </div>
                   <div className="rpc-preview">
-                    <div className="rpc-preview-head">Preview</div>
+                    <div className="rpc-preview-head">{t("preview").toUpperCase()}</div>
                     <div className="rpc-card">
                       <div className="rpc-img-wrapper">
-                        <img src={currentTrack?.artwork || "https://picsum.photos/120"} className="rpc-img" alt="" />
+                        <img src={currentTrack?.artwork || "https://picsum.photos/120"} className={!currentTrack?.artwork ? "rpc-img skeleton" : "rpc-img"} alt="" />
                         {profile.avatar && accounts.some(a => a.provider === "discord") && (
                           <img src={profile.avatar} className="rpc-small-img" alt="Discord Avatar" />
                         )}
@@ -1422,14 +1447,17 @@ export default function App() {
 
               {profileTab === "updates" && (
                 <div className="setting-block">
-                  <h3>Pembaruan</h3>
+                  <h3>{t("update")}</h3>
                   <p className="setting-desc">Versi saat ini: <b>{coreVersion || "web"}</b></p>
                   <div className="setting-actions">
-                    <button className="btn-primary" onClick={checkUpdateManually}><RefreshCw size={15} /> Periksa Update</button>
+                    <button className="btn-primary" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} />
+                      {isCheckingUpdate ? t("checkingUpdate") : t("checkUpdate")}
+                    </button>
                     {updateInfo && <button className="btn-ghost" onClick={runUpdate}>Perbarui ke {updateInfo.version}</button>}
                   </div>
-                  {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
-                  <p className="setting-hint">Aplikasi memeriksa update otomatis saat dibuka. Tombol ini untuk memeriksa manual jika auto-update gagal.</p>
+                  {updateStatus && <p className="setting-hint accent">{updateStatus === "Kamu sudah memakai versi terbaru." ? t("upToDate") : updateStatus}</p>}
+                  <p className="setting-hint">{t("updateHint")}</p>
                 </div>
               )}
 
@@ -1440,7 +1468,8 @@ export default function App() {
                   <p className="setting-hint">Dibuat dengan Tauri + React. Auto-update aktif untuk versi desktop.</p>
                 </div>
               )}
-            </div>
+              </motion.div>
+            </AnimatePresence>
           </div>
         )}
       </main>

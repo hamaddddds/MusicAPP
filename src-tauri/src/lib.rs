@@ -1,6 +1,7 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use tauri::Manager;
+use tauri::Emitter;
 use tauri_plugin_shell::ShellExt;
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use std::sync::Mutex;
@@ -112,10 +113,9 @@ fn show_main_window(app: tauri::AppHandle) {
 
 #[tauri::command]
 fn connect_rpc(client_id: String) -> Result<(), String> {
-    let mut client = DiscordIpcClient::new(&client_id)
-        .map_err(|e| format!("Gagal inisialisasi RPC: {}", e))?;
+    let mut client = DiscordIpcClient::new(&client_id);
     
-    client.connect().map_err(|e| format!("Gagal terhubung ke Discord RPC: {}", e))?;
+    client.connect().map_err(|e| format!("Gagal terhubung ke Discord RPC: {:?}", e))?;
     
     let mut guard = DISCORD_IPC.lock().unwrap();
     *guard = Some(client);
