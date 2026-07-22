@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, Pause, SkipForward, SkipBack,
-  Volume2, Volume1, VolumeX, Search, Home, Heart, Radio,
+  Volume2, Volume1, VolumeX, Search, Home, Heart, Radio, Clock,
   X, Minus, Square, Maximize, Repeat, Repeat1, Shuffle,
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw
@@ -20,6 +20,8 @@ interface HistEntry extends Track { count: number; last: number; }
 interface Region { country: string | null; countryCode: string | null; city: string | null; }
 interface CtxMenu { x: number; y: number; track: Track; context: Track[]; }
 interface UpdateInfo { version: string; obj: any; }
+interface ArtistHead { artistId: string; name: string; thumbnails: any[]; subscribers?: string | null; }
+interface ArtistPage { artist: ArtistHead | null; songs: Track[]; }
 
 const isTauri = "__TAURI_INTERNALS__" in window;
 const API_URL = isTauri ? "https://musicvenue.vercel.app/api" : "/api";
@@ -40,6 +42,25 @@ const load = <T,>(k: string, fallback: T): T => {
 };
 
 // ── Track mapping / algorithms ───────────────────────────
+// YouTube Music serves tiny thumbnails (60–120px). Google's image CDN lets us
+// request a bigger size by rewriting the URL params, so artwork stays crisp.
+function hiResThumb(url: string, size = 512): string {
+  if (!url) return url;
+  if (/googleusercontent\.com|ggpht\.com|ytimg\.com\/.*=/.test(url)) {
+    if (/=w\d+-h\d+/.test(url)) return url.replace(/=w\d+-h\d+[^=]*$/i, `=w${size}-h${size}-l90-rj`);
+    if (/=s\d+/.test(url)) return url.replace(/=s\d+[^=]*$/i, `=s${size}`);
+    return url + `=w${size}-h${size}-l90-rj`;
+  }
+  const m = url.match(/i\.ytimg\.com\/vi\/([^/]+)\//);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg`;
+  return url;
+}
+
+function pickArtwork(thumbnails: any[]): string {
+  const url = thumbnails?.[thumbnails.length - 1]?.url || thumbnails?.[0]?.url;
+  return url ? hiResThumb(url) : "https://picsum.photos/300";
+}
+
 function mapTracks(data: any): Track[] {
   if (!Array.isArray(data)) return [];
   return data
@@ -48,10 +69,7 @@ function mapTracks(data: any): Track[] {
       videoId: item.videoId,
       title: item.name || item.title || "Unknown Title",
       artist: item.artist?.name || (item.artists && item.artists[0]?.name) || "Unknown Artist",
-      artwork:
-        item.thumbnails?.[item.thumbnails.length - 1]?.url ||
-        item.thumbnails?.[0]?.url ||
-        "https://picsum.photos/300",
+      artwork: pickArtwork(item.thumbnails),
     }));
 }
 
@@ -124,6 +142,12 @@ export default function App() {
   const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
   const [searchPopular, setSearchPopular] = useState<Track[]>([]);
   const [searchOther, setSearchOther] = useState<Track[]>([]);
+  const [searchArtist, setSearchArtist] = useState<ArtistHead | null>(null);
+  const [artistView, setArtistView] = useState<ArtistPage | null>(null);
+  const [artistLoading, setArtistLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<string[]>(() => load("mv:searches", []));
   const [favorites, setFavorites] = useState<Track[]>(() => load("mv:favorites", []));
   const [history, setHistory] = useState<Record<string, HistEntry>>(() => load("mv:history", {}));
   const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
@@ -167,6 +191,8 @@ export default function App() {
   const playRequestRef = useRef(0);
   const activeLyricRef = useRef<HTMLParagraphElement | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
+  const suggestTimer = useRef<number | undefined>(undefined);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
@@ -174,6 +200,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:favorites", JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem("mv:history", JSON.stringify(history)); }, [history]);
   useEffect(() => { localStorage.setItem("mv:blocked", JSON.stringify(blocked)); }, [blocked]);
+  useEffect(() => { localStorage.setItem("mv:searches", JSON.stringify(searchHistory)); }, [searchHistory]);
 
   const flashToast = useCallback((msg: string) => {
     setToast(msg);
@@ -206,15 +233,48 @@ export default function App() {
 
   const runSearch = useCallback(async (query: string) => {
     setLoading(true);
+    setShowSuggest(false);
+    setSearchHistory((prev) => [query, ...prev.filter((x) => x !== query)].slice(0, 8));
     try {
       const res = await fetch(`${API_URL}?action=search_sections&query=${encodeURIComponent(query)}`);
       const d = await res.json();
+      setSearchArtist(d.artist && d.artist.artistId ? d.artist : null);
       setSearchPopular(mapTracks(d.popular || []));
       setSearchOther(mapTracks(d.other || []));
     } catch {
-      setSearchPopular([]); setSearchOther([]);
+      setSearchArtist(null); setSearchPopular([]); setSearchOther([]);
     }
     setLoading(false);
+  }, []);
+
+  // Debounced autocomplete suggestions.
+  const fetchSuggestions = useCallback((q: string) => {
+    window.clearTimeout(suggestTimer.current);
+    if (!q.trim()) { setSuggestions([]); return; }
+    suggestTimer.current = window.setTimeout(async () => {
+      try {
+        const d = await (await fetch(`${API_URL}?action=suggest&query=${encodeURIComponent(q)}`)).json();
+        setSuggestions(d.suggestions || []);
+      } catch { setSuggestions([]); }
+    }, 180);
+  }, []);
+
+  // Open the dedicated artist page (all of that artist's songs, nothing else).
+  const openArtist = useCallback(async (opts: { artistId?: string; name?: string }) => {
+    setActiveTab("artist");
+    setShowSuggest(false);
+    setArtistLoading(true);
+    setArtistView(null);
+    try {
+      const param = opts.artistId
+        ? `artistId=${encodeURIComponent(opts.artistId)}`
+        : `query=${encodeURIComponent(opts.name || "")}`;
+      const d = await (await fetch(`${API_URL}?action=artist&${param}`)).json();
+      setArtistView({ artist: d.artist || null, songs: mapTracks(d.songs || []) });
+    } catch {
+      setArtistView({ artist: null, songs: [] });
+    }
+    setArtistLoading(false);
   }, []);
 
   // Quick Picks: weighted play history × region-popular, minus blocklist.
@@ -461,10 +521,8 @@ export default function App() {
   }, [playTrack, searchSongs, flashToast]);
 
   const goToArtist = useCallback((artist: string) => {
-    setSearchQuery(artist);
-    setActiveTab("search");
-    runSearch(artist);
-  }, [runSearch]);
+    openArtist({ name: artist });
+  }, [openArtist]);
 
   const shareTrack = useCallback(async (track: Track) => {
     const link = `https://music.youtube.com/watch?v=${track.videoId}`;
@@ -607,6 +665,16 @@ export default function App() {
     };
   }, [ctxMenu]);
 
+  // Close the search dropdown on outside click.
+  useEffect(() => {
+    if (!showSuggest) return;
+    const onDown = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setShowSuggest(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showSuggest]);
+
   const openCtx = (e: React.MouseEvent, track: Track, context: Track[]) => {
     e.preventDefault();
     const menuW = 232, menuH = 372;
@@ -665,6 +733,7 @@ export default function App() {
       case "favorites": return "Liked Music";
       case "radio": return "Radio";
       case "search": return "Search";
+      case "artist": return artistView?.artist?.name || "Artist";
       default: return "Music Venue";
     }
   };
@@ -758,11 +827,36 @@ export default function App() {
         <header className="header">
           <div className="header-drag" onMouseDown={handleDrag}><h1>{getPageTitle()}</h1></div>
           <div className="header-right">
-            <form onSubmit={handleSearch} className="search-box">
-              <Search size={16} />
-              <input type="text" placeholder="Artists, Songs..." value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)} onFocus={() => setActiveTab("search")} />
-            </form>
+            <div className="search-box-wrap" ref={searchBoxRef}>
+              <form onSubmit={handleSearch} className="search-box">
+                <Search size={16} />
+                <input type="text" placeholder="Artists, Songs..." value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }}
+                  onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
+                {searchQuery && <button type="button" className="search-clear" onClick={() => { setSearchQuery(""); setSuggestions([]); }}><X size={14} /></button>}
+              </form>
+              {showSuggest && (
+                <div className="search-dropdown">
+                  {searchQuery.trim() ? (
+                    suggestions.length ? suggestions.map((s) => (
+                      <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}>
+                        <Search size={15} /><span>{s}</span>
+                      </button>
+                    )) : <div className="suggest-empty">Tekan Enter untuk mencari “{searchQuery}”</div>
+                  ) : searchHistory.length ? (
+                    <>
+                      <div className="suggest-head"><span>Terakhir dicari</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Hapus semua</button></div>
+                      {searchHistory.map((h) => (
+                        <button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}>
+                          <Clock size={15} /><span>{h}</span>
+                          <span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span>
+                        </button>
+                      ))}
+                    </>
+                  ) : <div className="suggest-empty">Belum ada riwayat pencarian.</div>}
+                </div>
+              )}
+            </div>
             {isTauri && (
               <div className="window-controls">
                 <button className="win-btn" onClick={handleMinimize}><Minus size={16} /></button>
@@ -807,6 +901,36 @@ export default function App() {
           </div>
         )}
 
+        {/* Artist page */}
+        {activeTab === "artist" && (
+          <div className="page">
+            {artistLoading ? (
+              <div className="artist-page-head"><div className="artist-avatar sk-avatar" /><div className="artist-page-meta"><div className="sk-line" /><div className="sk-line short" /></div></div>
+            ) : artistView?.artist ? (
+              <>
+                <div className="artist-page-head">
+                  <img className="artist-avatar" src={pickArtwork(artistView.artist.thumbnails)} alt={artistView.artist.name} />
+                  <div className="artist-page-meta">
+                    <span className="artist-hero-label"><User size={13} /> Artist</span>
+                    <h1>{artistView.artist.name}</h1>
+                    {artistView.artist.subscribers && <p>{artistView.artist.subscribers} subscribers</p>}
+                    <div className="artist-page-actions">
+                      <button className="btn-primary" onClick={() => artistView.songs.length && playTrack(artistView.songs[0], artistView.songs)}><Play size={17} fill="currentColor" /> Play</button>
+                      <button className="btn-ghost" onClick={() => { if (artistView.songs.length) { setShuffleMode("random"); playTrack(artistView.songs[0], artistView.songs); } }}><Shuffle size={17} /> Shuffle</button>
+                    </div>
+                  </div>
+                </div>
+                <section className="search-section">
+                  <div className="section-head"><h2>Songs</h2><span className="section-badge">{artistView.songs.length} lagu</span></div>
+                  <div className="track-grid wide">{artistView.songs.map((t, i) => <TrackRow key={t.videoId} track={t} context={artistView.songs} index={i} />)}</div>
+                </section>
+              </>
+            ) : (
+              <div className="empty-state big"><User size={44} /><p>Artis tidak ditemukan</p><span>Coba cari nama artis yang lain.</span></div>
+            )}
+          </div>
+        )}
+
         {/* Search / Radio */}
         {(activeTab === "search" || activeTab === "radio") && (
           <div className="page">
@@ -816,6 +940,16 @@ export default function App() {
               </div>
             ) : searchPopular.length || searchOther.length ? (
               <>
+                {searchArtist && (
+                  <div className="artist-hero" onClick={() => openArtist({ artistId: searchArtist.artistId })}>
+                    <img src={pickArtwork(searchArtist.thumbnails)} alt={searchArtist.name} className="artist-hero-img" />
+                    <div className="artist-hero-info">
+                      <span className="artist-hero-label"><User size={13} /> Artist</span>
+                      <h2>{searchArtist.name}</h2>
+                      <button className="btn-primary sm">Buka halaman artis</button>
+                    </div>
+                  </div>
+                )}
                 {searchPopular.length > 0 && (
                   <section className="search-section">
                     <div className="section-head"><h2>Popular</h2><span className="section-badge">Paling banyak diputar</span></div>

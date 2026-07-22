@@ -148,20 +148,72 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Action: suggest — search autocomplete suggestions (YouTube Music).
+    if (action === 'suggest' && query) {
+      const ytmusic = new YTMusicClass();
+      await ytmusic.initialize();
+      const suggestions = await ytmusic.getSearchSuggestions(query).catch(() => []);
+      res.status(200).json({ suggestions: suggestions.slice(0, 10) });
+      return;
+    }
+
+    // Action: artist — full artist page: header + every song they made.
+    // artistId is preferred; otherwise resolve the top artist match for query.
+    if (action === 'artist' && (query || req.query.artistId)) {
+      const ytmusic = new YTMusicClass();
+      await ytmusic.initialize();
+      let id = req.query.artistId;
+      let header = null;
+      if (!id) {
+        const arts = await ytmusic.searchArtists(query).catch(() => []);
+        if (!arts.length) { res.status(200).json({ artist: null, songs: [] }); return; }
+        header = arts[0];
+        id = header.artistId;
+      }
+      const [full, allSongs] = await Promise.all([
+        ytmusic.getArtist(id).catch(() => null),
+        ytmusic.getArtistSongs(id).catch(() => []),
+      ]);
+      const name = full?.name || header?.name || query;
+      const thumbnails = full?.thumbnails || header?.thumbnails || [];
+      // getArtistSongs is scoped to this artist, so results stay correct.
+      // Prepend topSongs (popular first), then de-dupe by videoId.
+      const combined = [...(full?.topSongs || []), ...allSongs];
+      const seen = new Set();
+      const songs = combined.filter((s) => s.videoId && !seen.has(s.videoId) && seen.add(s.videoId));
+      res.status(200).json({
+        artist: { artistId: id, name, thumbnails, subscribers: full?.subscribers || null },
+        songs,
+      });
+      return;
+    }
+
     // Action: search_sections — popularity-aware search. YouTube Music returns
     // official Songs already ranked by popularity (our "Popular"); Videos are
-    // covers/live/remixes ("Other"). This is the ranking basis for search.
+    // covers/live/remixes ("Other"). Also surfaces the matched artist so the UI
+    // can show an artist header above the results.
     if (action === 'search_sections' && query) {
       const ytmusic = new YTMusicClass();
       await ytmusic.initialize();
-      const [songs, videos] = await Promise.all([
+      const [songs, videos, artists] = await Promise.all([
         ytmusic.searchSongs(query).catch(() => []),
         ytmusic.searchVideos(query).catch(() => []),
+        ytmusic.searchArtists(query).catch(() => []),
       ]);
-      // De-dupe: drop videos whose videoId already appears in popular songs.
       const popularIds = new Set(songs.map((s) => s.videoId));
       const other = videos.filter((v) => !popularIds.has(v.videoId));
-      res.status(200).json({ popular: songs, other });
+
+      // Only surface an artist header when the top match clearly IS the query.
+      let artist = null;
+      const top = artists[0];
+      if (top && top.name) {
+        const q = query.toLowerCase().trim();
+        const n = top.name.toLowerCase().trim();
+        if (n === q || q.includes(n) || n.includes(q)) {
+          artist = { artistId: top.artistId, name: top.name, thumbnails: top.thumbnails || [] };
+        }
+      }
+      res.status(200).json({ artist, popular: songs, other });
       return;
     }
 

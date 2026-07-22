@@ -325,15 +325,20 @@ button { font-family: inherit; }
 .np-controls { display: flex; align-items: center; gap: 26px; }
 
 .np-lyrics { flex: 1; height: 100%; overflow-y: auto; padding: 20% 0; mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent); }
-.lyric-lines { display: flex; flex-direction: column; gap: 6px; }
+.lyric-lines { display: flex; flex-direction: column; gap: 8px; }
 .lyric-line {
-  font-size: 28px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.32;
-  color: rgba(255,255,255,0.34); cursor: pointer; padding: 4px 0;
-  transition: color 0.3s, opacity 0.3s, transform 0.3s; transform-origin: left center;
+  font-size: 30px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.28;
+  color: rgba(255,255,255,0.30); cursor: pointer; padding: 7px 0;
+  filter: blur(1.6px); transform-origin: left center; will-change: transform, filter;
+  transition: color 0.45s ease, filter 0.45s ease, opacity 0.45s ease,
+              transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.lyric-line:hover { color: rgba(255,255,255,0.6); }
-.lyric-line.past { color: rgba(255,255,255,0.28); }
-.lyric-line.active { color: #fff; transform: scale(1.02); }
+.lyric-line.past { color: rgba(255,255,255,0.24); filter: blur(1.2px); }
+.lyric-line:hover { color: rgba(255,255,255,0.55); filter: blur(0); }
+.lyric-line.active {
+  color: #fff; filter: blur(0); transform: scale(1.06);
+  text-shadow: 0 0 26px rgba(255,255,255,0.3);
+}
 .lyric-plain { font-size: 17px; line-height: 1.9; color: var(--text-secondary); white-space: pre-wrap; }
 .lyric-status { font-size: 15px; color: var(--text-secondary); padding: 8px 0; }
 
@@ -364,6 +369,68 @@ button { font-family: inherit; }
   background: var(--accent-soft); padding: 3px 9px; border-radius: 20px;
 }
 .section-badge.muted { color: var(--text-secondary); background: rgba(255,255,255,0.08); }
+
+/* ── Search dropdown (suggestions / history) ─────── */
+.search-box-wrap { position: relative; }
+.search-clear {
+  background: none; border: none; color: var(--text-tertiary); cursor: pointer;
+  display: flex; padding: 0; margin-left: 2px; transition: color 0.15s;
+}
+.search-clear:hover { color: #fff; }
+.search-dropdown {
+  position: absolute; top: calc(100% + 8px); right: 0; width: 300px;
+  background: rgba(30,30,32,0.98); backdrop-filter: blur(24px);
+  border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+  z-index: var(--z-nowplaying); box-shadow: 0 18px 44px rgba(0,0,0,0.6);
+  max-height: 420px; overflow-y: auto;
+  animation: ctx-in 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.suggest-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px 4px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--text-tertiary); font-weight: 700;
+}
+.suggest-head button { background: none; border: none; color: var(--accent); font-size: 11px; font-weight: 600; cursor: pointer; }
+.suggest-item {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 9px 10px; border-radius: 8px; background: none; border: none;
+  color: var(--text-primary); font-size: 13.5px; cursor: pointer; text-align: left;
+  transition: background 0.12s;
+}
+.suggest-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest-item svg { color: var(--text-tertiary); flex-shrink: 0; }
+.suggest-item:hover { background: var(--hover); }
+.suggest-remove { display: flex; opacity: 0; flex: none !important; }
+.suggest-item:hover .suggest-remove { opacity: 0.6; }
+.suggest-remove:hover { opacity: 1 !important; }
+.suggest-empty { padding: 12px 10px; font-size: 13px; color: var(--text-secondary); }
+
+/* ── Artist hero (on search) + Artist page ───────── */
+.artist-hero {
+  display: flex; align-items: center; gap: 20px; margin: 0 32px 8px;
+  padding: 16px; border-radius: 16px; cursor: pointer;
+  background: linear-gradient(100deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid var(--border); transition: background 0.2s;
+}
+.artist-hero:hover { background: linear-gradient(100deg, rgba(255,255,255,0.1), rgba(255,255,255,0.04)); }
+.artist-hero-img { width: 92px; height: 92px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 22px rgba(0,0,0,0.5); }
+.artist-hero-info { display: flex; flex-direction: column; gap: 6px; }
+.artist-hero-label { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-secondary); font-weight: 700; }
+.artist-hero-info h2 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+.btn-primary.sm { align-self: flex-start; padding: 7px 14px; font-size: 12.5px; margin-top: 2px; }
+
+.artist-page-head {
+  display: flex; align-items: flex-end; gap: 26px; padding: 12px 32px 28px;
+}
+.artist-avatar { width: 168px; height: 168px; border-radius: 50%; object-fit: cover; box-shadow: 0 16px 40px rgba(0,0,0,0.6); flex-shrink: 0; }
+.artist-page-meta { display: flex; flex-direction: column; gap: 10px; padding-bottom: 6px; }
+.artist-page-meta h1 { font-size: 46px; font-weight: 800; letter-spacing: -1px; line-height: 1.05; text-wrap: balance; }
+.artist-page-meta p { font-size: 13px; color: var(--text-secondary); }
+.artist-page-actions { display: flex; gap: 10px; margin-top: 6px; }
+.artist-page-actions .btn-primary, .artist-page-actions .btn-ghost { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; font-size: 14px; }
+.sk-avatar { background: linear-gradient(100deg, #161618 30%, #232326 50%, #161618 70%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+.sk-line { height: 20px; width: 260px; border-radius: 6px; background: linear-gradient(100deg, #161618 30%, #232326 50%, #161618 70%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+.sk-line.short { width: 120px; height: 13px; }
 
 /* ── Context menu ────────────────────────────────── */
 .ctx-menu {
@@ -440,4 +507,6 @@ button { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
   .album-card:hover .album-art-wrap { transform: none; }
+  .lyric-line, .lyric-line.past { filter: none !important; }
+  .lyric-line.active { transform: none !important; }
 }
