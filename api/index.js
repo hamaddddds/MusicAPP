@@ -1,314 +1,246 @@
-import YTMusicModule from "ytmusic-api";
+import { Innertube, UniversalCache } from 'youtubei.js';
+import Jintr from 'jintr';
 
-// Handle ESM/CJS interop — the constructor could be on .default or directly
-const YTMusicClass = YTMusicModule.default || YTMusicModule;
+let ytInstance = null;
 
-// ── Stream providers ─────────────────────────────────────────
-// Primary: ytdlp.online (yt-dlp as a service, needs Developer plan API key).
-// Set YTDLP_API_KEY in Vercel → Project → Settings → Environment Variables.
-// Fallback: public Piped instances (mostly dead as of mid-2026, kept as last resort).
-
-const YTDLP_BASE = process.env.YTDLP_API_BASE || "https://ytdlp.online/open/v1";
-const YTDLP_KEY = process.env.YTDLP_API_KEY;
-
-const PIPED_INSTANCES = [
-  'https://pipedapi.adminforge.de',
-  'https://pipedapi.kavin.rocks',
-  'https://api.piped.yt'
-];
-
-async function fetchJson(url, opts = {}, timeoutMs = 10000) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...opts, signal: ctrl.signal });
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch (_e) { /* non-JSON body (nginx error page etc.) */ }
-    return { ok: res.ok, status: res.status, data };
-  } finally {
-    clearTimeout(timer);
-  }
+async function getYT() {
+  if (ytInstance) return ytInstance;
+  ytInstance = await Innertube.create({
+    generate_session_locally: true,
+    js_evaluator: new Jintr(),
+    cache: new UniversalCache(false)
+  });
+  return ytInstance;
 }
 
-// Fast path: direct audio format URL from /video/info.
-// googlevideo URLs can be locked to the extractor's IP — the client falls
-// back to mode=download if playback errors out.
-async function ytdlpDirectUrl(videoId) {
-  const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const { ok, data } = await fetchJson(
-    `${YTDLP_BASE}/video/info?url=${encodeURIComponent(watchUrl)}&apikey=${YTDLP_KEY}`,
-    {},
-    15000
-  );
-  if (!ok || !data || !Array.isArray(data.formats)) return null;
-  const audioOnly = data.formats
-    .filter(f => f.url && f.acodec && f.acodec !== "none" && (!f.vcodec || f.vcodec === "none"))
-    .sort((a, b) => (b.abr || b.tbr || 0) - (a.abr || a.tbr || 0));
-  return audioOnly[0]?.url || null;
+// Map youtubei.js track object to our UI track format
+function mapTrack(t) {
+  if (!t.id && !t.video_id) return null;
+  return {
+    videoId: t.id || t.video_id,
+    title: t.title?.text || t.title || "Unknown",
+    artist: (t.artists && t.artists[0]?.name) || (t.author?.name) || "Unknown",
+    duration: t.duration?.seconds || 0,
+    artwork: (t.thumbnails && t.thumbnails.length > 0) ? t.thumbnails[t.thumbnails.length - 1].url : null,
+    isExplicit: t.is_explicit || false
+  };
 }
 
-// Reliable path: async mp3 conversion, file served by ytdlp.online (~1h retention).
-async function ytdlpStartDownload(videoId) {
-  const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const { ok, data } = await fetchJson(`${YTDLP_BASE}/download`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: watchUrl, apikey: YTDLP_KEY, format: 'mp3' })
-  }, 15000);
-  return (ok && data && data.task_id) ? data.task_id : null;
-}
-
-async function ytdlpTaskStatus(taskId) {
-  const { ok, data } = await fetchJson(
-    `${YTDLP_BASE}/download/${encodeURIComponent(taskId)}?apikey=${YTDLP_KEY}`,
-    {},
-    8000
-  );
-  return (ok && data) ? data : { status: 'failed' };
-}
-
-// Free synced lyrics from lrclib.net (no API key, permissive usage).
-// Tries the exact-match /get endpoint, then falls back to /search.
+// Free synced lyrics from lrclib.net
 async function fetchLyrics(title, artist, duration) {
   const clean = (s) => (s || "").replace(/\s*\(.*?\)\s*/g, " ").replace(/\s*\[.*?\]\s*/g, " ").trim();
   const t = clean(title);
   const a = clean(artist);
   const headers = { 'User-Agent': 'MusicVenue (https://github.com/hamaddddds/MusicAPP)' };
 
-  // 1) exact get
-  let params = new URLSearchParams({ track_name: t, artist_name: a });
-  if (duration) params.set('duration', String(Math.round(duration)));
-  let r = await fetchJson(`https://lrclib.net/api/get?${params}`, { headers }, 8000);
-  if (r.ok && r.data && (r.data.syncedLyrics || r.data.plainLyrics)) {
-    return { syncedLyrics: r.data.syncedLyrics || null, plainLyrics: r.data.plainLyrics || null };
-  }
+  try {
+    let params = new URLSearchParams({ track_name: t, artist_name: a });
+    if (duration) params.set('duration', String(Math.round(duration)));
+    let res = await fetch(`https://lrclib.net/api/get?${params}`, { headers });
+    let r = await res.json();
+    if (res.ok && r && (r.syncedLyrics || r.plainLyrics)) {
+      return { syncedLyrics: r.syncedLyrics || null, plainLyrics: r.plainLyrics || null };
+    }
 
-  // 2) search fallback — pick the best hit that has synced lyrics if possible
-  r = await fetchJson(`https://lrclib.net/api/search?${new URLSearchParams({ track_name: t, artist_name: a })}`, { headers }, 8000);
-  if (r.ok && Array.isArray(r.data) && r.data.length) {
-    const withSynced = r.data.find(x => x.syncedLyrics) || r.data.find(x => x.plainLyrics) || r.data[0];
-    return { syncedLyrics: withSynced.syncedLyrics || null, plainLyrics: withSynced.plainLyrics || null };
+    res = await fetch(`https://lrclib.net/api/search?${new URLSearchParams({ track_name: t, artist_name: a })}`, { headers });
+    r = await res.json();
+    if (res.ok && Array.isArray(r) && r.length) {
+      const withSynced = r.find(x => x.syncedLyrics) || r.find(x => x.plainLyrics) || r[0];
+      return { syncedLyrics: withSynced.syncedLyrics || null, plainLyrics: withSynced.plainLyrics || null };
+    }
+  } catch (e) {
+    console.error("Lyrics error:", e);
   }
   return { syncedLyrics: null, plainLyrics: null };
 }
 
-async function pipedAudioUrl(videoId) {
-  for (const instance of PIPED_INSTANCES) {
-    try {
-      const { ok, data } = await fetchJson(`${instance}/streams/${videoId}`, {}, 6000);
-      if (!ok || !data || !Array.isArray(data.audioStreams) || data.audioStreams.length === 0) continue;
-      const sorted = data.audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-      if (sorted[0].url) return sorted[0].url;
-    } catch (_e) {
-      continue;
-    }
-  }
-  return null;
-}
-
 export default async function handler(req, res) {
-  // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
 
-  const { query, action, videoId, taskId, mode, title, artist, duration } = req.query;
+  const { query, action, videoId, title, artist, duration } = req.query;
 
   try {
-    // Action: lyrics — synced/plain lyrics for the current track (lrclib.net)
+    const yt = await getYT();
+
+    // LYRICS
     if (action === 'lyrics' && (title || query)) {
       const lyrics = await fetchLyrics(title || query, artist, duration);
       res.status(200).json(lyrics);
       return;
     }
 
-    // Action: geo — approximate client location from IP (for the Quick Picks
-    // algorithm). Reads the forwarded client IP and resolves via ipwho.is.
+    // GEO
     if (action === 'geo') {
       const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
       const ip = fwd || req.headers['x-real-ip'] || '';
-      const geoRes = await fetchJson(`https://ipwho.is/${ip}`, {}, 6000);
-      const g = geoRes.data || {};
-      res.status(200).json({
-        country: g.country || null,
-        countryCode: g.country_code || null,
-        city: g.city || null,
-        region: g.region || null,
-      });
-      return;
-    }
-
-    // Action: suggest — search autocomplete suggestions (YouTube Music).
-    if (action === 'suggest' && query) {
-      const ytmusic = new YTMusicClass();
-      await ytmusic.initialize();
-      const suggestions = await ytmusic.getSearchSuggestions(query).catch(() => []);
-      res.status(200).json({ suggestions: suggestions.slice(0, 10) });
-      return;
-    }
-
-    // Action: artist — full artist page: header + every song they made.
-    if (action === 'artist' && (query || req.query.artistId)) {
-      const ytmusic = new YTMusicClass();
-      await ytmusic.initialize();
       try {
-        let artistId = req.query.artistId;
-        if (!artistId && query) {
-          const artists = await ytmusic.searchArtists(query).catch(() => []);
-          const top = artists.find(a => a.artistId);
-          if (top) artistId = top.artistId;
-        }
-        if (artistId) {
-          const [artistInfo, artistSongs] = await Promise.all([
-            ytmusic.getArtist(artistId).catch(() => null),
-            ytmusic.getArtistSongs(artistId).catch(() => [])
-          ]);
-          if (artistInfo) {
-            const combined = [...(artistInfo.topSongs || []), ...artistSongs];
-            const seen = new Set();
-            const songs = combined.filter((s) => s.videoId && !seen.has(s.videoId) && seen.add(s.videoId));
-            res.status(200).json({
-              artist: { artistId, name: artistInfo.name || query, thumbnails: artistInfo.thumbnails || [], subscribers: artistInfo.subscribers || null },
-              songs
-            });
-            return;
-          }
-        }
+        const geoRes = await fetch(`https://ipwho.is/${ip}`);
+        const g = await geoRes.json();
+        res.status(200).json({
+          country: g.country || null,
+          countryCode: g.country_code || null,
+          city: g.city || null,
+          region: g.region || null,
+        });
       } catch (e) {
-        console.error("Artist load error", e);
+        res.status(200).json({});
       }
-      
-      // Fallback
-      const fallbackSongs = await ytmusic.searchSongs(query || req.query.artistId).catch(() => []);
-      res.status(200).json({ artist: null, songs: fallbackSongs });
       return;
     }
 
-    // Action: search_sections — popularity-aware search. YouTube Music returns
-    // official Songs already ranked by popularity (our "Popular"); Videos are
-    // covers/live/remixes ("Other"). Also surfaces the matched artist so the UI
-    // can show an artist header above the results.
-    if (action === 'search_sections' && query) {
-      const ytmusic = new YTMusicClass();
-      await ytmusic.initialize();
-      const [songs, videos, artists] = await Promise.all([
-        ytmusic.searchSongs(query).catch(() => []),
-        ytmusic.searchVideos(query).catch(() => []),
-        ytmusic.searchArtists(query).catch(() => []),
-      ]);
-      const popularIds = new Set(songs.map((s) => s.videoId));
-      const other = videos.filter((v) => !popularIds.has(v.videoId));
-
-      // Surface the top artist match from ytmusic as the header.
-      let artist = null;
-      const top = artists[0];
-      if (top && top.name && top.artistId) {
-        artist = { artistId: top.artistId, name: top.name, thumbnails: top.thumbnails || [] };
-      }
-      res.status(200).json({ artist, popular: songs, other });
-      return;
-    }
-
-    // Action: stream — resolve a playable audio URL for a videoId.
-    // Responds 200 {url, provider} when resolved, or 202 {pending, taskId}
-    // when the mp3 conversion is still running (client polls stream_status).
+    // STREAM
     if (action === 'stream' && videoId) {
-      if (YTDLP_KEY) {
-        // mode=download skips the direct-URL attempt (used by the client
-        // after an IP-locked direct URL fails to play)
-        if (mode !== 'download') {
-          const direct = await ytdlpDirectUrl(videoId).catch(() => null);
-          if (direct) {
-            res.status(200).json({ url: direct, provider: 'ytdlp-direct' });
+      try {
+        const info = await yt.getBasicInfo(videoId, 'WEB_REMIX');
+        const format = info.chooseFormat({ type: 'audio', quality: 'best' });
+        if (format) {
+          const url = await yt.session.player.decipher(format.url, format.signature_cipher, format.cipher);
+          if (url) {
+            res.status(200).json({ url, provider: 'youtubei.js-webremix' });
             return;
           }
         }
-
-        const newTaskId = await ytdlpStartDownload(videoId).catch(() => null);
-        if (newTaskId) {
-          // Wait briefly in-function, then hand off to client-side polling
-          // before the serverless 10s limit hits
-          const deadline = Date.now() + 6000;
-          while (Date.now() < deadline) {
-            const st = await ytdlpTaskStatus(newTaskId);
-            if (st.status === 'completed' && st.download_url) {
-              res.status(200).json({ url: st.download_url, provider: 'ytdlp-mp3' });
+      } catch (err) {
+        console.warn("WEB_REMIX failed, falling back to standard WEB", err);
+        try {
+          const info = await yt.getBasicInfo(videoId, 'WEB');
+          const format = info.chooseFormat({ type: 'audio', quality: 'best' });
+          if (format) {
+            const url = await yt.session.player.decipher(format.url, format.signature_cipher, format.cipher);
+            if (url) {
+              res.status(200).json({ url, provider: 'youtubei.js-web' });
               return;
             }
-            if (st.status === 'failed') break;
-            await new Promise(r => setTimeout(r, 1500));
           }
-          res.status(202).json({ pending: true, taskId: newTaskId });
-          return;
+        } catch (err2) {
+          console.warn("WEB failed", err2);
         }
       }
-
-      const piped = await pipedAudioUrl(videoId);
-      if (piped) {
-        res.status(200).json({ url: piped, provider: 'piped' });
-        return;
+      
+      // Fallback to Piped if youtubei.js fails (due to Vercel IP blocks)
+      const PIPED_INSTANCES = [
+        'https://pipedapi.adminforge.de',
+        'https://pipedapi.kavin.rocks',
+        'https://api.piped.yt'
+      ];
+      for (const instance of PIPED_INSTANCES) {
+        try {
+          const r = await fetch(`${instance}/streams/${videoId}`);
+          const d = await r.json();
+          if (d && Array.isArray(d.audioStreams) && d.audioStreams.length > 0) {
+            const sorted = d.audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+            if (sorted[0].url) {
+              res.status(200).json({ url: sorted[0].url, provider: 'piped' });
+              return;
+            }
+          }
+        } catch (_e) { continue; }
       }
 
-      res.status(404).json({
-        error: YTDLP_KEY
-          ? 'No audio stream found'
-          : 'No audio stream found — set YTDLP_API_KEY (ytdlp.online Developer plan) to enable the yt-dlp provider'
-      });
+      res.status(404).json({ error: 'No audio stream found' });
       return;
     }
 
-    // Action: stream_status — poll a pending ytdlp.online conversion task
-    if (action === 'stream_status' && taskId) {
-      if (!YTDLP_KEY) {
-        res.status(400).json({ error: 'YTDLP_API_KEY not configured' });
-        return;
-      }
-      const st = await ytdlpTaskStatus(taskId);
-      if (st.status === 'completed' && st.download_url) {
-        res.status(200).json({ url: st.download_url, provider: 'ytdlp-mp3' });
-      } else if (st.status === 'failed') {
-        res.status(502).json({ error: 'Audio conversion failed' });
-      } else {
-        res.status(202).json({ pending: true, taskId });
-      }
+    // SEARCH (mixed videos/songs)
+    if (action === 'search') {
+      const results = await yt.music.search(query || 'Top hits');
+      const tracks = (results.contents || []).map(mapTrack).filter(Boolean);
+      res.status(200).json(tracks);
       return;
     }
 
-    // Action: search / home / explore — use ytmusic-api for metadata
-    const ytmusic = new YTMusicClass();
-    const GL = req.query.region || 'ID';
-    const HL = req.query.hl || 'id';
-    await ytmusic.initialize({ GL, HL });
+    // SEARCH SECTIONS (split by popular songs vs videos)
+    if (action === 'search_sections' && query) {
+      const [songRes, videoRes, artistRes] = await Promise.all([
+        yt.music.search(query, { type: 'song' }).catch(() => ({ contents: [] })),
+        yt.music.search(query, { type: 'video' }).catch(() => ({ contents: [] })),
+        yt.music.search(query, { type: 'artist' }).catch(() => ({ contents: [] }))
+      ]);
 
-    if (action === 'explore') {
-      try {
-        const sections = await ytmusic.getHomeSections();
-        res.status(200).json(sections);
-      } catch (err) {
-        // Fallback to top hits search if getHomeSections fails
-        const fallback = await ytmusic.search(`top songs ${GL}`);
-        res.status(200).json([{ title: "Trending", contents: fallback }]);
+      const songs = (songRes.contents || []).map(mapTrack).filter(Boolean);
+      const videos = (videoRes.contents || []).map(mapTrack).filter(Boolean);
+      
+      let artistObj = null;
+      const topArtist = artistRes.contents?.[0];
+      if (topArtist && topArtist.name) {
+        artistObj = {
+          artistId: topArtist.id,
+          name: topArtist.name,
+          thumbnails: topArtist.thumbnails || []
+        };
       }
-    } else if (action === 'search') {
-      const results = await ytmusic.search(query || "New releases");
-      res.status(200).json(results);
-    } else if (action === 'home') {
-      const results = await ytmusic.search("Top hits 2025");
-      res.status(200).json(results);
-    } else {
-      res.status(200).json({ message: "Music Venue API. Use ?action=search&query=... or ?action=stream&videoId=..." });
+
+      res.status(200).json({ artist: artistObj, popular: songs, other: videos });
+      return;
     }
+
+    // ARTIST
+    if (action === 'artist') {
+      let id = req.query.artistId;
+      if (!id && query) {
+        const search = await yt.music.search(query, { type: 'artist' });
+        if (search.contents?.[0]) id = search.contents[0].id;
+      }
+      
+      if (id) {
+        try {
+          const artistPage = await yt.music.getArtist(id);
+          const songs = (artistPage.sections?.find(s => s.title?.text?.includes('Song') || s.title?.text?.includes('Lagu'))?.contents || []).map(mapTrack).filter(Boolean);
+          
+          let finalSongs = songs;
+          if (!finalSongs.length) {
+             const fallbackSearch = await yt.music.search(artistPage.header?.title?.text || query, { type: 'song' });
+             finalSongs = (fallbackSearch.contents || []).map(mapTrack).filter(Boolean);
+          }
+
+          res.status(200).json({
+            artist: {
+              artistId: id,
+              name: artistPage.header?.title?.text || 'Unknown',
+              thumbnails: artistPage.header?.thumbnails || []
+            },
+            songs: finalSongs
+          });
+          return;
+        } catch (e) {
+          console.error("Artist page failed", e);
+        }
+      }
+      // ultimate fallback
+      const fallbackSongsRes = await yt.music.search(query || id, { type: 'song' });
+      res.status(200).json({ artist: null, songs: (fallbackSongsRes.contents || []).map(mapTrack).filter(Boolean) });
+      return;
+    }
+
+    // EXPLORE (Home sections for UI compatibility)
+    if (action === 'explore' || action === 'home') {
+      const home = await yt.music.getHome();
+      const shelves = home.contents?.map(section => ({
+        title: section.title?.text || 'Recommendations',
+        contents: (section.contents || []).map(mapTrack).filter(Boolean)
+      })) || [];
+      res.status(200).json(shelves);
+      return;
+    }
+
+    // RAW EXPLORE (Moods, Genres, etc)
+    if (action === 'explore_raw') {
+      const explore = await yt.music.getExplore();
+      res.status(200).json(explore);
+      return;
+    }
+
+    res.status(200).json({ message: "Music Venue API (youtubei.js)" });
   } catch (error) {
+    console.error('API Error:', error);
     res.status(500).json({ error: error.message });
   }
 }
