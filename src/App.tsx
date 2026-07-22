@@ -438,7 +438,7 @@ export default function App() {
   // Quick Picks: weighted play history × region-popular, minus blocklist.
   const buildQuickPicks = useCallback(async (reg: Region | null) => {
     const cache = load("mv:quickpicks", null as any);
-    const fresh = cache && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
+    const fresh = cache && Date.now() - cache.at < 3600_000 && cache.tracks?.length;
     if (fresh) { setQuickPicks(cache.tracks); return; }
 
     const blockedSet = new Set(blocked);
@@ -449,7 +449,12 @@ export default function App() {
       ? [...topArtists, regionQuery]
       : [regionQuery, "popular songs 2026", "top hits 2026"];
 
-    const groups = await Promise.all(queries.map((q) => searchSongs(q).catch(() => [] as Track[])));
+    // Use search instead of searchSongs to get a mix of popular music & videos
+    const searchMixed = async (q: string): Promise<Track[]> => {
+      const res = await fetch(`${API_URL}?action=search&query=${encodeURIComponent(q)}`);
+      return mapTracks(await res.json());
+    };
+    const groups = await Promise.all(queries.map((q) => searchMixed(q).catch(() => [] as Track[])));
 
     // Interleave one from each group at a time so the mix stays varied.
     const merged: Track[] = [];
@@ -500,7 +505,7 @@ export default function App() {
         details: track.title,
         state: track.artist,
         largeImage: track.artwork || "https://musicvenue.vercel.app/icon.png",
-        largeText: "Sedang diputar di Music Venue",
+        largeText: t("nowPlaying" as any) || "Sedang diputar di Music Venue",
         startTime,
         endTime
       });
@@ -735,9 +740,17 @@ export default function App() {
     setCurrentTime(0);
     setDuration(0);
     try {
-      let url: string;
-      if (isTauri) url = await invoke<string>("resolve_audio_url", { videoId: track.videoId });
-      else url = await resolveStreamUrl(track.videoId, mode);
+      let url: string = "";
+      if (isTauri) {
+        try {
+          url = await invoke<string>("resolve_audio_url", { videoId: track.videoId });
+        } catch (e) {
+          console.warn("Tauri resolve failed, falling back to API", e);
+        }
+      }
+      if (!url) {
+        url = await resolveStreamUrl(track.videoId, mode);
+      }
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
       setIsPlaying(true);
@@ -1138,7 +1151,10 @@ export default function App() {
       {playerUrl && (
         <audio ref={audioRef} src={playerUrl}
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-          onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+          onDurationChange={(e) => { 
+            setDuration(e.currentTarget.duration); 
+            if (currentTrackRef.current) pushRpc(currentTrackRef.current); 
+          }}
           onEnded={handleEnded} onError={handleAudioError}
           onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
       )}
@@ -1197,7 +1213,7 @@ export default function App() {
                     )) : <div className="suggest-empty">Tekan Enter untuk mencari “{searchQuery}”</div>
                   ) : searchHistory.length ? (
                     <>
-                      <div className="suggest-head"><span>Terakhir dicari</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Hapus semua</button></div>
+                      <div className="suggest-head"><span>{t("history" as any) || "Terakhir dicari"}</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Hapus semua</button></div>
                       {searchHistory.map((h) => (
                         <button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}>
                           <Clock size={15} /><span>{h}</span>

@@ -158,33 +158,39 @@ export default async function handler(req, res) {
     }
 
     // Action: artist — full artist page: header + every song they made.
-    // artistId is preferred; otherwise resolve the top artist match for query.
     if (action === 'artist' && (query || req.query.artistId)) {
       const ytmusic = new YTMusicClass();
       await ytmusic.initialize();
-      let id = req.query.artistId;
-      let header = null;
-      if (!id) {
-        const arts = await ytmusic.searchArtists(query).catch(() => []);
-        if (!arts.length) { res.status(200).json({ artist: null, songs: [] }); return; }
-        header = arts[0];
-        id = header.artistId;
+      try {
+        let artistId = req.query.artistId;
+        if (!artistId && query) {
+          const artists = await ytmusic.searchArtists(query).catch(() => []);
+          const top = artists.find(a => a.artistId);
+          if (top) artistId = top.artistId;
+        }
+        if (artistId) {
+          const [artistInfo, artistSongs] = await Promise.all([
+            ytmusic.getArtist(artistId).catch(() => null),
+            ytmusic.getArtistSongs(artistId).catch(() => [])
+          ]);
+          if (artistInfo) {
+            const combined = [...(artistInfo.topSongs || []), ...artistSongs];
+            const seen = new Set();
+            const songs = combined.filter((s) => s.videoId && !seen.has(s.videoId) && seen.add(s.videoId));
+            res.status(200).json({
+              artist: { artistId, name: artistInfo.name || query, thumbnails: artistInfo.thumbnails || [], subscribers: artistInfo.subscribers || null },
+              songs
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("Artist load error", e);
       }
-      const [full, allSongs] = await Promise.all([
-        ytmusic.getArtist(id).catch(() => null),
-        ytmusic.getArtistSongs(id).catch(() => []),
-      ]);
-      const name = full?.name || header?.name || query;
-      const thumbnails = full?.thumbnails || header?.thumbnails || [];
-      // getArtistSongs is scoped to this artist, so results stay correct.
-      // Prepend topSongs (popular first), then de-dupe by videoId.
-      const combined = [...(full?.topSongs || []), ...allSongs];
-      const seen = new Set();
-      const songs = combined.filter((s) => s.videoId && !seen.has(s.videoId) && seen.add(s.videoId));
-      res.status(200).json({
-        artist: { artistId: id, name, thumbnails, subscribers: full?.subscribers || null },
-        songs,
-      });
+      
+      // Fallback
+      const fallbackSongs = await ytmusic.searchSongs(query || req.query.artistId).catch(() => []);
+      res.status(200).json({ artist: null, songs: fallbackSongs });
       return;
     }
 
@@ -206,7 +212,7 @@ export default async function handler(req, res) {
       // Only surface an artist header when the top match clearly IS the query.
       let artist = null;
       const top = artists[0];
-      if (top && top.name) {
+      if (top && top.name && top.artistId) {
         const q = query.toLowerCase().trim();
         const n = top.name.toLowerCase().trim();
         if (n === q || q.includes(n) || n.includes(q)) {
