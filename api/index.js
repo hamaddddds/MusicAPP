@@ -68,6 +68,31 @@ async function ytdlpTaskStatus(taskId) {
   return (ok && data) ? data : { status: 'failed' };
 }
 
+// Free synced lyrics from lrclib.net (no API key, permissive usage).
+// Tries the exact-match /get endpoint, then falls back to /search.
+async function fetchLyrics(title, artist, duration) {
+  const clean = (s) => (s || "").replace(/\s*\(.*?\)\s*/g, " ").replace(/\s*\[.*?\]\s*/g, " ").trim();
+  const t = clean(title);
+  const a = clean(artist);
+  const headers = { 'User-Agent': 'MusicVenue (https://github.com/hamaddddds/MusicAPP)' };
+
+  // 1) exact get
+  let params = new URLSearchParams({ track_name: t, artist_name: a });
+  if (duration) params.set('duration', String(Math.round(duration)));
+  let r = await fetchJson(`https://lrclib.net/api/get?${params}`, { headers }, 8000);
+  if (r.ok && r.data && (r.data.syncedLyrics || r.data.plainLyrics)) {
+    return { syncedLyrics: r.data.syncedLyrics || null, plainLyrics: r.data.plainLyrics || null };
+  }
+
+  // 2) search fallback — pick the best hit that has synced lyrics if possible
+  r = await fetchJson(`https://lrclib.net/api/search?${new URLSearchParams({ track_name: t, artist_name: a })}`, { headers }, 8000);
+  if (r.ok && Array.isArray(r.data) && r.data.length) {
+    const withSynced = r.data.find(x => x.syncedLyrics) || r.data.find(x => x.plainLyrics) || r.data[0];
+    return { syncedLyrics: withSynced.syncedLyrics || null, plainLyrics: withSynced.plainLyrics || null };
+  }
+  return { syncedLyrics: null, plainLyrics: null };
+}
+
 async function pipedAudioUrl(videoId) {
   for (const instance of PIPED_INSTANCES) {
     try {
@@ -97,9 +122,16 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { query, action, videoId, taskId, mode } = req.query;
+  const { query, action, videoId, taskId, mode, title, artist, duration } = req.query;
 
   try {
+    // Action: lyrics — synced/plain lyrics for the current track (lrclib.net)
+    if (action === 'lyrics' && (title || query)) {
+      const lyrics = await fetchLyrics(title || query, artist, duration);
+      res.status(200).json(lyrics);
+      return;
+    }
+
     // Action: stream — resolve a playable audio URL for a videoId.
     // Responds 200 {url, provider} when resolved, or 202 {pending, taskId}
     // when the mp3 conversion is still running (client polls stream_status).

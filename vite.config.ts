@@ -17,6 +17,15 @@ export default defineConfig(async () => ({
     port: 1420,
     strictPort: true,
     host: host || false,
+    // In local web dev there is no serverless /api, so proxy it to the live
+    // Vercel deployment. Harmless in `tauri dev` (desktop uses the yt-dlp sidecar).
+    proxy: {
+      "/api": {
+        target: "https://musicvenue.vercel.app",
+        changeOrigin: true,
+        secure: true,
+      },
+    },
     hmr: host
       ? {
           protocol: "ws",

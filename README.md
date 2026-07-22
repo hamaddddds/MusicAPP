@@ -1,6 +1,23 @@
 # Music Venue (Tauri + React + Typescript)
 
-Music player berbasis YouTube Music. Metadata (search/home) via `ytmusic-api`. Cara memutar audio **berbeda per platform**:
+Music player berbasis YouTube Music dengan UI ala Apple Music.
+
+## Fitur
+
+- **Playback**: play/pause (klik atau **Spasi**), next/prev, seek, volume.
+- **Repeat**: off → repeat-all (loop antrean) → repeat-one (ulang 1 lagu). Tombol di player bar (atau tekan **R**).
+- **Shuffle**: off → random → **smart** (menyebar lagu artis yang sama biar variatif). Tombol shuffle (atau **S**).
+- **Lirik tersinkron** (LRC) via [lrclib.net](https://lrclib.net) — highlight baris aktif + klik baris untuk loncat. Buka lewat Now Playing (**L**).
+- **Now Playing** — tampilan penuh dengan artwork besar, background blur, dan lirik.
+- **Sections**: New Music, Trending Now, Viral Hits, dan Favourite Music.
+- **Liked Music** — tandai ♥, tersimpan di `localStorage`.
+- **Queue** — lihat & lompat ke lagu berikutnya.
+- **Media keys OS / lock screen** via Media Session API.
+- **Shortcut keyboard**: `Space` play/pause · `←/→` seek ±5s · `↑/↓` volume · `N/P` next/prev · `S` shuffle · `R` repeat · `M` mute · `L` lirik · `Esc` tutup.
+
+## Streaming per platform
+
+Metadata (search/home) via `ytmusic-api`. Cara memutar audio **berbeda per platform**:
 
 - **🖥️ Desktop (Tauri) — gratis, tanpa API key.** Meng-*bundle* `yt-dlp` sebagai sidecar dan menjalankannya **lokal di mesin user**. Karena jalan di IP residential user, URL audio yang dihasilkan bisa langsung diputar `<audio>` (URL googlevideo terkunci ke IP pengekstrak — makanya ekstraksi dari server datacenter selalu kena 403, tapi dari mesin user aman).
 - **🌐 Web (Vercel) — server datacenter, butuh provider berbayar.** YouTube memblok IP datacenter, jadi web memakai [ytdlp.online](https://ytdlp.online) (berbayar, set `YTDLP_API_KEY`) dengan fallback Piped. Tanpa key, web hanya untuk browse/search.
