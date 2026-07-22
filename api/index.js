@@ -209,15 +209,11 @@ export default async function handler(req, res) {
       const popularIds = new Set(songs.map((s) => s.videoId));
       const other = videos.filter((v) => !popularIds.has(v.videoId));
 
-      // Only surface an artist header when the top match clearly IS the query.
+      // Surface the top artist match from ytmusic as the header.
       let artist = null;
       const top = artists[0];
       if (top && top.name && top.artistId) {
-        const q = query.toLowerCase().trim();
-        const n = top.name.toLowerCase().trim();
-        if (n === q || q.includes(n) || n.includes(q)) {
-          artist = { artistId: top.artistId, name: top.name, thumbnails: top.thumbnails || [] };
-        }
+        artist = { artistId: top.artistId, name: top.name, thumbnails: top.thumbnails || [] };
       }
       res.status(200).json({ artist, popular: songs, other });
       return;

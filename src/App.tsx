@@ -749,7 +749,21 @@ export default function App() {
         }
       }
       if (!url) {
-        url = await resolveStreamUrl(track.videoId, mode);
+        try {
+          url = await resolveStreamUrl(track.videoId, mode);
+        } catch (apiErr) {
+          console.warn("API resolve failed, attempting fallback search...", apiErr);
+          const fallbackQuery = `${track.artist} ${track.title} audio`;
+          const fallbackRes = await fetch(`${API_URL}?action=search&query=${encodeURIComponent(fallbackQuery)}`);
+          const fallbackData = await fallbackRes.json();
+          const fallbackVideo = fallbackData.find((v: any) => v.videoId && v.videoId !== track.videoId);
+          if (fallbackVideo) {
+            console.log("Found fallback video:", fallbackVideo.videoId);
+            url = await resolveStreamUrl(fallbackVideo.videoId, mode);
+          } else {
+            throw apiErr;
+          }
+        }
       }
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
