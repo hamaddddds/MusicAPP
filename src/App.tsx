@@ -1245,11 +1245,6 @@ export default function App() {
               {profileTab === "accounts" && (
                 <>
                   <div className="setting-block">
-                    <h3>Profil</h3>
-                    <div className="field-row"><label>Nama</label><input className="text-input" value={profile.name} onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} /></div>
-                    <div className="field-row"><label>Warna</label><input className="color-input" type="color" value={profile.color} onChange={(e) => setProfile((p) => ({ ...p, color: e.target.value }))} /></div>
-                  </div>
-                  <div className="setting-block">
                     <h3>Hubungkan Akun</h3>
                     <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi. <span className="badge-warn">Memerlukan kredensial Vercel</span></p>
                     <div className="provider-list">

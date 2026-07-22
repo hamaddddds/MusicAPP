@@ -26,9 +26,20 @@ export default async function handler(req, res) {
 
   // 1. LOGIN REDIRECT
   if (action === 'login') {
-    let authUrl = '';
     const stateParam = provider; // Use state to pass the provider name back to callback
+    
+    // Check if credentials exist for the requested provider
+    if (provider === 'discord' && (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET)) {
+      return renderInstructionPage(res, 'Discord');
+    }
+    if (provider === 'github' && (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET)) {
+      return renderInstructionPage(res, 'GitHub');
+    }
+    if (provider === 'google' && (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET)) {
+      return renderInstructionPage(res, 'Google');
+    }
 
+    let authUrl = '';
     if (provider === 'discord') {
       authUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify&state=${stateParam}`;
     } else if (provider === 'github') {
