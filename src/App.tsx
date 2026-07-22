@@ -7,6 +7,8 @@ import {
   Volume2, VolumeX, Search, Home, Heart, Clock, Radio,
   Menu, X, Minus, Square, Maximize
 } from "lucide-react";
+import ReactPlayerAny from "react-player";
+const ReactPlayer = ReactPlayerAny as any;
 
 // Types
 interface Track {
@@ -37,8 +39,9 @@ export default function App() {
   const [volume, setVolume] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [playerUrl, setPlayerUrl] = useState<string | null>(null);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playerRef = useRef<any>(null);
   const trackListRef = useRef<Track[]>([]);
   const currentIndexRef = useRef(0);
 
@@ -89,44 +92,20 @@ export default function App() {
     fetchTracks("home");
   }, [fetchTracks]);
 
-  // ── Audio Playback (via Vercel API → Piped) ──────────────
-
-  const getAudioUrl = async (videoId: string): Promise<string | null> => {
-    try {
-      // Use our Vercel API to proxy the Piped audio stream lookup
-      const res = await fetch(`${API_URL}?action=stream&videoId=${videoId}`);
-      const data = await res.json();
-      if (data.url) return data.url;
-      return null;
-    } catch (e) {
-      console.error("Failed to get audio stream", e);
-      return null;
-    }
-  };
+  // ── Audio Playback (ReactPlayer) ─────────────────────────
 
   const playTrack = async (track: Track) => {
     setCurrentTrack(track);
-    setIsPlaying(false);
+    setIsPlaying(true);
+    setPlayerUrl(`https://www.youtube.com/watch?v=${track.videoId}`);
 
     const idx = trackListRef.current.findIndex(t => t.videoId === track.videoId);
     if (idx !== -1) currentIndexRef.current = idx;
-
-    const url = await getAudioUrl(track.videoId);
-    if (url && audioRef.current) {
-      audioRef.current.src = url;
-      audioRef.current.volume = isMuted ? 0 : volume;
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
-    }
   };
 
   const togglePlay = () => {
-    if (!audioRef.current || !currentTrack) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
-    }
+    if (!currentTrack) return;
+    setIsPlaying(!isPlaying);
   };
 
   const playNext = () => {
@@ -144,10 +123,10 @@ export default function App() {
   };
 
   const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!audioRef.current || !duration) return;
+    if (!playerRef.current || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pos = (e.clientX - rect.left) / rect.width;
-    audioRef.current.currentTime = pos * duration;
+    playerRef.current.seekTo(pos);
   };
 
   const volumeBarRef = useRef<HTMLDivElement>(null);
@@ -159,7 +138,6 @@ export default function App() {
     const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     setVolume(pos);
     setIsMuted(pos === 0);
-    if (audioRef.current) audioRef.current.volume = pos;
   };
 
   const handleVolumeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -179,15 +157,7 @@ export default function App() {
   };
 
   const toggleMute = () => {
-    if (audioRef.current) {
-      if (isMuted) {
-        audioRef.current.volume = volume;
-        setIsMuted(false);
-      } else {
-        audioRef.current.volume = 0;
-        setIsMuted(true);
-      }
-    }
+    setIsMuted(!isMuted);
   };
 
   const formatTime = (seconds: number) => {
@@ -265,17 +235,21 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Hidden HTML5 Audio Element */}
-      <audio
-        ref={audioRef}
-        onTimeUpdate={() => {
-          if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
-        }}
-        onLoadedMetadata={() => {
-          if (audioRef.current) setDuration(audioRef.current.duration);
-        }}
-        onEnded={playNext}
-      />
+      {/* Hidden ReactPlayer */}
+      {playerUrl && (
+        <div style={{ display: 'none' }}>
+          <ReactPlayer
+            ref={playerRef}
+            url={playerUrl}
+            playing={isPlaying}
+            volume={volume}
+            muted={isMuted}
+            onProgress={(state: any) => setCurrentTime(state.playedSeconds)}
+            onDuration={(dur: number) => setDuration(dur)}
+            onEnded={playNext}
+          />
+        </div>
+      )}
 
       {/* Sidebar */}
       <motion.div

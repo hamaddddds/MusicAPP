@@ -10,14 +10,19 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.25.0",
+    "node-fetch": "^2.7.0",
+    "play-dl": "^1.9.7",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-player": "^3.4.0",
     "react-router-dom": "^7.18.1",
+    "youtubei.js": "^17.2.0",
     "ytmusic-api": "^5.3.1"
   },
   "devDependencies": {
