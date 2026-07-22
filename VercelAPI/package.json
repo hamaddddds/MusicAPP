@@ -1,0 +1,12 @@
+{
+  "name": "musicapp-api",
+  "version": "1.0.0",
+  "description": "Vercel API for MusicAPP",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js"
+  },
+  "dependencies": {
+    "ytmusic-api": "^5.2.2"
+  }
+}
