@@ -1,4 +1,4 @@
-const fetch = require('node-fetch'); // Use node-fetch for serverless
+// fetch is available globally in Node 18+ on Vercel
 
 // Fallback host if not provided by Vercel
 const HOST = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://musicvenue.vercel.app';
