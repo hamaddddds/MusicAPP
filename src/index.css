@@ -23,6 +23,10 @@ body {
   user-select: none;
 }
 
+::-webkit-scrollbar {
+  display: none;
+}
+
 /* Glassmorphism utility */
 .glass {
   background: var(--glass-bg);
