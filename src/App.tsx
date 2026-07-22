@@ -184,7 +184,7 @@ export default function App() {
   const [profileTab, setProfileTab] = useState("appearance");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string }[]>(() => load("mv:accounts", []));
-  const [rpcClientId, setRpcClientId] = useState<string>(() => load("mv:rpc-clientid", ""));
+  const rpcClientId = "1527667258552352848"; // Hardcoded Discord App ID
   const [rpcEnabled, setRpcEnabled] = useState<boolean>(() => load("mv:rpc-enabled", false));
   const [rpcStatus, setRpcStatus] = useState<"off" | "connecting" | "on" | "error">("off");
   const [updateStatus, setUpdateStatus] = useState<string>("");
@@ -422,9 +422,8 @@ export default function App() {
   }, []);
 
   const connectDiscord = useCallback(async () => {
-    if (!rpcClientId.trim()) { flashToast("Isi Discord Application ID dulu."); return; }
     flashToast("Discord RPC native sedang difinalisasi untuk build desktop. Preview & setelan sudah tersimpan.");
-  }, [rpcClientId, flashToast]);
+  }, [flashToast]);
 
   const disconnectDiscord = useCallback(async () => {
     setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
@@ -1273,14 +1272,13 @@ export default function App() {
                 <div className="setting-block">
                   <h3>Discord Rich Presence</h3>
                   <p className="setting-desc">Tampilkan lagu yang sedang diputar di status Discord-mu.{!isTauri && " (hanya di aplikasi desktop)"}</p>
-                  <div className="field-row"><label>Application ID</label><input className="text-input" value={rpcClientId} placeholder="123456789012345678" onChange={(e) => setRpcClientId(e.target.value)} /></div>
-                  <p className="setting-hint">Buat aplikasi di <b>discord.com/developers/applications</b> → salin <b>Application ID</b>. Discord desktop harus terbuka.</p>
-                  <div className="setting-actions">
+                  
+                  <div className="setting-actions" style={{ marginTop: '10px' }}>
                     {rpcStatus === "on"
-                      ? <button className="btn-ghost" onClick={disconnectDiscord}>Putuskan</button>
-                      : <button className="btn-primary" onClick={connectDiscord}>{rpcStatus === "connecting" ? "Menghubungkan…" : "Hubungkan"}</button>}
+                      ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><Gamepad2 size={16} /> Putuskan Discord</button>
+                      : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><Gamepad2 size={16} /> {rpcStatus === "connecting" ? "Menghubungkan…" : "Login Discord"}</button>}
                     <span className={`rpc-dot ${rpcStatus}`} />
-                    <span className="rpc-status-text">{rpcStatus === "on" ? "Terhubung" : rpcStatus === "connecting" ? "Menghubungkan" : rpcStatus === "error" ? "Gagal" : "Tidak aktif"}</span>
+                    <span className="rpc-status-text">{rpcStatus === "on" ? "Terhubung ke Client Desktop" : rpcStatus === "connecting" ? "Menghubungkan" : rpcStatus === "error" ? "Gagal" : "Tidak aktif"}</span>
                   </div>
                   <div className="rpc-preview">
                     <div className="rpc-preview-head">Preview</div>
