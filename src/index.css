@@ -94,7 +94,8 @@ button { font-family: inherit; }
   background: var(--sidebar-bg);
   backdrop-filter: blur(20px);
   border-right: 1px solid var(--border);
-  padding: 0 12px 20px;
+  /* bottom padding clears the fixed player bar so the profile button shows */
+  padding: 0 12px 104px;
   display: flex;
   flex-direction: column;
   gap: 22px;
