@@ -282,11 +282,22 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Action: search / home — use ytmusic-api for metadata
+    // Action: search / home / explore — use ytmusic-api for metadata
     const ytmusic = new YTMusicClass();
-    await ytmusic.initialize();
+    const GL = req.query.region || 'ID';
+    const HL = req.query.hl || 'id';
+    await ytmusic.initialize({ GL, HL });
 
-    if (action === 'search') {
+    if (action === 'explore') {
+      try {
+        const sections = await ytmusic.getHomeSections();
+        res.status(200).json(sections);
+      } catch (err) {
+        // Fallback to top hits search if getHomeSections fails
+        const fallback = await ytmusic.search(`top songs ${GL}`);
+        res.status(200).json([{ title: "Trending", contents: fallback }]);
+      }
+    } else if (action === 'search') {
       const results = await ytmusic.search(query || "New releases");
       res.status(200).json(results);
     } else if (action === 'home') {

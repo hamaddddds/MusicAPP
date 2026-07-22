@@ -35,11 +35,7 @@ const prefersReduced =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const HOME_SHELVES = [
-  { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "new music release 2026" },
-  { id: "trend", title: "Trending Now", subtitle: "Yang lagi panas minggu ini", query: "trending songs 2026" },
-  { id: "viral", title: "Viral Hits", subtitle: "Lagu viral yang wajib didengar", query: "viral hits 2026" },
-];
+// We will fetch sections dynamically now.
 
 const PROVIDERS = [
   { id: "google", label: "Google", Icon: LogIn },
@@ -207,6 +203,7 @@ export default function App() {
   const [searchOther, setSearchOther] = useState<Track[]>([]);
   const [searchArtist, setSearchArtist] = useState<ArtistHead | null>(null);
   const [artistView, setArtistView] = useState<ArtistPage | null>(null);
+  const [exploreSections, setExploreSections] = useState<{title: string, contents: any[]}[]>([]);
   const [artistLoading, setArtistLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggest, setShowSuggest] = useState(false);
@@ -357,11 +354,6 @@ export default function App() {
   }, []);
 
   // ── Data ────────────────────────────────────────────────
-  const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}?action=search&query=${encodeURIComponent(query)}`);
-    return mapTracks(await res.json());
-  }, []);
-
   const searchSongs = useCallback(async (query: string): Promise<Track[]> => {
     const res = await fetch(`${API_URL}?action=search_sections&query=${encodeURIComponent(query)}`);
     const d = await res.json();
@@ -370,14 +362,32 @@ export default function App() {
 
   const loadHome = useCallback(async () => {
     setLoading(true);
-    const results = await Promise.all(
-      HOME_SHELVES.map((s) => searchTracks(s.query).catch(() => [] as Track[]))
-    );
-    const map: Record<string, Track[]> = {};
-    HOME_SHELVES.forEach((s, i) => { map[s.id] = results[i]; });
-    setShelves(map);
+    try {
+      const exploreRes = await fetch(`${API_URL}?action=explore${region?.country ? `&region=${region.country}` : ""}`);
+      const exploreData = await exploreRes.json();
+      
+      const map: Record<string, Track[]> = {};
+      
+      const recentTracks = Object.values(history).sort((a, b) => b.last - a.last).slice(0, 12);
+      if (recentTracks.length > 0) {
+        map["recent"] = recentTracks;
+      }
+      
+      if (Array.isArray(exploreData)) {
+        exploreData.forEach((section, idx) => {
+          if (section.title && section.contents && section.contents.length > 0) {
+            map[`explore_${idx}`] = mapTracks(section.contents);
+          }
+        });
+        setExploreSections(exploreData);
+      }
+      
+      setShelves(map);
+    } catch (e) {
+      console.error("Home load failed", e);
+    }
     setLoading(false);
-  }, [searchTracks]);
+  }, [history, region]);
 
   const runSearch = useCallback(async (query: string) => {
     setLoading(true);
@@ -1167,14 +1177,15 @@ export default function App() {
       <main className="main-content">
         <header className="header">
           <div className="header-drag" onMouseDown={handleDrag}><h1>{getPageTitle()}</h1></div>
-          <div className="header-right">
+
+          <div className="header-center">
             <div className="search-box-wrap" ref={searchBoxRef}>
-              <form onSubmit={handleSearch} className="search-box">
-                <Search size={16} />
+              <form onSubmit={handleSearch} className="search-box lg">
+                <Search size={18} />
                 <input type="text" placeholder="Artists, Songs..." value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }}
                   onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
-                {searchQuery && <button type="button" className="search-clear" onClick={() => { setSearchQuery(""); setSuggestions([]); }}><X size={14} /></button>}
+                {searchQuery && <button type="button" className="search-clear" onClick={() => { setSearchQuery(""); setSuggestions([]); }}><X size={16} /></button>}
               </form>
               {showSuggest && (
                 <div className="search-dropdown">
@@ -1198,6 +1209,8 @@ export default function App() {
                 </div>
               )}
             </div>
+          </div>
+          <div className="header-right">
             {isTauri && (
               <div className="window-controls">
                 <button className="win-btn" onClick={handleMinimize}><Minus size={16} /></button>
@@ -1219,7 +1232,8 @@ export default function App() {
                 </div>
               </section>
             )}
-            {HOME_SHELVES.map((s) => <Shelf key={s.id} id={s.id} title={s.title} subtitle={s.subtitle} />)}
+            {shelves["recent"] && shelves["recent"].length > 0 && <Shelf id="recent" title="Recent Play" subtitle="Berdasarkan yang sering kamu putar" />}
+            {exploreSections.map((s, i) => shelves[`explore_${i}`] && <Shelf key={i} id={`explore_${i}`} title={s.title} subtitle="Dari algoritma YouTube Music" />)}
             <section className="shelf">
               <div className="shelf-head"><div><h2>Favourite Music <ChevronRight size={20} /></h2><p>Lagu yang kamu suka</p></div></div>
               {favorites.length ? (
