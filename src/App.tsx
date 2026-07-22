@@ -11,6 +11,8 @@ import {
   Settings, Palette, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
   UserCircle, Gamepad2
 } from "lucide-react";
+import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 // ── Types ────────────────────────────────────────────────
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
@@ -180,8 +182,8 @@ export default function App() {
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [customCss, setCustomCss] = useState<string>(() => load("mv:customcss", ""));
   const [profileTab, setProfileTab] = useState("appearance");
-  const [profile, setProfile] = useState<{ name: string; color: string }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
-  const [accounts, setAccounts] = useState<{ provider: string; label: string }[]>(() => load("mv:accounts", []));
+  const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
+  const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string }[]>(() => load("mv:accounts", []));
   const [rpcClientId, setRpcClientId] = useState<string>(() => load("mv:rpc-clientid", ""));
   const [rpcEnabled, setRpcEnabled] = useState<boolean>(() => load("mv:rpc-enabled", false));
   const [rpcStatus, setRpcStatus] = useState<"off" | "connecting" | "on" | "error">("off");
@@ -239,6 +241,39 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:profile", JSON.stringify(profile)); }, [profile]);
   useEffect(() => { localStorage.setItem("mv:accounts", JSON.stringify(accounts)); }, [accounts]);
   useEffect(() => { rpcStatusRef.current = rpcStatus; }, [rpcStatus]);
+
+  const handleAuthPayload = useCallback((base64Payload: string) => {
+    try {
+      const payloadStr = atob(base64Payload);
+      const data = JSON.parse(payloadStr);
+      
+      setProfile((p) => ({
+        ...p,
+        name: data.name || p.name,
+        avatar: data.avatar || null,
+        banner: data.banner || null
+      }));
+      
+      setAccounts((prev) => {
+        const filtered = prev.filter(a => a.provider !== data.provider);
+        return [...filtered, { provider: data.provider, label: data.name, id: data.id }];
+      });
+      
+      flashToast(`Berhasil masuk dengan ${data.provider}`);
+    } catch (e) {
+      console.error("Failed to parse auth payload", e);
+      flashToast("Gagal memproses data login.");
+    }
+  }, []);
+
+  // Web popup message listener
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data && e.data.type === "MUSICVENUE_AUTH") handleAuthPayload(e.data.payload);
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [handleAuthPayload]);
 
   // Apply theme to the document root.
   useEffect(() => {
@@ -441,14 +476,31 @@ export default function App() {
     reader.readAsText(file);
   }, [flashToast]);
 
-  const toggleAccount = useCallback((p: { id: string; label: string }) => {
-    setAccounts((prev) =>
-      prev.find((a) => a.provider === p.id)
-        ? prev.filter((a) => a.provider !== p.id)
-        : [...prev, { provider: p.id, label: "Lokal" }]
-    );
-    flashToast(`${p.label} ditandai (lokal). Login OAuth asli perlu backend.`);
-  }, [flashToast]);
+  const toggleAccount = useCallback(async (p: { id: string; label: string }) => {
+    const connected = accounts.find((a) => a.provider === p.id);
+    if (connected) {
+      setAccounts((prev) => prev.filter((a) => a.provider !== p.id));
+      if (accounts.length === 1) setProfile(old => ({ ...old, avatar: null, banner: null }));
+      flashToast(`Akun ${p.label} diputus`);
+      return;
+    }
+
+    if (p.id === "email") {
+       flashToast("Login email belum tersedia.");
+       return;
+    }
+
+    const authUrl = `${API_URL}/auth?action=login&provider=${p.id}`;
+    if (isTauri) {
+      try { await openUrl(authUrl); } catch (e) { console.error(e); flashToast("Gagal membuka browser."); }
+    } else {
+      const w = 500;
+      const h = 600;
+      const left = window.screen.width / 2 - w / 2;
+      const top = window.screen.height / 2 - h / 2;
+      window.open(authUrl, "MusicVenueAuth", `width=${w},height=${h},top=${top},left=${left}`);
+    }
+  }, [accounts, flashToast]);
 
   // ── Init ────────────────────────────────────────────────
   useEffect(() => {
@@ -458,6 +510,20 @@ export default function App() {
           const version = await invoke("get_core_version");
           setCoreVersion(version as string);
           await invoke("show_main_window");
+
+          // Register deep link listener
+          onOpenUrl((urls) => {
+            if (urls.length > 0) {
+              const url = new URL(urls[0]);
+              if (url.protocol === "musicvenue:") {
+                 const payload = url.searchParams.get("payload");
+                 const error = url.searchParams.get("error");
+                 if (payload) handleAuthPayload(payload);
+                 else if (error) flashToast(`Gagal login: ${error}`);
+              }
+            }
+          }).catch(console.error);
+
         } catch (e) { console.error("Tauri invoke error", e); }
       }
     };
@@ -967,7 +1033,11 @@ export default function App() {
         </div>
         <div className="sidebar-bottom">
           <button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
-            <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
+            {profile.avatar ? (
+               <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" />
+            ) : (
+               <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
+            )}
             <div className="profile-brief"><span className="profile-name">{profile.name || "Guest"}</span><span className="profile-sub">Profil &amp; Setelan</span></div>
             <Settings size={16} />
           </button>
@@ -1125,8 +1195,12 @@ export default function App() {
         {/* Profile & Settings */}
         {activeTab === "profile" && (
           <div className="page profile-page">
-            <div className="profile-hero">
-              <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
+            <div className="profile-hero" style={profile.banner ? { backgroundImage: `linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 100%), url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
+              {profile.avatar ? (
+                <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" />
+              ) : (
+                <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
+              )}
               <div className="profile-hero-info">
                 <span className="artist-hero-label"><UserCircle size={13} /> Profil</span>
                 <h1>{profile.name || "Guest"}</h1>
@@ -1177,7 +1251,7 @@ export default function App() {
                   </div>
                   <div className="setting-block">
                     <h3>Hubungkan Akun</h3>
-                    <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi. <span className="badge-warn">OAuth asli perlu backend</span></p>
+                    <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi. <span className="badge-warn">Memerlukan kredensial Vercel</span></p>
                     <div className="provider-list">
                       {PROVIDERS.map((p) => {
                         const connected = accounts.find((a) => a.provider === p.id);
@@ -1216,7 +1290,12 @@ export default function App() {
                   <div className="rpc-preview">
                     <div className="rpc-preview-head">Preview</div>
                     <div className="rpc-card">
-                      <img src={currentTrack?.artwork || "https://picsum.photos/120"} className="rpc-img" alt="" />
+                      <div className="rpc-img-wrapper">
+                        <img src={currentTrack?.artwork || "https://picsum.photos/120"} className="rpc-img" alt="" />
+                        {profile.avatar && accounts.some(a => a.provider === "discord") && (
+                          <img src={profile.avatar} className="rpc-small-img" alt="Discord Avatar" />
+                        )}
+                      </div>
                       <div className="rpc-lines">
                         <span className="rpc-app">MUSIC VENUE</span>
                         <span className="rpc-details">{currentTrack?.title || "Belum ada lagu diputar"}</span>

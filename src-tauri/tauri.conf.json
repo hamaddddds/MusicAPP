@@ -45,6 +45,11 @@
       "windows": {
         "installMode": "passive"
       }
+    },
+    "deep-link": {
+      "schemes": [
+        "musicvenue"
+      ]
     }
   }
 }
