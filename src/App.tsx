@@ -144,6 +144,54 @@ function artistScores(history: Record<string, HistEntry>): [string, number][] {
   return Object.entries(scores).sort((a, b) => b[1] - a[1]);
 }
 
+const LanguageSelect = ({ lang, setLang }: { lang: Language, setLang: (l: Language) => void }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+  const options = [
+    { value: "en", label: "English" },
+    { value: "id", label: "Bahasa Indonesia" }
+  ];
+  const active = options.find(o => o.value === lang)?.label;
+  return (
+    <div ref={ref} style={{ position: 'relative', width: 220, fontSize: 13, userSelect: 'none' }}>
+      <div 
+        onClick={() => setOpen(!open)}
+        style={{ padding: '10px 14px', background: 'var(--input-bg)', color: '#fff', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+      >
+        {active}
+        <ChevronDown size={16} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', opacity: 0.7 }} />
+      </div>
+      <AnimatePresence>
+        {open && (
+          <motion.div 
+            initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.15 }}
+            style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: '#1c1c1c', border: '1px solid #333', borderRadius: 8, overflow: 'hidden', zIndex: 100, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
+          >
+            {options.map(o => (
+              <div 
+                key={o.value} 
+                onClick={() => { setLang(o.value as Language); localStorage.setItem("mv:lang", o.value); setOpen(false); }}
+                style={{ padding: '10px 14px', cursor: 'pointer', background: lang === o.value ? 'rgba(255,255,255,0.05)' : 'transparent', color: lang === o.value ? '#fff' : '#aaa', transition: '0.2s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = lang === o.value ? 'rgba(255,255,255,0.05)' : 'transparent'; e.currentTarget.style.color = lang === o.value ? '#fff' : '#aaa'; }}
+              >
+                {o.label}
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export default function App() {
   const [coreVersion, setCoreVersion] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -427,11 +475,24 @@ export default function App() {
   const pushRpc = useCallback(async (track: Track) => {
     if (rpcStatusRef.current !== "on" || !isTauri) return;
     try {
+      const audio = audioRef.current;
+      const now = Math.floor(Date.now() / 1000);
+      let startTime: number | null = null;
+      let endTime: number | null = null;
+      
+      // If it's playing and we have duration, set start/end timestamps so Discord ticks the time
+      if (audio && !audio.paused && audio.duration) {
+        startTime = now - Math.floor(audio.currentTime);
+        endTime = startTime + Math.floor(audio.duration);
+      }
+      
       await invoke("set_rpc_activity", {
         details: track.title,
         state: track.artist,
         largeImage: track.artwork || "https://musicvenue.vercel.app/icon.png",
         largeText: "Sedang diputar di Music Venue",
+        startTime,
+        endTime
       });
     } catch (e) {
       console.error("Gagal push RPC", e);
@@ -890,7 +951,7 @@ export default function App() {
   }, [currentTrack, playPrev, advance]);
 
   // Push the current track to Discord Rich Presence (no-op until native lands).
-  useEffect(() => { if (currentTrack) pushRpc(currentTrack); }, [currentTrack, pushRpc]);
+  useEffect(() => { if (currentTrack) pushRpc(currentTrack); }, [currentTrack, isPlaying, pushRpc]);
 
   // ── Keyboard shortcuts ──────────────────────────────────
   useEffect(() => {
@@ -965,6 +1026,7 @@ export default function App() {
     if (!audio || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     audio.currentTime = ((e.clientX - rect.left) / rect.width) * duration;
+    if (currentTrack) pushRpc(currentTrack);
   };
 
   const volumeBarRef = useRef<HTMLDivElement>(null);
@@ -1316,18 +1378,7 @@ export default function App() {
                   <div className="setting-block">
                     <h3>{t("language")}</h3>
                     <div className="setting-actions">
-                      <select 
-                        value={lang} 
-                        onChange={(e) => {
-                          const v = e.target.value as Language;
-                          setLang(v);
-                          localStorage.setItem("mv:lang", v);
-                        }}
-                        style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--border)', outline: 'none', cursor: 'pointer' }}
-                      >
-                        <option value="id" style={{ color: '#000' }}>Bahasa Indonesia</option>
-                        <option value="en" style={{ color: '#000' }}>English</option>
-                      </select>
+                      <LanguageSelect lang={lang} setLang={setLang} />
                     </div>
                   </div>
                 </>

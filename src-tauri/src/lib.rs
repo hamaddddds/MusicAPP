@@ -132,17 +132,35 @@ fn disconnect_rpc() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_rpc_activity(details: String, state: String, large_image: String, large_text: String) -> Result<(), String> {
+fn set_rpc_activity(
+    details: String, 
+    state: String, 
+    large_image: String, 
+    large_text: String,
+    start_time: Option<i64>,
+    end_time: Option<i64>
+) -> Result<(), String> {
     let mut guard = DISCORD_IPC.lock().unwrap();
     if let Some(client) = guard.as_mut() {
         let assets = activity::Assets::new()
             .large_image(&large_image)
             .large_text(&large_text);
 
-        let activity = activity::Activity::new()
+        let mut activity = activity::Activity::new()
             .details(&details)
             .state(&state)
             .assets(assets);
+            
+        if start_time.is_some() || end_time.is_some() {
+            let mut timestamps = activity::Timestamps::new();
+            if let Some(s) = start_time {
+                timestamps = timestamps.start(s);
+            }
+            if let Some(e) = end_time {
+                timestamps = timestamps.end(e);
+            }
+            activity = activity.timestamps(timestamps);
+        }
 
         client.set_activity(activity).map_err(|e| format!("Gagal set activity: {}", e))?;
     }
