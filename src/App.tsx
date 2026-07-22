@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { motion, AnimatePresence } from "framer-motion";
-import ReactPlayer from 'react-player/youtube';
+import _ReactPlayer from 'react-player';
+const ReactPlayer = _ReactPlayer as any;
 import { 
   Play, Pause, SkipForward, SkipBack, 
   Volume2, Search, Home, Library, Radio, 
@@ -28,14 +29,14 @@ export default function App() {
   
   const [played, setPlayed] = useState(0);
   const [duration, setDuration] = useState(0);
-  const playerRef = useRef<ReactPlayer>(null);
+  const playerRef = useRef<any>(null);
   
   const appWindow = getCurrentWindow();
 
-  // Vercel API URL (Local or deployed)
-  // For local testing: http://localhost:3000/api
-  // We will assume the Vercel API is running on localhost:3000 during dev.
-  const API_URL = "http://localhost:3000/api";
+  // Vercel API URL
+  // If running in browser (Vercel), use "/api". If running in Tauri desktop app, use the full deployed URL.
+  // Ganti URL ini dengan URL Vercel asli Anda nantinya untuk versi Desktop!
+  const API_URL = '__TAURI_INTERNALS__' in window ? "https://music-venue-api.vercel.app/api" : "/api";
 
   const fetchTracks = async (action: string, query: string = "") => {
     setLoading(true);
@@ -90,7 +91,7 @@ export default function App() {
     setIsPlaying(true);
   };
 
-  const handleProgress = (state: { played: number }) => {
+  const handleProgress = (state: any) => {
     setPlayed(state.played);
   };
 
@@ -124,7 +125,7 @@ export default function App() {
             url={`https://www.youtube.com/watch?v=${currentTrack.videoId}`}
             playing={isPlaying}
             onProgress={handleProgress}
-            onDuration={(d) => setDuration(d)}
+            onDuration={(d: number) => setDuration(d)}
             onEnded={() => setIsPlaying(false)}
             volume={1}
           />
