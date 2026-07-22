@@ -57,6 +57,40 @@ async fn resolve_audio_url(app: tauri::AppHandle, video_id: String) -> Result<St
     Ok(url)
 }
 
+/// Download the best audio track for a video id into the OS download folder,
+/// using the bundled yt-dlp sidecar. No ffmpeg needed (keeps native container).
+#[tauri::command]
+async fn download_track(app: tauri::AppHandle, video_id: String) -> Result<String, String> {
+    if video_id.is_empty()
+        || !video_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("invalid video id".into());
+    }
+    let dir = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("no download dir: {e}"))?;
+    let out = format!("{}/%(title)s [%(id)s].%(ext)s", dir.to_string_lossy());
+    let watch_url = format!("https://www.youtube.com/watch?v={}", video_id);
+
+    let sidecar = app
+        .shell()
+        .sidecar("yt-dlp")
+        .map_err(|e| format!("sidecar not found: {e}"))?;
+    let output = sidecar
+        .args(["-f", "bestaudio/best", "--no-playlist", "-o", &out, &watch_url])
+        .output()
+        .await
+        .map_err(|e| format!("yt-dlp failed to run: {e}"))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(dir.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -74,11 +108,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_core_version,
             show_main_window,
-            resolve_audio_url
+            resolve_audio_url,
+            download_track
         ])
         .on_window_event(|_window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } => {

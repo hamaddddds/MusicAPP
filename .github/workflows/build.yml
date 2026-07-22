@@ -15,6 +15,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
+      - name: Auto version (0.2.<run_number>) so releases/updater bump automatically
+        shell: bash
+        run: |
+          VER="0.2.${{ github.run_number }}"
+          node -e "const f='package.json';const j=require('./'+f);j.version='$VER';require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
+          node -e "const f='src-tauri/tauri.conf.json';const j=require('./'+f);j.version='$VER';require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
+          echo "Building version $VER"
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:

@@ -6,36 +6,40 @@ import {
   Play, Pause, SkipForward, SkipBack,
   Volume2, Volume1, VolumeX, Search, Home, Heart, Radio,
   X, Minus, Square, Maximize, Repeat, Repeat1, Shuffle,
-  ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles
+  ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
+  ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────
-interface Track {
-  videoId: string;
-  title: string;
-  artist: string;
-  artwork: string;
-}
+interface Track { videoId: string; title: string; artist: string; artwork: string; }
 type RepeatMode = "off" | "all" | "one";
 type ShuffleMode = "off" | "random" | "smart";
 interface LyricLine { t: number; text: string; }
 interface Lyrics { synced: LyricLine[]; plain: string; }
+interface HistEntry extends Track { count: number; last: number; }
+interface Region { country: string | null; countryCode: string | null; city: string | null; }
+interface CtxMenu { x: number; y: number; track: Track; context: Track[]; }
+interface UpdateInfo { version: string; obj: any; }
 
-// Detect Tauri; pick API base (relative on web, absolute on desktop).
 const isTauri = "__TAURI_INTERNALS__" in window;
 const API_URL = isTauri ? "https://musicvenue.vercel.app/api" : "/api";
 const prefersReduced =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Home shelves — each is one horizontal carousel fed by a distinct query.
 const HOME_SHELVES = [
   { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "new music release 2026" },
   { id: "trend", title: "Trending Now", subtitle: "Yang lagi panas minggu ini", query: "trending songs 2026" },
   { id: "viral", title: "Viral Hits", subtitle: "Lagu viral yang wajib didengar", query: "viral hits 2026" },
 ];
 
-// ── Helpers ──────────────────────────────────────────────
+// ── localStorage helpers ─────────────────────────────────
+const load = <T,>(k: string, fallback: T): T => {
+  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+};
+
+// ── Track mapping / algorithms ───────────────────────────
 function mapTracks(data: any): Track[] {
   if (!Array.isArray(data)) return [];
   return data
@@ -43,10 +47,7 @@ function mapTracks(data: any): Track[] {
     .map((item: any) => ({
       videoId: item.videoId,
       title: item.name || item.title || "Unknown Title",
-      artist:
-        item.artist?.name ||
-        (item.artists && item.artists[0]?.name) ||
-        "Unknown Artist",
+      artist: item.artist?.name || (item.artists && item.artists[0]?.name) || "Unknown Artist",
       artwork:
         item.thumbnails?.[item.thumbnails.length - 1]?.url ||
         item.thumbnails?.[0]?.url ||
@@ -63,7 +64,6 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-// Smart shuffle: keep it varied by spreading same-artist tracks apart.
 function smartOrder(list: Track[], start: Track): Track[] {
   const pool = shuffleArray(list.filter((t) => t.videoId !== start.videoId));
   const result: Track[] = [start];
@@ -76,7 +76,6 @@ function smartOrder(list: Track[], start: Track): Track[] {
   return result;
 }
 
-// Parse an LRC blob into timestamped lines.
 function parseLRC(lrc: string): LyricLine[] {
   const out: LyricLine[] = [];
   for (const raw of lrc.split("\n")) {
@@ -100,6 +99,18 @@ function formatTime(seconds: number) {
   return `${mm}:${ss}`;
 }
 
+// Rank artists by frequency × recency. Half-life ≈ 14 days.
+function artistScores(history: Record<string, HistEntry>): [string, number][] {
+  const now = Date.now();
+  const scores: Record<string, number> = {};
+  for (const h of Object.values(history)) {
+    const days = (now - h.last) / 86400000;
+    const recency = Math.pow(0.5, days / 14); // 1.0 today → 0.5 after 14d
+    scores[h.artist] = (scores[h.artist] || 0) + h.count * (0.4 + 0.6 * recency);
+  }
+  return Object.entries(scores).sort((a, b) => b[1] - a[1]);
+}
+
 export default function App() {
   const [coreVersion, setCoreVersion] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -110,11 +121,13 @@ export default function App() {
 
   // Content
   const [shelves, setShelves] = useState<Record<string, Track[]>>({});
-  const [searchResults, setSearchResults] = useState<Track[]>([]);
-  const [favorites, setFavorites] = useState<Track[]>(() => {
-    try { return JSON.parse(localStorage.getItem("mv:favorites") || "[]"); }
-    catch { return []; }
-  });
+  const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
+  const [searchPopular, setSearchPopular] = useState<Track[]>([]);
+  const [searchOther, setSearchOther] = useState<Track[]>([]);
+  const [favorites, setFavorites] = useState<Track[]>(() => load("mv:favorites", []));
+  const [history, setHistory] = useState<Record<string, HistEntry>>(() => load("mv:history", {}));
+  const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
+  const [region, setRegion] = useState<Region | null>(() => load("mv:region", null));
 
   // Audio
   const [currentTime, setCurrentTime] = useState(0);
@@ -128,43 +141,56 @@ export default function App() {
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [shuffleMode, setShuffleMode] = useState<ShuffleMode>("off");
 
-  // Panels
+  // Panels & overlays
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
 
   // Lyrics
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
 
-  // Refs (for event handlers that must read live values)
+  // Refs
   const audioRef = useRef<HTMLAudioElement>(null);
   const orderRef = useRef<Track[]>([]);
   const posRef = useRef(0);
   const contextRef = useRef<Track[]>([]);
   const currentTrackRef = useRef<Track | null>(null);
-  const isPlayingRef = useRef(false);
-  const volumeRef = useRef(0.8);
   const durationRef = useRef(0);
   const repeatRef = useRef<RepeatMode>("off");
   const shuffleRef = useRef<ShuffleMode>("off");
   const triedDownloadRef = useRef(false);
   const playRequestRef = useRef(0);
   const activeLyricRef = useRef<HTMLParagraphElement | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
-  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
-  useEffect(() => { volumeRef.current = volume; }, [volume]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
   useEffect(() => { repeatRef.current = repeatMode; }, [repeatMode]);
-  useEffect(() => {
-    localStorage.setItem("mv:favorites", JSON.stringify(favorites));
-  }, [favorites]);
+  useEffect(() => { localStorage.setItem("mv:favorites", JSON.stringify(favorites)); }, [favorites]);
+  useEffect(() => { localStorage.setItem("mv:history", JSON.stringify(history)); }, [history]);
+  useEffect(() => { localStorage.setItem("mv:blocked", JSON.stringify(blocked)); }, [blocked]);
+
+  const flashToast = useCallback((msg: string) => {
+    setToast(msg);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+  }, []);
 
   // ── Data ────────────────────────────────────────────────
   const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
     const res = await fetch(`${API_URL}?action=search&query=${encodeURIComponent(query)}`);
     return mapTracks(await res.json());
+  }, []);
+
+  const searchSongs = useCallback(async (query: string): Promise<Track[]> => {
+    const res = await fetch(`${API_URL}?action=search_sections&query=${encodeURIComponent(query)}`);
+    const d = await res.json();
+    return mapTracks(d.popular || []);
   }, []);
 
   const loadHome = useCallback(async () => {
@@ -180,10 +206,49 @@ export default function App() {
 
   const runSearch = useCallback(async (query: string) => {
     setLoading(true);
-    try { setSearchResults(await searchTracks(query)); }
-    catch { setSearchResults([]); }
+    try {
+      const res = await fetch(`${API_URL}?action=search_sections&query=${encodeURIComponent(query)}`);
+      const d = await res.json();
+      setSearchPopular(mapTracks(d.popular || []));
+      setSearchOther(mapTracks(d.other || []));
+    } catch {
+      setSearchPopular([]); setSearchOther([]);
+    }
     setLoading(false);
-  }, [searchTracks]);
+  }, []);
+
+  // Quick Picks: weighted play history × region-popular, minus blocklist.
+  const buildQuickPicks = useCallback(async (reg: Region | null) => {
+    const cache = load("mv:quickpicks", null as any);
+    const fresh = cache && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
+    if (fresh) { setQuickPicks(cache.tracks); return; }
+
+    const blockedSet = new Set(blocked);
+    const topArtists = artistScores(history).slice(0, 4).map((a) => a[0]);
+    const regionQuery = reg?.country ? `top songs ${reg.country}` : "top songs 2026";
+
+    const queries = topArtists.length
+      ? [...topArtists, regionQuery]
+      : [regionQuery, "popular songs 2026", "top hits 2026"];
+
+    const groups = await Promise.all(queries.map((q) => searchSongs(q).catch(() => [] as Track[])));
+
+    // Interleave one from each group at a time so the mix stays varied.
+    const merged: Track[] = [];
+    const seen = new Set<string>();
+    for (let round = 0; round < 4; round++) {
+      for (const g of groups) {
+        const t = g[round];
+        if (t && !seen.has(t.videoId) && !blockedSet.has(t.artist)) {
+          seen.add(t.videoId);
+          merged.push(t);
+        }
+      }
+    }
+    const picks = merged.slice(0, 12);
+    setQuickPicks(picks);
+    localStorage.setItem("mv:quickpicks", JSON.stringify({ at: Date.now(), tracks: picks }));
+  }, [history, blocked, searchSongs]);
 
   // ── Init ────────────────────────────────────────────────
   useEffect(() => {
@@ -198,7 +263,63 @@ export default function App() {
     };
     setTimeout(initApp, 150);
     loadHome();
-  }, [loadHome]);
+
+    // Region (for Quick Picks), then build the picks.
+    (async () => {
+      let reg = load<Region | null>("mv:region", null);
+      try {
+        if (!reg) {
+          const res = await fetch(`${API_URL}?action=geo`);
+          reg = await res.json();
+          localStorage.setItem("mv:region", JSON.stringify(reg));
+          setRegion(reg);
+        }
+      } catch { /* region optional */ }
+      buildQuickPicks(reg);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Auto-update (Tauri) ─────────────────────────────────
+  useEffect(() => {
+    if (!isTauri) return;
+    (async () => {
+      try {
+        const { check } = await import("@tauri-apps/plugin-updater");
+        const update = await check();
+        if (update?.available) {
+          const dismissed = localStorage.getItem("mv:update-dismissed");
+          // Persist the latest known version for the client.
+          localStorage.setItem("mv:update-latest", update.version);
+          if (dismissed !== update.version) setUpdateInfo({ version: update.version, obj: update });
+        }
+      } catch (e) { console.error("update check failed", e); }
+    })();
+  }, []);
+
+  const runUpdate = useCallback(async () => {
+    if (!updateInfo) return;
+    try {
+      setUpdateProgress(0);
+      let total = 0, got = 0;
+      await updateInfo.obj.downloadAndInstall((ev: any) => {
+        if (ev.event === "Started") total = ev.data.contentLength || 0;
+        else if (ev.event === "Progress") { got += ev.data.chunkLength || 0; if (total) setUpdateProgress(Math.round((got / total) * 100)); }
+        else if (ev.event === "Finished") setUpdateProgress(100);
+      });
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    } catch (e) {
+      console.error("update failed", e);
+      flashToast("Gagal memperbarui. Coba lagi nanti.");
+      setUpdateProgress(null);
+    }
+  }, [updateInfo, flashToast]);
+
+  const dismissUpdate = useCallback(() => {
+    if (updateInfo) localStorage.setItem("mv:update-dismissed", updateInfo.version);
+    setUpdateInfo(null);
+  }, [updateInfo]);
 
   // ── Stream resolution ────────────────────────────────────
   const resolveStreamUrl = async (videoId: string, mode?: string): Promise<string> => {
@@ -222,42 +343,44 @@ export default function App() {
     setDuration(0);
     try {
       let url: string;
-      if (isTauri) {
-        // Desktop: resolve locally with bundled yt-dlp (free, user's IP).
-        url = await invoke<string>("resolve_audio_url", { videoId: track.videoId });
-      } else {
-        url = await resolveStreamUrl(track.videoId, mode);
-      }
+      if (isTauri) url = await invoke<string>("resolve_audio_url", { videoId: track.videoId });
+      else url = await resolveStreamUrl(track.videoId, mode);
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
       setIsPlaying(true);
     } catch (e) {
       console.error("Failed to resolve stream", e);
-      if (playRequestRef.current === requestId) setIsPlaying(false);
+      if (playRequestRef.current === requestId) { setIsPlaying(false); flashToast("Gagal memuat audio."); }
     } finally {
       if (playRequestRef.current === requestId) setStreamLoading(false);
     }
+  }, [flashToast]);
+
+  const recordPlay = useCallback((track: Track) => {
+    setHistory((prev) => {
+      const cur = prev[track.videoId];
+      return {
+        ...prev,
+        [track.videoId]: { ...track, count: (cur?.count || 0) + 1, last: Date.now() },
+      };
+    });
   }, []);
 
   const loadAndPlay = useCallback((track: Track) => {
     triedDownloadRef.current = false;
     setCurrentTrack(track);
     currentTrackRef.current = track;
+    recordPlay(track);
     startStream(track);
-  }, [startStream]);
+  }, [startStream, recordPlay]);
 
-  // Build the play order for a track within its context, honouring shuffle.
   const buildOrder = useCallback((context: Track[], start: Track) => {
     const base = context.length ? context : [start];
     contextRef.current = base;
     let order: Track[];
-    if (shuffleRef.current === "random") {
-      order = [start, ...shuffleArray(base.filter((t) => t.videoId !== start.videoId))];
-    } else if (shuffleRef.current === "smart") {
-      order = smartOrder(base, start);
-    } else {
-      order = [...base];
-    }
+    if (shuffleRef.current === "random") order = [start, ...shuffleArray(base.filter((t) => t.videoId !== start.videoId))];
+    else if (shuffleRef.current === "smart") order = smartOrder(base, start);
+    else order = [...base];
     orderRef.current = order;
     posRef.current = Math.max(0, order.findIndex((t) => t.videoId === start.videoId));
   }, []);
@@ -273,7 +396,7 @@ export default function App() {
     let next = posRef.current + 1;
     if (next >= order.length) {
       if (repeatRef.current === "all" || manual) next = 0;
-      else { setIsPlaying(false); return; } // end of queue, no repeat
+      else { setIsPlaying(false); return; }
     }
     posRef.current = next;
     loadAndPlay(order[next]);
@@ -282,11 +405,7 @@ export default function App() {
   const playPrev = useCallback(() => {
     const order = orderRef.current;
     if (!order.length) return;
-    // Restart current track if we're more than 3s in (Apple Music behaviour).
-    if (audioRef.current && audioRef.current.currentTime > 3) {
-      audioRef.current.currentTime = 0;
-      return;
-    }
+    if (audioRef.current && audioRef.current.currentTime > 3) { audioRef.current.currentTime = 0; return; }
     let prev = posRef.current - 1;
     if (prev < 0) prev = order.length - 1;
     posRef.current = prev;
@@ -308,25 +427,74 @@ export default function App() {
   }, [advance]);
 
   const handleAudioError = useCallback(() => {
-    // Web only: a direct googlevideo URL can be IP-locked → retry via mp3 path.
     if (!isTauri && currentTrackRef.current && !triedDownloadRef.current) {
       triedDownloadRef.current = true;
       startStream(currentTrackRef.current, "download");
-    } else {
-      setIsPlaying(false);
-    }
+    } else setIsPlaying(false);
   }, [startStream]);
 
+  // ── Queue operations ────────────────────────────────────
+  const playNext = useCallback((track: Track) => {
+    if (!currentTrackRef.current) { playTrack(track, [track]); return; }
+    const order = [...orderRef.current];
+    order.splice(posRef.current + 1, 0, track);
+    orderRef.current = order;
+    flashToast("Diputar setelah ini");
+  }, [playTrack, flashToast]);
+
+  const addToQueue = useCallback((track: Track) => {
+    if (!currentTrackRef.current) { playTrack(track, [track]); return; }
+    orderRef.current = [...orderRef.current, track];
+    flashToast("Ditambahkan ke antrean");
+  }, [playTrack, flashToast]);
+
+  const startMix = useCallback(async (track: Track) => {
+    playTrack(track, [track]);
+    flashToast("Memulai mix…");
+    try {
+      const related = (await searchSongs(track.artist)).filter((t) => t.videoId !== track.videoId);
+      const order = [track, ...shuffleArray(related)];
+      orderRef.current = order;
+      contextRef.current = order;
+      posRef.current = 0;
+    } catch { /* keep single track */ }
+  }, [playTrack, searchSongs, flashToast]);
+
+  const goToArtist = useCallback((artist: string) => {
+    setSearchQuery(artist);
+    setActiveTab("search");
+    runSearch(artist);
+  }, [runSearch]);
+
+  const shareTrack = useCallback(async (track: Track) => {
+    const link = `https://music.youtube.com/watch?v=${track.videoId}`;
+    try { await navigator.clipboard.writeText(link); flashToast("Link disalin ke clipboard"); }
+    catch { flashToast(link); }
+  }, [flashToast]);
+
+  const downloadTrack = useCallback(async (track: Track) => {
+    if (isTauri) {
+      flashToast("Mengunduh…");
+      try {
+        const dir = await invoke<string>("download_track", { videoId: track.videoId });
+        flashToast(`Tersimpan di ${dir}`);
+      } catch { flashToast("Gagal mengunduh."); }
+    } else {
+      window.open(`https://music.youtube.com/watch?v=${track.videoId}`, "_blank");
+    }
+  }, [flashToast]);
+
+  const notInterested = useCallback((track: Track) => {
+    setBlocked((prev) => (prev.includes(track.artist) ? prev : [...prev, track.artist]));
+    setQuickPicks((prev) => prev.filter((t) => t.artist !== track.artist));
+    localStorage.removeItem("mv:quickpicks");
+    flashToast(`Tidak merekomendasikan ${track.artist}`);
+  }, [flashToast]);
+
   // ── Mode cycling ────────────────────────────────────────
-  const cycleRepeat = useCallback(() => {
-    setRepeatMode((m) => (m === "off" ? "all" : m === "all" ? "one" : "off"));
-  }, []);
+  const cycleRepeat = useCallback(() => setRepeatMode((m) => (m === "off" ? "all" : m === "all" ? "one" : "off")), []);
+  const cycleShuffle = useCallback(() => setShuffleMode((m) => (m === "off" ? "random" : m === "random" ? "smart" : "off")), []);
 
-  const cycleShuffle = useCallback(() => {
-    setShuffleMode((m) => (m === "off" ? "random" : m === "random" ? "smart" : "off"));
-  }, []);
-
-  // Rebuild the queue when shuffle mode changes mid-playback.
   useEffect(() => {
     shuffleRef.current = shuffleMode;
     const cur = currentTrackRef.current;
@@ -347,10 +515,7 @@ export default function App() {
   }, [volume, isMuted, playerUrl]);
 
   // ── Favorites ───────────────────────────────────────────
-  const isFavorite = useCallback(
-    (videoId: string) => favorites.some((t) => t.videoId === videoId),
-    [favorites]
-  );
+  const isFavorite = useCallback((videoId: string) => favorites.some((t) => t.videoId === videoId), [favorites]);
   const toggleFavorite = useCallback((track: Track) => {
     setFavorites((prev) =>
       prev.some((t) => t.videoId === track.videoId)
@@ -363,23 +528,15 @@ export default function App() {
   useEffect(() => {
     if (!currentTrack) { setLyrics(null); return; }
     let cancelled = false;
-    setLyrics(null);
-    setLyricsLoading(true);
+    setLyrics(null); setLyricsLoading(true);
     (async () => {
       try {
         const url = `${API_URL}?action=lyrics&title=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}`;
-        const res = await fetch(url);
-        const d = await res.json();
+        const d = await (await fetch(url)).json();
         if (cancelled) return;
-        setLyrics({
-          synced: d.syncedLyrics ? parseLRC(d.syncedLyrics) : [],
-          plain: d.plainLyrics || "",
-        });
-      } catch {
-        if (!cancelled) setLyrics({ synced: [], plain: "" });
-      } finally {
-        if (!cancelled) setLyricsLoading(false);
-      }
+        setLyrics({ synced: d.syncedLyrics ? parseLRC(d.syncedLyrics) : [], plain: d.plainLyrics || "" });
+      } catch { if (!cancelled) setLyrics({ synced: [], plain: "" }); }
+      finally { if (!cancelled) setLyricsLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [currentTrack]);
@@ -388,28 +545,22 @@ export default function App() {
     if (!lyrics?.synced.length) return -1;
     let idx = -1;
     for (let i = 0; i < lyrics.synced.length; i++) {
-      if (lyrics.synced[i].t <= currentTime + 0.25) idx = i;
-      else break;
+      if (lyrics.synced[i].t <= currentTime + 0.25) idx = i; else break;
     }
     return idx;
   }, [lyrics, currentTime]);
 
   useEffect(() => {
     if (nowPlayingOpen && activeLyricRef.current) {
-      activeLyricRef.current.scrollIntoView({
-        block: "center",
-        behavior: prefersReduced ? "auto" : "smooth",
-      });
+      activeLyricRef.current.scrollIntoView({ block: "center", behavior: prefersReduced ? "auto" : "smooth" });
     }
   }, [activeLyric, nowPlayingOpen]);
 
-  // ── Media Session (OS media keys / lock screen) ─────────
+  // ── Media Session ───────────────────────────────────────
   useEffect(() => {
     if (!("mediaSession" in navigator) || !currentTrack) return;
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: currentTrack.title,
-      artist: currentTrack.artist,
-      album: "Music Venue",
+      title: currentTrack.title, artist: currentTrack.artist, album: "Music Venue",
       artwork: [{ src: currentTrack.artwork, sizes: "512x512", type: "image/jpeg" }],
     });
     navigator.mediaSession.setActionHandler("play", () => setIsPlaying(true));
@@ -425,12 +576,8 @@ export default function App() {
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
       switch (e.code) {
         case "Space": e.preventDefault(); togglePlay(); break;
-        case "ArrowRight":
-          if (audioRef.current) audioRef.current.currentTime = Math.min(durationRef.current, audioRef.current.currentTime + 5);
-          break;
-        case "ArrowLeft":
-          if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 5);
-          break;
+        case "ArrowRight": if (audioRef.current) audioRef.current.currentTime = Math.min(durationRef.current, audioRef.current.currentTime + 5); break;
+        case "ArrowLeft": if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 5); break;
         case "ArrowUp": e.preventDefault(); setVolume((v) => Math.min(1, +(v + 0.05).toFixed(2))); setIsMuted(false); break;
         case "ArrowDown": e.preventDefault(); setVolume((v) => Math.max(0, +(v - 0.05).toFixed(2))); break;
         case "KeyN": advance(true); break;
@@ -439,14 +586,36 @@ export default function App() {
         case "KeyR": cycleRepeat(); break;
         case "KeyM": setIsMuted((m) => !m); break;
         case "KeyL": if (currentTrackRef.current) setNowPlayingOpen((o) => !o); break;
-        case "Escape": setNowPlayingOpen(false); break;
+        case "Escape": setNowPlayingOpen(false); setCtxMenu(null); setShowQueue(false); break;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [togglePlay, advance, playPrev, cycleShuffle, cycleRepeat]);
 
-  // ── Window controls (Tauri) ─────────────────────────────
+  // ── Close context menu on any outside interaction ───────
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [ctxMenu]);
+
+  const openCtx = (e: React.MouseEvent, track: Track, context: Track[]) => {
+    e.preventDefault();
+    const menuW = 232, menuH = 372;
+    const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
+    const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+    setCtxMenu({ x: Math.max(8, x), y: Math.max(8, y), track, context });
+  };
+
+  // ── Window controls ─────────────────────────────────────
   const win = () => getCurrentWindow();
   const handleMinimize = async () => { if (isTauri) await win().minimize(); };
   const handleMaximize = async () => {
@@ -456,11 +625,8 @@ export default function App() {
     else { await w.maximize(); setIsMaximized(true); }
   };
   const handleClose = async () => { if (isTauri) await win().close(); };
-  const handleDrag = async (e: React.MouseEvent) => {
-    if (isTauri && e.button === 0) await win().startDragging();
-  };
+  const handleDrag = async (e: React.MouseEvent) => { if (isTauri && e.button === 0) await win().startDragging(); };
 
-  // ── Progress / volume interaction ───────────────────────
   const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
     if (!audio || !duration) return;
@@ -474,20 +640,14 @@ export default function App() {
       if (!volumeBarRef.current) return;
       const rect = volumeBarRef.current.getBoundingClientRect();
       const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      setVolume(pos);
-      setIsMuted(pos === 0);
+      setVolume(pos); setIsMuted(pos === 0);
     };
     update(e.clientX);
     const move = (ev: MouseEvent) => update(ev.clientX);
-    const up = () => {
-      document.removeEventListener("mousemove", move);
-      document.removeEventListener("mouseup", up);
-    };
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
+    const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
+    document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
   };
 
-  // ── Search / tabs ───────────────────────────────────────
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); }
@@ -515,27 +675,24 @@ export default function App() {
 
   // ── Reusable renderers ──────────────────────────────────
   const AlbumCard = ({ track, context }: { track: Track; context: Track[] }) => (
-    <div className="album-card" onClick={() => playTrack(track, context)}>
+    <div className="album-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
       <div className="album-art-wrap">
         <img src={track.artwork} alt={track.title} className="album-artwork" loading="lazy" />
-        <div className="album-play-overlay">
-          <div className="mini-play"><Play size={18} fill="currentColor" /></div>
-        </div>
+        <div className="album-play-overlay"><div className="mini-play"><Play size={18} fill="currentColor" /></div></div>
       </div>
-      <div className="album-info">
-        <h3>{track.title}</h3>
-        <p>{track.artist}</p>
-      </div>
+      <div className="album-info"><h3>{track.title}</h3><p>{track.artist}</p></div>
     </div>
   );
 
   const TrackRow = ({ track, context, index }: { track: Track; context: Track[]; index: number }) => {
     const playing = currentTrack?.videoId === track.videoId;
     return (
-      <div className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, context)}>
+      <div className={`track-row ${playing ? "playing" : ""}`}
+        onDoubleClick={() => playTrack(track, context)}
+        onContextMenu={(e) => openCtx(e, track, context)}>
         <div className="track-row-index">
           <span className="track-num">{index + 1}</span>
-          <button className="track-row-play" onClick={() => playTrack(track, context)} title="Play">
+          <button className="track-row-play" onClick={() => playTrack(track, context)}>
             {playing && isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
           </button>
         </div>
@@ -544,14 +701,10 @@ export default function App() {
           <span className="track-row-title">{track.title}</span>
           <span className="track-row-artist">{track.artist}</span>
         </div>
-        <button
-          className={`track-row-like ${isFavorite(track.videoId) ? "active" : ""}`}
-          onClick={() => toggleFavorite(track)}
-          title={isFavorite(track.videoId) ? "Remove from Liked" : "Add to Liked"}
-        >
+        <button className={`track-row-like ${isFavorite(track.videoId) ? "active" : ""}`} onClick={() => toggleFavorite(track)}>
           <Heart size={16} fill={isFavorite(track.videoId) ? "currentColor" : "none"} />
         </button>
-        <button className="track-row-more" title="More"><MoreHorizontal size={16} /></button>
+        <button className="track-row-more" onClick={(e) => openCtx(e, track, context)}><MoreHorizontal size={16} /></button>
       </div>
     );
   };
@@ -560,12 +713,7 @@ export default function App() {
     const tracks = shelves[id] || [];
     return (
       <section className="shelf">
-        <div className="shelf-head">
-          <div>
-            <h2>{title} <ChevronRight size={20} /></h2>
-            <p>{subtitle}</p>
-          </div>
-        </div>
+        <div className="shelf-head"><div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div></div>
         <div className="shelf-scroll">
           {loading && !tracks.length
             ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)
@@ -579,62 +727,41 @@ export default function App() {
   return (
     <div className="app-container">
       {playerUrl && (
-        <audio
-          ref={audioRef}
-          src={playerUrl}
+        <audio ref={audioRef} src={playerUrl}
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onDurationChange={(e) => setDuration(e.currentTarget.duration)}
-          onEnded={handleEnded}
-          onError={handleAudioError}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-        />
+          onEnded={handleEnded} onError={handleAudioError}
+          onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
       )}
 
-      {/* ── Sidebar ── */}
+      {/* Sidebar */}
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
         <div className="sidebar-section">
-          <div className={`nav-item ${activeTab === "home" ? "active" : ""}`} onClick={() => handleTabClick("home")}>
-            <Home size={20} /> Listen Now
-          </div>
-          <div className={`nav-item ${activeTab === "search" ? "active" : ""}`} onClick={() => setActiveTab("search")}>
-            <Search size={20} /> Search
-          </div>
-          <div className={`nav-item ${activeTab === "radio" ? "active" : ""}`} onClick={() => handleTabClick("radio")}>
-            <Radio size={20} /> Radio
-          </div>
+          <div className={`nav-item ${activeTab === "home" ? "active" : ""}`} onClick={() => handleTabClick("home")}><Home size={20} /> Listen Now</div>
+          <div className={`nav-item ${activeTab === "search" ? "active" : ""}`} onClick={() => setActiveTab("search")}><Search size={20} /> Search</div>
+          <div className={`nav-item ${activeTab === "radio" ? "active" : ""}`} onClick={() => handleTabClick("radio")}><Radio size={20} /> Radio</div>
         </div>
         <div className="sidebar-section">
           <div className="sidebar-title">Library</div>
           <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}>
-            <Heart size={20} /> Liked Music
-            {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}
+            <Heart size={20} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}
           </div>
-          <div className="nav-item" onClick={() => setShowQueue(true)}>
-            <ListMusic size={20} /> Queue
-          </div>
+          <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={20} /> Queue</div>
         </div>
-        {coreVersion && <div className="sidebar-foot">Core: {coreVersion}</div>}
+        {coreVersion && <div className="sidebar-foot">Core: {coreVersion}{region?.countryCode ? ` · ${region.countryCode}` : ""}</div>}
       </aside>
 
-      {/* ── Main ── */}
+      {/* Main */}
       <main className="main-content">
         <header className="header">
-          <div className="header-drag" onMouseDown={handleDrag}>
-            <h1>{getPageTitle()}</h1>
-          </div>
+          <div className="header-drag" onMouseDown={handleDrag}><h1>{getPageTitle()}</h1></div>
           <div className="header-right">
             <form onSubmit={handleSearch} className="search-box">
               <Search size={16} />
-              <input
-                type="text"
-                placeholder="Artists, Songs..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setActiveTab("search")}
-              />
+              <input type="text" placeholder="Artists, Songs..." value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)} onFocus={() => setActiveTab("search")} />
             </form>
             {isTauri && (
               <div className="window-controls">
@@ -649,39 +776,33 @@ export default function App() {
         {/* Home */}
         {activeTab === "home" && (
           <div className="page">
+            {quickPicks.length > 0 && (
+              <section className="shelf">
+                <div className="shelf-head"><div><h2>Pilihan cepat <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Berdasarkan yang sering kamu putar" : "Populer di sekitarmu"}{region?.city ? ` · ${region.city}` : ""}</p></div></div>
+                <div className="track-grid">
+                  {quickPicks.map((t, i) => <TrackRow key={t.videoId} track={t} context={quickPicks} index={i} />)}
+                </div>
+              </section>
+            )}
             {HOME_SHELVES.map((s) => <Shelf key={s.id} id={s.id} title={s.title} subtitle={s.subtitle} />)}
             <section className="shelf">
-              <div className="shelf-head">
-                <div><h2>Favourite Music <ChevronRight size={20} /></h2><p>Lagu yang kamu suka</p></div>
-              </div>
+              <div className="shelf-head"><div><h2>Favourite Music <ChevronRight size={20} /></h2><p>Lagu yang kamu suka</p></div></div>
               {favorites.length ? (
-                <div className="track-grid">
-                  {favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}
-                </div>
+                <div className="track-grid">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div>
               ) : (
-                <div className="empty-state">
-                  <Heart size={34} />
-                  <p>Belum ada lagu favorit</p>
-                  <span>Tekan ikon ♥ pada lagu untuk menyimpannya di sini.</span>
-                </div>
+                <div className="empty-state"><Heart size={34} /><p>Belum ada lagu favorit</p><span>Tekan ikon ♥ pada lagu untuk menyimpannya di sini.</span></div>
               )}
             </section>
           </div>
         )}
 
-        {/* Favorites tab */}
+        {/* Favorites */}
         {activeTab === "favorites" && (
           <div className="page">
             {favorites.length ? (
-              <div className="track-grid wide">
-                {favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}
-              </div>
+              <div className="track-grid wide">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div>
             ) : (
-              <div className="empty-state big">
-                <Heart size={44} />
-                <p>Liked Music masih kosong</p>
-                <span>Semua lagu yang kamu tandai ♥ akan muncul di sini.</span>
-              </div>
+              <div className="empty-state big"><Heart size={44} /><p>Liked Music masih kosong</p><span>Semua lagu yang kamu tandai ♥ akan muncul di sini.</span></div>
             )}
           </div>
         )}
@@ -691,112 +812,143 @@ export default function App() {
           <div className="page">
             {loading ? (
               <div className="grid-container">
-                {Array.from({ length: 10 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}
+                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}
               </div>
-            ) : searchResults.length ? (
-              <div className="grid-container">
-                {searchResults.map((t) => <AlbumCard key={t.videoId} track={t} context={searchResults} />)}
-              </div>
+            ) : searchPopular.length || searchOther.length ? (
+              <>
+                {searchPopular.length > 0 && (
+                  <section className="search-section">
+                    <div className="section-head"><h2>Popular</h2><span className="section-badge">Paling banyak diputar</span></div>
+                    <div className="grid-container">{searchPopular.map((t) => <AlbumCard key={t.videoId} track={t} context={searchPopular} />)}</div>
+                  </section>
+                )}
+                {searchOther.length > 0 && (
+                  <section className="search-section">
+                    <div className="section-head"><h2>Other</h2><span className="section-badge muted">Cover, live &amp; remix</span></div>
+                    <div className="grid-container">{searchOther.map((t) => <AlbumCard key={t.videoId} track={t} context={searchOther} />)}</div>
+                  </section>
+                )}
+              </>
             ) : (
-              <div className="empty-state big">
-                <Search size={44} />
-                <p>{activeTab === "radio" ? "Radio" : "Cari lagu favoritmu"}</p>
-                <span>Ketik nama artis atau judul lagu di kotak pencarian.</span>
-              </div>
+              <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Cari lagu favoritmu"}</p><span>Ketik nama artis atau judul lagu di kotak pencarian.</span></div>
             )}
           </div>
         )}
       </main>
 
-      {/* ── Now Playing overlay ── */}
+      {/* Context menu */}
+      {ctxMenu && (
+        <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={(e) => e.stopPropagation()}>
+          <button className="ctx-item" onClick={() => { startMix(ctxMenu.track); setCtxMenu(null); }}><Radio size={17} /> Mulai mix</button>
+          <button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Putar setelah ini</button>
+          <button className="ctx-item" onClick={() => { addToQueue(ctxMenu.track); setCtxMenu(null); }}><ListPlus size={17} /> Tambahkan ke antrean</button>
+          <div className="ctx-sep" />
+          <button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}>
+            <Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} />
+            {isFavorite(ctxMenu.track.videoId) ? "Hapus dari lagu disukai" : "Tambahkan ke lagu disukai"}
+          </button>
+          <button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</button>
+          <button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Buka halaman artis</button>
+          <button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Bagikan</button>
+          <div className="ctx-sep" />
+          <button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Jangan rekomendasikan artis</button>
+        </div>
+      )}
+
+      {/* Update banner */}
+      <AnimatePresence>
+        {updateInfo && (
+          <motion.div className="update-banner"
+            initial={{ y: prefersReduced ? 0 : 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
+            transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}>
+            <div className="update-icon"><RefreshCw size={18} /></div>
+            <div className="update-text">
+              <strong>Versi baru {updateInfo.version} tersedia</strong>
+              <span>{updateProgress !== null ? `Mengunduh… ${updateProgress}%` : "Perbarui untuk fitur & perbaikan terbaru."}</span>
+            </div>
+            {updateProgress === null && (
+              <div className="update-actions">
+                <button className="btn-ghost" onClick={dismissUpdate}>Nanti</button>
+                <button className="btn-primary" onClick={runUpdate}>Perbarui</button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div className="toast" initial={{ y: prefersReduced ? 0 : 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ opacity: 0 }}>
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Now Playing */}
       <AnimatePresence>
         {nowPlayingOpen && currentTrack && (
-          <motion.div
-            className="now-playing"
-            initial={{ y: prefersReduced ? 0 : "100%", opacity: prefersReduced ? 0 : 1 }}
-            animate={{ y: 0, opacity: 1 }}
+          <motion.div className="now-playing"
+            initial={{ y: prefersReduced ? 0 : "100%", opacity: prefersReduced ? 0 : 1 }} animate={{ y: 0, opacity: 1 }}
             exit={{ y: prefersReduced ? 0 : "100%", opacity: prefersReduced ? 0 : 1 }}
-            transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}
-          >
+            transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}>
             <div className="np-bg" style={{ backgroundImage: `url(${currentTrack.artwork})` }} />
             <button className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></button>
             <div className="np-body">
               <div className="np-left">
-                <img src={currentTrack.artwork} alt="" className={`np-art ${isPlaying ? "spinning" : ""}`} />
-                <div className="np-meta">
-                  <h2>{currentTrack.title}</h2>
-                  <p>{currentTrack.artist}</p>
-                </div>
+                <img src={currentTrack.artwork} alt="" className="np-art" />
+                <div className="np-meta"><h2>{currentTrack.title}</h2><p>{currentTrack.artist}</p></div>
                 <div className="np-progress">
                   <span>{formatTime(currentTime)}</span>
                   <div className="progress-bar" onClick={seekTo}><div className="progress-fill" style={{ width: `${progressPct}%` }} /></div>
                   <span>{formatTime(duration)}</span>
                 </div>
                 <div className="np-controls">
-                  <button className={`btn-icon ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}>
-                    <Shuffle size={20} />{shuffleMode === "smart" && <span className="mode-dot smart" />}
-                  </button>
+                  <button className={`btn-icon ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={20} />{shuffleMode === "smart" && <span className="mode-dot" />}</button>
                   <button className="btn-icon" onClick={playPrev}><SkipBack size={26} fill="currentColor" /></button>
-                  <button className="btn-icon btn-play big" onClick={togglePlay}>
-                    {isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}
-                  </button>
+                  <button className="btn-icon btn-play big" onClick={togglePlay}>{isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}</button>
                   <button className="btn-icon" onClick={() => advance(true)}><SkipForward size={26} fill="currentColor" /></button>
-                  <button className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>
-                    {repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}
-                  </button>
+                  <button className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</button>
                 </div>
               </div>
               <div className="np-lyrics">
-                {lyricsLoading ? (
-                  <p className="lyric-status">Memuat lirik…</p>
-                ) : lyrics?.synced.length ? (
-                  <div className="lyric-lines">
-                    {lyrics.synced.map((line, i) => (
-                      <p
-                        key={i}
-                        ref={i === activeLyric ? activeLyricRef : null}
-                        className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`}
-                        onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}
-                      >
-                        {line.text || "♪"}
-                      </p>
-                    ))}
-                  </div>
-                ) : lyrics?.plain ? (
-                  <div className="lyric-plain">{lyrics.plain}</div>
-                ) : (
-                  <p className="lyric-status">Lirik tidak tersedia untuk lagu ini.</p>
-                )}
+                {lyricsLoading ? <p className="lyric-status">Memuat lirik…</p>
+                  : lyrics?.synced.length ? (
+                    <div className="lyric-lines">
+                      {lyrics.synced.map((line, i) => (
+                        <p key={i} ref={i === activeLyric ? activeLyricRef : null}
+                          className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`}
+                          onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}>
+                          {line.text || "♪"}
+                        </p>
+                      ))}
+                    </div>
+                  ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div>
+                    : <p className="lyric-status">Lirik tidak tersedia untuk lagu ini.</p>}
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Queue drawer ── */}
+      {/* Queue drawer */}
       <AnimatePresence>
         {showQueue && (
           <>
             <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowQueue(false)} />
-            <motion.aside
-              className="queue-panel"
-              initial={{ x: prefersReduced ? 0 : "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: prefersReduced ? 0 : "100%" }}
-              transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}
-            >
+            <motion.aside className="queue-panel"
+              initial={{ x: prefersReduced ? 0 : "100%" }} animate={{ x: 0 }} exit={{ x: prefersReduced ? 0 : "100%" }}
+              transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}>
               <div className="queue-head"><h3>Playing Next</h3><button className="btn-icon" onClick={() => setShowQueue(false)}><X size={18} /></button></div>
               {currentTrack && (
-                <div className="queue-now">
-                  <img src={currentTrack.artwork} alt="" />
-                  <div className="track-row-text"><span className="track-row-title">{currentTrack.title}</span><span className="track-row-artist">Now Playing</span></div>
-                </div>
+                <div className="queue-now"><img src={currentTrack.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{currentTrack.title}</span><span className="track-row-artist">Now Playing</span></div></div>
               )}
               <div className="queue-list">
                 {upNext.length ? upNext.map((t, i) => (
-                  <div key={t.videoId + i} className="queue-item" onClick={() => { const idx = orderRef.current.findIndex((x) => x.videoId === t.videoId); if (idx >= 0) { posRef.current = idx; loadAndPlay(t); } }}>
-                    <img src={t.artwork} alt="" />
-                    <div className="track-row-text"><span className="track-row-title">{t.title}</span><span className="track-row-artist">{t.artist}</span></div>
+                  <div key={t.videoId + i} className="queue-item"
+                    onClick={() => { const idx = orderRef.current.findIndex((x) => x.videoId === t.videoId); if (idx >= 0) { posRef.current = idx; loadAndPlay(t); } }}
+                    onContextMenu={(e) => openCtx(e, t, orderRef.current)}>
+                    <img src={t.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{t.title}</span><span className="track-row-artist">{t.artist}</span></div>
                   </div>
                 )) : <p className="lyric-status">Antrean kosong.</p>}
               </div>
@@ -805,38 +957,27 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ── Player bar ── */}
+      {/* Player bar */}
       <footer className="player-bar">
         <div className="player-info" onClick={() => currentTrack && setNowPlayingOpen(true)}>
           {currentTrack ? (
             <>
               <img src={currentTrack.artwork} alt="" className="player-artwork" />
-              <div className="player-text">
-                <span className="player-title">{currentTrack.title}</span>
-                <span className="player-artist">{streamLoading ? "Loading audio…" : currentTrack.artist}</span>
-              </div>
+              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{streamLoading ? "Loading audio…" : currentTrack.artist}</span></div>
               <button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}>
                 <Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} />
               </button>
             </>
-          ) : (
-            <div className="player-text idle">Not Playing</div>
-          )}
+          ) : <div className="player-text idle">Not Playing</div>}
         </div>
 
         <div className="player-controls">
           <div className="control-buttons">
-            <button className={`btn-icon sm ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}>
-              <Shuffle size={17} />{shuffleMode === "smart" && <span className="mode-dot smart" />}
-            </button>
+            <button className={`btn-icon sm ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={17} />{shuffleMode === "smart" && <span className="mode-dot" />}</button>
             <button className="btn-icon" onClick={playPrev}><SkipBack size={19} fill="currentColor" /></button>
-            <button className="btn-icon btn-play" onClick={togglePlay}>
-              {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: 2 }} />}
-            </button>
+            <button className="btn-icon btn-play" onClick={togglePlay}>{isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: 2 }} />}</button>
             <button className="btn-icon" onClick={() => advance(true)}><SkipForward size={19} fill="currentColor" /></button>
-            <button className={`btn-icon sm ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>
-              {repeatMode === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}
-            </button>
+            <button className={`btn-icon sm ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}</button>
           </div>
           <div className="progress-container">
             <span>{formatTime(currentTime)}</span>
@@ -849,9 +990,7 @@ export default function App() {
           <button className={`btn-icon sm ${nowPlayingOpen ? "on" : ""}`} onClick={() => currentTrack && setNowPlayingOpen(true)} title="Lyrics"><Mic2 size={18} /></button>
           <button className="btn-icon sm" onClick={() => setShowQueue(true)} title="Queue"><ListMusic size={18} /></button>
           <button className="btn-icon sm" onClick={() => setIsMuted((m) => !m)} title="Mute"><VolIcon size={18} /></button>
-          <div className="progress-bar volume-bar" ref={volumeBarRef} onMouseDown={handleVolumeMouseDown}>
-            <div className="progress-fill" style={{ width: `${isMuted ? 0 : volume * 100}%` }} />
-          </div>
+          <div className="progress-bar volume-bar" ref={volumeBarRef} onMouseDown={handleVolumeMouseDown}><div className="progress-fill" style={{ width: `${isMuted ? 0 : volume * 100}%` }} /></div>
         </div>
       </footer>
     </div>

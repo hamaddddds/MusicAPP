@@ -132,6 +132,39 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Action: geo — approximate client location from IP (for the Quick Picks
+    // algorithm). Reads the forwarded client IP and resolves via ipwho.is.
+    if (action === 'geo') {
+      const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+      const ip = fwd || req.headers['x-real-ip'] || '';
+      const geoRes = await fetchJson(`https://ipwho.is/${ip}`, {}, 6000);
+      const g = geoRes.data || {};
+      res.status(200).json({
+        country: g.country || null,
+        countryCode: g.country_code || null,
+        city: g.city || null,
+        region: g.region || null,
+      });
+      return;
+    }
+
+    // Action: search_sections — popularity-aware search. YouTube Music returns
+    // official Songs already ranked by popularity (our "Popular"); Videos are
+    // covers/live/remixes ("Other"). This is the ranking basis for search.
+    if (action === 'search_sections' && query) {
+      const ytmusic = new YTMusicClass();
+      await ytmusic.initialize();
+      const [songs, videos] = await Promise.all([
+        ytmusic.searchSongs(query).catch(() => []),
+        ytmusic.searchVideos(query).catch(() => []),
+      ]);
+      // De-dupe: drop videos whose videoId already appears in popular songs.
+      const popularIds = new Set(songs.map((s) => s.videoId));
+      const other = videos.filter((v) => !popularIds.has(v.videoId));
+      res.status(200).json({ popular: songs, other });
+      return;
+    }
+
     // Action: stream — resolve a playable audio URL for a videoId.
     // Responds 200 {url, provider} when resolved, or 202 {pending, taskId}
     // when the mp3 conversion is still running (client polls stream_status).
