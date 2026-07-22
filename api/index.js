@@ -19,9 +19,9 @@ function mapTrack(t) {
   return {
     videoId: t.id || t.video_id,
     title: t.title?.text || t.title || "Unknown",
-    artist: (t.artists && t.artists[0]?.name) || (t.author?.name) || "Unknown",
+    artist: { name: (t.artists && t.artists[0]?.name) || (t.author?.name) || "Unknown" },
+    thumbnails: t.thumbnails || [],
     duration: t.duration?.seconds || 0,
-    artwork: (t.thumbnails && t.thumbnails.length > 0) ? t.thumbnails[t.thumbnails.length - 1].url : null,
     isExplicit: t.is_explicit || false
   };
 }
