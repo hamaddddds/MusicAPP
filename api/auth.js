@@ -26,9 +26,8 @@ export default async function handler(req, res) {
 
   // 1. LOGIN REDIRECT
   if (action === 'login') {
-    const stateParam = provider; // Use state to pass the provider name back to callback
+    const stateParam = provider;
     
-    // Check if credentials exist for the requested provider
     if (provider === 'discord' && (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET)) {
       return renderInstructionPage(res, 'Discord');
     }
@@ -43,9 +42,9 @@ export default async function handler(req, res) {
     if (provider === 'discord') {
       authUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify&state=${stateParam}`;
     } else if (provider === 'github') {
-      authUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${stateParam}`;
+      authUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=read:user&state=${stateParam}`;
     } else if (provider === 'google') {
-      authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=profile&state=${stateParam}`;
+      authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=profile+email&state=${stateParam}`;
     } else {
       return res.status(400).send('Invalid provider');
     }
@@ -55,12 +54,12 @@ export default async function handler(req, res) {
   }
 
   // 2. CALLBACK HANDLING
-  // The provider is usually passed back in 'state' parameter (as we set it above)
   const actualProvider = provider || state;
 
   if (error) {
-    res.redirect(`musicvenue://auth?error=${error}`);
-    return;
+    const html = buildCallbackPage(null, error);
+    res.setHeader('Content-Type', 'text/html');
+    return res.status(200).send(html);
   }
 
   if (code && actualProvider) {
@@ -68,7 +67,6 @@ export default async function handler(req, res) {
       let profile = {};
 
       if (actualProvider === 'discord') {
-        // Exchange code for token
         const tokenParams = new URLSearchParams({
           client_id: DISCORD_CLIENT_ID,
           client_secret: DISCORD_CLIENT_SECRET,
@@ -84,17 +82,28 @@ export default async function handler(req, res) {
         const tokenData = await tokenRes.json();
         
         if (tokenData.access_token) {
-          // Fetch Profile
           const userRes = await fetch('https://discord.com/api/users/@me', {
             headers: { Authorization: `Bearer ${tokenData.access_token}` }
           });
           const userData = await userRes.json();
+
+          const avatarUrl = userData.avatar
+            ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.${userData.avatar.startsWith('a_') ? 'gif' : 'png'}?size=256`
+            : null;
+          const bannerUrl = userData.banner
+            ? `https://cdn.discordapp.com/banners/${userData.id}/${userData.banner}.${userData.banner.startsWith('a_') ? 'gif' : 'png'}?size=600`
+            : null;
+
           profile = {
             provider: 'discord',
             id: userData.id,
             name: userData.global_name || userData.username,
-            avatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : null,
-            banner: userData.banner ? `https://cdn.discordapp.com/banners/${userData.id}/${userData.banner}.png?size=512` : (userData.accent_color ? `#${userData.accent_color.toString(16)}` : null)
+            username: userData.username,
+            avatar: avatarUrl,
+            banner: bannerUrl,
+            accent_color: userData.accent_color ? `#${userData.accent_color.toString(16).padStart(6, '0')}` : null,
+            bio: userData.bio || null,
+            discriminator: userData.discriminator,
           };
         }
       } else if (actualProvider === 'github') {
@@ -123,10 +132,12 @@ export default async function handler(req, res) {
           const userData = await userRes.json();
           profile = {
             provider: 'github',
-            id: userData.id,
+            id: String(userData.id),
             name: userData.name || userData.login,
+            username: userData.login,
             avatar: userData.avatar_url,
-            banner: null
+            banner: null,
+            bio: userData.bio || null,
           };
         }
       } else if (actualProvider === 'google') {
@@ -152,52 +163,120 @@ export default async function handler(req, res) {
             provider: 'google',
             id: userData.id,
             name: userData.name,
+            username: userData.email,
             avatar: userData.picture,
-            banner: null
+            banner: null,
+            bio: null,
           };
         }
       }
 
-      // Convert profile to base64 for safe transport
       const payload = Buffer.from(JSON.stringify(profile)).toString('base64');
-      
-      // Attempt to deep link back to desktop app, or fallback to web interface
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Autentikasi Berhasil</title>
-          <style>
-            body { background: #121212; color: #fff; font-family: system-ui, sans-serif; text-align: center; padding-top: 50px; }
-            a { color: #24c8db; }
-          </style>
-          <script>
-            // 1. Try redirecting to Desktop App via Deep Link
-            window.location.href = "musicvenue://auth?payload=${payload}";
-            
-            // 2. If it's a web browser that spawned a popup, message the opener
-            if (window.opener) {
-              window.opener.postMessage({ type: "MUSICVENUE_AUTH", payload: "${payload}" }, "*");
-              setTimeout(() => window.close(), 1000);
-            }
-          </script>
-        </head>
-        <body>
-          <h2>Autentikasi Berhasil!</h2>
-          <p>Jika aplikasi tidak terbuka otomatis, <a href="musicvenue://auth?payload=${payload}">Klik di sini</a>.</p>
-          <p>Atau kembali ke halaman web Music Venue jika Anda tidak memakai aplikasi desktop.</p>
-        </body>
-        </html>
-      `;
+      const html = buildCallbackPage(payload, null);
       res.setHeader('Content-Type', 'text/html');
-      res.status(200).send(html);
-      return;
+      return res.status(200).send(html);
     } catch (e) {
       console.error(e);
-      res.status(500).send('OAuth Error');
-      return;
+      const html = buildCallbackPage(null, 'server_error');
+      res.setHeader('Content-Type', 'text/html');
+      return res.status(200).send(html);
     }
   }
   
   res.status(400).send('Bad Request');
+}
+
+function buildCallbackPage(payload, error) {
+  const providerName = payload ? (() => {
+    try { return JSON.parse(Buffer.from(payload, 'base64').toString()).provider || ''; } catch { return ''; }
+  })() : '';
+
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${error ? 'Autentikasi Gagal' : 'Autentikasi Berhasil'}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 48px; text-align: center; max-width: 420px; width: 90%; }
+    .icon { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 28px; }
+    .icon.success { background: #1a3a1a; color: #4ade80; }
+    .icon.error { background: #3a1a1a; color: #f87171; }
+    h2 { font-size: 22px; margin-bottom: 8px; }
+    p { color: #888; font-size: 14px; margin-top: 8px; }
+    .provider { color: #a78bfa; font-weight: 600; text-transform: capitalize; }
+    .spinner { width: 20px; height: 20px; border: 2px solid #333; border-top-color: #a78bfa; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; margin-left: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hint { margin-top: 16px; font-size: 12px; color: #555; }
+  </style>
+  <script>
+    (function() {
+      ${error ? `
+        // Error case
+        if (window.opener) {
+          window.opener.postMessage({ type: "MUSICVENUE_AUTH", error: "${error}" }, "*");
+          setTimeout(function() { window.close(); }, 2000);
+        }
+      ` : `
+        // Success case: ALWAYS postMessage first (for web popups)
+        var payload = "${payload}";
+        if (window.opener) {
+          window.opener.postMessage({ type: "MUSICVENUE_AUTH", payload: payload }, "*");
+          setTimeout(function() { window.close(); }, 1500);
+        } else {
+          // Not a popup — try deep link for desktop app
+          setTimeout(function() {
+            window.location.href = "musicvenue://auth?payload=" + payload;
+          }, 500);
+        }
+      `}
+    })();
+  </script>
+</head>
+<body>
+  <div class="card">
+    <div class="icon ${error ? 'error' : 'success'}">${error ? '✕' : '✓'}</div>
+    <h2>${error ? 'Autentikasi Gagal' : 'Autentikasi Berhasil!'}</h2>
+    ${error 
+      ? `<p>Terjadi kesalahan: <strong>${error}</strong></p><p class="hint">Silakan coba lagi.</p>` 
+      : `<p>Terhubung dengan <span class="provider">${providerName}</span></p>
+         <p>Menutup jendela ini<span class="spinner"></span></p>
+         <p class="hint">Jika jendela tidak menutup otomatis, Anda bisa menutupnya secara manual.</p>`}
+  </div>
+</body>
+</html>`;
+}
+
+function renderInstructionPage(res, provider) {
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Kredensial ${provider} Belum Diatur</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 40px; max-width: 520px; width: 100%; }
+    h2 { color: #f59e0b; margin-bottom: 12px; }
+    p { color: #888; line-height: 1.6; margin-bottom: 16px; }
+    code { background: #2a2a2a; padding: 2px 8px; border-radius: 4px; font-size: 13px; color: #a78bfa; }
+    ol { padding-left: 20px; color: #ccc; line-height: 2; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>⚠️ Kredensial ${provider} Belum Diatur</h2>
+    <p>Tambahkan environment variable berikut di <strong>Vercel → Settings → Environment Variables</strong>:</p>
+    <ol>
+      <li><code>${provider.toUpperCase()}_CLIENT_ID</code></li>
+      <li><code>${provider.toUpperCase()}_CLIENT_SECRET</code></li>
+    </ol>
+    <p>Setelah ditambahkan, lakukan <strong>Redeploy</strong> di Vercel.</p>
+  </div>
+</body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html');
+  return res.status(200).send(html);
 }

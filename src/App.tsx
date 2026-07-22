@@ -182,8 +182,8 @@ export default function App() {
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [customCss, setCustomCss] = useState<string>(() => load("mv:customcss", ""));
   const [profileTab, setProfileTab] = useState("appearance");
-  const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
-  const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string }[]>(() => load("mv:accounts", []));
+  const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
+  const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null }[]>(() => load("mv:accounts", []));
   const rpcClientId = "1527667258552352848"; // Hardcoded Discord App ID
   const [rpcEnabled, setRpcEnabled] = useState<boolean>(() => load("mv:rpc-enabled", false));
   const [rpcStatus, setRpcStatus] = useState<"off" | "connecting" | "on" | "error">("off");
@@ -250,13 +250,24 @@ export default function App() {
       setProfile((p) => ({
         ...p,
         name: data.name || p.name,
-        avatar: data.avatar || null,
-        banner: data.banner || null
+        avatar: data.avatar || p.avatar || null,
+        banner: data.banner || p.banner || null,
+        username: data.username || p.username || null,
+        bio: data.bio || p.bio || null,
+        accent_color: data.accent_color || p.accent_color || null,
       }));
       
       setAccounts((prev) => {
         const filtered = prev.filter(a => a.provider !== data.provider);
-        return [...filtered, { provider: data.provider, label: data.name, id: data.id }];
+        return [...filtered, {
+          provider: data.provider,
+          label: data.name,
+          id: String(data.id),
+          avatar: data.avatar || null,
+          username: data.username || null,
+          bio: data.bio || null,
+          banner: data.banner || null,
+        }];
       });
       
       flashToast(`Berhasil masuk dengan ${data.provider}`);
@@ -269,7 +280,13 @@ export default function App() {
   // Web popup message listener
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
-      if (e.data && e.data.type === "MUSICVENUE_AUTH") handleAuthPayload(e.data.payload);
+      if (e.data && e.data.type === "MUSICVENUE_AUTH") {
+        if (e.data.error) {
+          console.error("Auth error:", e.data.error);
+        } else if (e.data.payload) {
+          handleAuthPayload(e.data.payload);
+        }
+      }
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
@@ -1254,13 +1271,20 @@ export default function App() {
                 <>
                   <div className="setting-block">
                     <h3>Hubungkan Akun</h3>
-                    <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi. <span className="badge-warn">Memerlukan kredensial Vercel</span></p>
+                    <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi.</p>
                     <div className="provider-list">
                       {PROVIDERS.map((p) => {
                         const connected = accounts.find((a) => a.provider === p.id);
                         return (
                           <button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
-                            <p.Icon size={18} /><span className="prov-name">{p.label}</span>
+                            {connected?.avatar ? (
+                              <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                            ) : p.id === "discord" ? (
+                              <DiscordIcon size={18} />
+                            ) : (
+                              <p.Icon size={18} />
+                            )}
+                            <span className="prov-name">{p.label}</span>
                             {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">Hubungkan</span>}
                           </button>
                         );
@@ -1282,10 +1306,44 @@ export default function App() {
                   <h3>Discord Rich Presence</h3>
                   <p className="setting-desc">Tampilkan lagu yang sedang diputar di status Discord-mu.{!isTauri && " (hanya di aplikasi desktop)"}</p>
                   
-                  <div className="setting-actions" style={{ marginTop: '10px' }}>
-                    {rpcStatus === "on"
-                      ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> Putuskan Discord</button>
-                      : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? "Menghubungkan…" : "Login Discord"}</button>}
+                  {/* Discord Profile Card */}
+                  {(() => {
+                    const dc = accounts.find(a => a.provider === "discord");
+                    if (dc) {
+                      return (
+                        <div className="discord-profile-card" style={{ marginTop: 16, background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #222' }}>
+                          {/* Banner */}
+                          <div style={{ height: 80, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
+                            {/* Avatar overlapping banner */}
+                            <div style={{ position: 'absolute', bottom: -30, left: 16 }}>
+                              <img src={dc.avatar || ''} alt="" style={{ width: 64, height: 64, borderRadius: '50%', border: '4px solid #111', objectFit: 'cover' }} />
+                            </div>
+                          </div>
+                          {/* Info */}
+                          <div style={{ padding: '36px 16px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
+                            </div>
+                            <span style={{ fontSize: 13, color: '#888' }}>@{dc.username} · {dc.id}</span>
+                            {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 8, lineHeight: 1.5 }}>{dc.bio}</p>}
+                            <button className="btn-ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ marginTop: 12, color: '#f87171', borderColor: '#f87171', fontSize: 12 }}>Putuskan Akun Discord</button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                  
+                  <div className="setting-actions" style={{ marginTop: 16 }}>
+                    {accounts.some(a => a.provider === "discord") ? (
+                      <>
+                        {rpcStatus === "on"
+                          ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> Putuskan RPC</button>
+                          : <button className="btn-primary" onClick={() => { flashToast("Discord RPC native sedang difinalisasi untuk build desktop."); }} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? "Menghubungkan…" : "Hubungkan RPC"}</button>}
+                      </>
+                    ) : (
+                      <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</button>
+                    )}
                     <span className={`rpc-dot ${rpcStatus}`} />
                     <span className="rpc-status-text">{rpcStatus === "on" ? "Terhubung ke Client Desktop" : rpcStatus === "connecting" ? "Menghubungkan" : rpcStatus === "error" ? "Gagal" : "Tidak aktif"}</span>
                   </div>
