@@ -421,9 +421,17 @@ export default function App() {
     // native invoke wired in a later build
   }, []);
 
+  const DiscordIcon = ({ size = 24 }: { size?: number }) => (
+    <svg width={size} height={size} viewBox="0 0 127.14 96.36" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14c0,0,.04-.06.05-.09h0c2.69-28.53-3.69-52.05-19.64-72.12ZM42.68,68.3c-5.72,0-10.43-5.26-10.43-11.7s4.65-11.7,10.43-11.7c5.82,0,10.51,5.3,10.43,11.7,0,6.44-4.65,11.7-10.43,11.7Zm41.72,0c-5.72,0-10.43-5.26-10.43-11.7s4.65-11.7,10.43-11.7c5.82,0,10.51,5.3,10.43,11.7,0,6.44-4.61,11.7-10.43,11.7Z"/>
+    </svg>
+  );
+
   const connectDiscord = useCallback(async () => {
+    // Also trigger the actual web OAuth login for profile syncing
+    toggleAccount({ id: "discord", label: "Discord" });
     flashToast("Discord RPC native sedang difinalisasi untuk build desktop. Preview & setelan sudah tersimpan.");
-  }, [flashToast]);
+  }, [toggleAccount, flashToast]);
 
   const disconnectDiscord = useCallback(async () => {
     setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
@@ -1275,8 +1283,8 @@ export default function App() {
                   
                   <div className="setting-actions" style={{ marginTop: '10px' }}>
                     {rpcStatus === "on"
-                      ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><Gamepad2 size={16} /> Putuskan Discord</button>
-                      : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><Gamepad2 size={16} /> {rpcStatus === "connecting" ? "Menghubungkan…" : "Login Discord"}</button>}
+                      ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> Putuskan Discord</button>
+                      : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? "Menghubungkan…" : "Login Discord"}</button>}
                     <span className={`rpc-dot ${rpcStatus}`} />
                     <span className="rpc-status-text">{rpcStatus === "on" ? "Terhubung ke Client Desktop" : rpcStatus === "connecting" ? "Menghubungkan" : rpcStatus === "error" ? "Gagal" : "Tidak aktif"}</span>
                   </div>

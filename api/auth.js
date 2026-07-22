@@ -1,7 +1,7 @@
 // fetch is available globally in Node 18+ on Vercel
 
-// Fallback host if not provided by Vercel
-const HOST = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://musicvenue.vercel.app';
+// Hardcode production host so OAuth callbacks always match the registered Redirect URI
+const HOST = 'https://musicvenue.vercel.app';
 const REDIRECT_URI = `${HOST}/api/auth`;
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
