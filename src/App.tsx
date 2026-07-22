@@ -46,13 +46,15 @@ const load = <T,>(k: string, fallback: T): T => {
 // request a bigger size by rewriting the URL params, so artwork stays crisp.
 function hiResThumb(url: string, size = 512): string {
   if (!url) return url;
-  if (/googleusercontent\.com|ggpht\.com|ytimg\.com\/.*=/.test(url)) {
+  // i.ytimg video thumbnails: use the clean hqdefault (480px), drop crop query.
+  const m = url.match(/i\.ytimg\.com\/vi\/([^/]+)\//);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg`;
+  // Google CDN album/artist art: request a larger size via the URL params.
+  if (/googleusercontent\.com|ggpht\.com/.test(url)) {
     if (/=w\d+-h\d+/.test(url)) return url.replace(/=w\d+-h\d+[^=]*$/i, `=w${size}-h${size}-l90-rj`);
     if (/=s\d+/.test(url)) return url.replace(/=s\d+[^=]*$/i, `=s${size}`);
     return url + `=w${size}-h${size}-l90-rj`;
   }
-  const m = url.match(/i\.ytimg\.com\/vi\/([^/]+)\//);
-  if (m) return `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg`;
   return url;
 }
 
