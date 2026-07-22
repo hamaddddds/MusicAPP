@@ -7,9 +7,6 @@ import {
   Volume2, VolumeX, Search, Home, Heart, Clock, Radio,
   Menu, X, Minus, Square, Maximize
 } from "lucide-react";
-import ReactPlayerAny from "react-player";
-const ReactPlayer = ReactPlayerAny as any;
-
 // Types
 interface Track {
   videoId: string;
@@ -40,10 +37,13 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
+  const [streamLoading, setStreamLoading] = useState(false);
 
-  const playerRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const trackListRef = useRef<Track[]>([]);
   const currentIndexRef = useRef(0);
+  const playRequestRef = useRef(0);
+  const triedDownloadModeRef = useRef(false);
 
   // ── Data Fetching ──────────────────────────────────────
 
@@ -92,15 +92,64 @@ export default function App() {
     fetchTracks("home");
   }, [fetchTracks]);
 
-  // ── Audio Playback (ReactPlayer) ─────────────────────────
+  // ── Audio Playback (native <audio> + /api?action=stream) ─
+
+  // Resolve a playable audio URL from the backend. The mp3 conversion can
+  // take a while, so a 202 {pending, taskId} response is polled until done.
+  const resolveStreamUrl = async (videoId: string, mode?: string): Promise<{ url: string; provider?: string }> => {
+    const modeParam = mode ? `&mode=${mode}` : "";
+    let res = await fetch(`${API_URL}?action=stream&videoId=${videoId}${modeParam}`);
+    let data = await res.json();
+
+    for (let i = 0; i < 60 && data.pending && data.taskId; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      res = await fetch(`${API_URL}?action=stream_status&taskId=${encodeURIComponent(data.taskId)}`);
+      data = await res.json();
+    }
+
+    if (!data.url) throw new Error(data.error || "No stream URL");
+    return data;
+  };
+
+  const startStream = async (track: Track, mode?: string) => {
+    const requestId = ++playRequestRef.current;
+    setStreamLoading(true);
+    setPlayerUrl(null);
+    setCurrentTime(0);
+    setDuration(0);
+    try {
+      const { url } = await resolveStreamUrl(track.videoId, mode);
+      // Ignore stale responses if the user already picked another track
+      if (playRequestRef.current !== requestId) return;
+      setPlayerUrl(url);
+      setIsPlaying(true);
+    } catch (e) {
+      console.error("Failed to resolve stream", e);
+      if (playRequestRef.current === requestId) setIsPlaying(false);
+    } finally {
+      if (playRequestRef.current === requestId) setStreamLoading(false);
+    }
+  };
 
   const playTrack = async (track: Track) => {
     setCurrentTrack(track);
-    setIsPlaying(true);
-    setPlayerUrl(`https://www.youtube.com/watch?v=${track.videoId}`);
+    triedDownloadModeRef.current = false;
 
     const idx = trackListRef.current.findIndex(t => t.videoId === track.videoId);
     if (idx !== -1) currentIndexRef.current = idx;
+
+    await startStream(track);
+  };
+
+  // Direct googlevideo URLs can be IP-locked and fail with 403 — retry once
+  // through the server-side mp3 conversion path
+  const handleAudioError = () => {
+    if (currentTrack && !triedDownloadModeRef.current) {
+      triedDownloadModeRef.current = true;
+      startStream(currentTrack, "download");
+    } else {
+      setIsPlaying(false);
+    }
   };
 
   const togglePlay = () => {
@@ -123,11 +172,30 @@ export default function App() {
   };
 
   const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!playerRef.current || !duration) return;
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pos = (e.clientX - rect.left) / rect.width;
-    playerRef.current.seekTo(pos);
+    audio.currentTime = pos * duration;
   };
+
+  // Sync play/pause state with the audio element
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !playerUrl) return;
+    if (isPlaying) {
+      audio.play().catch(() => setIsPlaying(false));
+    } else {
+      audio.pause();
+    }
+  }, [isPlaying, playerUrl]);
+
+  // Sync volume/mute with the audio element
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = isMuted ? 0 : volume;
+  }, [volume, isMuted, playerUrl]);
 
   const volumeBarRef = useRef<HTMLDivElement>(null);
   const isDraggingVolume = useRef(false);
@@ -235,20 +303,16 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Hidden ReactPlayer */}
+      {/* Hidden audio element */}
       {playerUrl && (
-        <div style={{ display: 'none' }}>
-          <ReactPlayer
-            ref={playerRef}
-            url={playerUrl}
-            playing={isPlaying}
-            volume={volume}
-            muted={isMuted}
-            onProgress={(state: any) => setCurrentTime(state.playedSeconds)}
-            onDuration={(dur: number) => setDuration(dur)}
-            onEnded={playNext}
-          />
-        </div>
+        <audio
+          ref={audioRef}
+          src={playerUrl}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+          onEnded={playNext}
+          onError={handleAudioError}
+        />
       )}
 
       {/* Sidebar */}
@@ -369,7 +433,7 @@ export default function App() {
               <img src={currentTrack.artwork} alt={currentTrack.title} className="player-artwork" />
               <div className="player-text">
                 <span className="player-title">{currentTrack.title}</span>
-                <span className="player-artist">{currentTrack.artist}</span>
+                <span className="player-artist">{streamLoading ? "Loading audio…" : currentTrack.artist}</span>
               </div>
             </>
           ) : (
