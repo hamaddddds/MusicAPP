@@ -37,7 +37,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3QjA3NjIxNTM5OEQ0RDkKUldUWjFKaFRJWGF3OTF2YkNFWXlYWVIwS0FUQkF2WHc0T3hBMzdBMU1zWlRYM1FvNEVHOVZUczkK",
       "endpoints": [
         "https://github.com/hamaddddds/MusicAPP/releases/latest/download/latest.json"
       ],
