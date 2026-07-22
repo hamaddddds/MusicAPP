@@ -3,13 +3,14 @@ use std::os::raw::c_char;
 use tauri::Manager;
 use tauri::Emitter;
 use tauri_plugin_shell::ShellExt;
-use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+mod discord_ipc;
+use discord_ipc::CustomIpc;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use std::net::TcpListener;
 use std::io::{Read, Write};
 
-static DISCORD_IPC: Lazy<Mutex<Option<DiscordIpcClient>>> = Lazy::new(|| Mutex::new(None));
+static DISCORD_IPC: Lazy<Mutex<Option<CustomIpc>>> = Lazy::new(|| Mutex::new(None));
 
 extern "C" {
     fn GetAppVersion() -> *const c_char;
@@ -113,9 +114,9 @@ fn show_main_window(app: tauri::AppHandle) {
 
 #[tauri::command]
 fn connect_rpc(client_id: String) -> Result<(), String> {
-    let mut client = DiscordIpcClient::new(&client_id);
+    let mut client = CustomIpc::connect(&client_id)
     
-    client.connect().map_err(|e| format!("Gagal terhubung ke Discord RPC: {:?}", e))?;
+    .map_err(|e| format!("Gagal terhubung ke Discord RPC: {:?}", e))?;
     
     let mut guard = DISCORD_IPC.lock().unwrap();
     *guard = Some(client);
@@ -125,9 +126,7 @@ fn connect_rpc(client_id: String) -> Result<(), String> {
 #[tauri::command]
 fn disconnect_rpc() -> Result<(), String> {
     let mut guard = DISCORD_IPC.lock().unwrap();
-    if let Some(mut client) = guard.take() {
-        let _ = client.close();
-    }
+    let _ = guard.take();
     Ok(())
 }
 
@@ -142,24 +141,25 @@ fn set_rpc_activity(
 ) -> Result<(), String> {
     let mut guard = DISCORD_IPC.lock().unwrap();
     if let Some(client) = guard.as_mut() {
-        let assets = activity::Assets::new()
-            .large_image(&large_image)
-            .large_text(&large_text);
+        let mut activity = serde_json::json!({
+            "type": 2,
+            "details": details,
+            "state": state,
+            "assets": {
+                "large_image": large_image,
+                "large_text": large_text
+            }
+        });
 
-        let mut activity = activity::Activity::new()
-            .details(&details)
-            .state(&state)
-            .assets(assets);
-            
         if start_time.is_some() || end_time.is_some() {
-            let mut timestamps = activity::Timestamps::new();
+            let mut timestamps = serde_json::json!({});
             if let Some(s) = start_time {
-                timestamps = timestamps.start(s);
+                timestamps["start"] = serde_json::json!(s * 1000);
             }
             if let Some(e) = end_time {
-                timestamps = timestamps.end(e);
+                timestamps["end"] = serde_json::json!(e * 1000);
             }
-            activity = activity.timestamps(timestamps);
+            activity["timestamps"] = timestamps;
         }
 
         client.set_activity(activity).map_err(|e| format!("Gagal set activity: {}", e))?;
