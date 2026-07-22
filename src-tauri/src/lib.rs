@@ -1,11 +1,60 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
+use std::sync::Mutex;
+use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
 extern "C" {
     fn GetAppVersion() -> *const c_char;
     fn InitializeCore();
+}
+
+// Holds the Discord IPC client between calls (connect once, update many times).
+struct DiscordState(Mutex<Option<DiscordIpcClient>>);
+
+#[tauri::command]
+fn discord_connect(state: tauri::State<DiscordState>, client_id: String) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let mut client = DiscordIpcClient::new(&client_id).map_err(|e| e.to_string())?;
+    client.connect().map_err(|e| e.to_string())?;
+    *guard = Some(client);
+    Ok(())
+}
+
+#[tauri::command]
+fn discord_set_activity(
+    state: tauri::State<DiscordState>,
+    details: String,
+    state_text: String,
+    large_image: Option<String>,
+    large_text: Option<String>,
+    start: Option<i64>,
+) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let client = guard.as_mut().ok_or("discord not connected")?;
+    let img = large_image.unwrap_or_default();
+    let lt = large_text.unwrap_or_default();
+    let mut act = activity::Activity::new().details(&details).state(&state_text);
+    if let Some(s) = start {
+        act = act.timestamps(activity::Timestamps::new().start(s));
+    }
+    if !img.is_empty() {
+        act = act.assets(activity::Assets::new().large_image(&img).large_text(&lt));
+    }
+    client.set_activity(act).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn discord_disconnect(state: tauri::State<DiscordState>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(client) = guard.as_mut() {
+        let _ = client.clear_activity();
+        let _ = client.close();
+    }
+    *guard = None;
+    Ok(())
 }
 
 #[tauri::command]
@@ -110,11 +159,15 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(DiscordState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             get_core_version,
             show_main_window,
             resolve_audio_url,
-            download_track
+            download_track,
+            discord_connect,
+            discord_set_activity,
+            discord_disconnect
         ])
         .on_window_event(|_window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } => {

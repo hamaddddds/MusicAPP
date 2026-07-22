@@ -7,7 +7,9 @@ import {
   Volume2, Volume1, VolumeX, Search, Home, Heart, Radio, Clock,
   X, Minus, Square, Maximize, Repeat, Repeat1, Shuffle,
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
-  ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw
+  ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
+  Settings, Palette, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
+  UserCircle, Gamepad2
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────
@@ -33,6 +35,25 @@ const HOME_SHELVES = [
   { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "new music release 2026" },
   { id: "trend", title: "Trending Now", subtitle: "Yang lagi panas minggu ini", query: "trending songs 2026" },
   { id: "viral", title: "Viral Hits", subtitle: "Lagu viral yang wajib didengar", query: "viral hits 2026" },
+];
+
+const PROFILE_TABS = [
+  { id: "appearance", label: "Tampilan", Icon: Palette },
+  { id: "accounts", label: "Akun", Icon: User },
+  { id: "discord", label: "Discord RPC", Icon: Gamepad2 },
+  { id: "updates", label: "Update", Icon: RefreshCw },
+  { id: "about", label: "Tentang", Icon: Sparkles },
+];
+const PROVIDERS = [
+  { id: "google", label: "Google", Icon: LogIn },
+  { id: "github", label: "GitHub", Icon: LogIn },
+  { id: "email", label: "Email", Icon: Mail },
+  { id: "discord", label: "Discord", Icon: Gamepad2 },
+];
+const THEME_OPTIONS = [
+  { id: "light", label: "Light", Icon: Sun },
+  { id: "dark", label: "Dark (Abu-abu)", Icon: Moon },
+  { id: "amoled", label: "AMOLED", Icon: Monitor },
 ];
 
 // ── localStorage helpers ─────────────────────────────────
@@ -155,6 +176,17 @@ export default function App() {
   const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
   const [region, setRegion] = useState<Region | null>(() => load("mv:region", null));
 
+  // Appearance / profile / accounts / RPC
+  const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
+  const [customCss, setCustomCss] = useState<string>(() => load("mv:customcss", ""));
+  const [profileTab, setProfileTab] = useState("appearance");
+  const [profile, setProfile] = useState<{ name: string; color: string }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
+  const [accounts, setAccounts] = useState<{ provider: string; label: string }[]>(() => load("mv:accounts", []));
+  const [rpcClientId, setRpcClientId] = useState<string>(() => load("mv:rpc-clientid", ""));
+  const [rpcEnabled, setRpcEnabled] = useState<boolean>(() => load("mv:rpc-enabled", false));
+  const [rpcStatus, setRpcStatus] = useState<"off" | "connecting" | "on" | "error">("off");
+  const [updateStatus, setUpdateStatus] = useState<string>("");
+
   // Audio
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -195,6 +227,7 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const suggestTimer = useRef<number | undefined>(undefined);
   const searchBoxRef = useRef<HTMLDivElement>(null);
+  const rpcStatusRef = useRef<"off" | "connecting" | "on" | "error">("off");
 
   useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
@@ -203,6 +236,26 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:history", JSON.stringify(history)); }, [history]);
   useEffect(() => { localStorage.setItem("mv:blocked", JSON.stringify(blocked)); }, [blocked]);
   useEffect(() => { localStorage.setItem("mv:searches", JSON.stringify(searchHistory)); }, [searchHistory]);
+  useEffect(() => { localStorage.setItem("mv:profile", JSON.stringify(profile)); }, [profile]);
+  useEffect(() => { localStorage.setItem("mv:accounts", JSON.stringify(accounts)); }, [accounts]);
+  useEffect(() => { rpcStatusRef.current = rpcStatus; }, [rpcStatus]);
+
+  // Apply theme to the document root.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("mv:theme", JSON.stringify(theme));
+  }, [theme]);
+
+  // Inject user's custom CSS (client-uploaded theme).
+  useEffect(() => {
+    let el = document.getElementById("mv-custom-css") as HTMLStyleElement | null;
+    if (!el) { el = document.createElement("style"); el.id = "mv-custom-css"; document.head.appendChild(el); }
+    el.textContent = customCss;
+    localStorage.setItem("mv:customcss", JSON.stringify(customCss));
+  }, [customCss]);
+
+  useEffect(() => { localStorage.setItem("mv:rpc-clientid", JSON.stringify(rpcClientId)); }, [rpcClientId]);
+  useEffect(() => { localStorage.setItem("mv:rpc-enabled", JSON.stringify(rpcEnabled)); }, [rpcEnabled]);
 
   const flashToast = useCallback((msg: string) => {
     setToast(msg);
@@ -311,6 +364,108 @@ export default function App() {
     setQuickPicks(picks);
     localStorage.setItem("mv:quickpicks", JSON.stringify({ at: Date.now(), tracks: picks }));
   }, [history, blocked, searchSongs]);
+
+  // Reshuffle + refresh the home page (triggered by re-clicking Listen Now).
+  const reshuffleHome = useCallback(async () => {
+    flashToast("Menyusun ulang…");
+    setShelves((prev) => {
+      const n: Record<string, Track[]> = {};
+      for (const k in prev) n[k] = shuffleArray(prev[k]);
+      return n;
+    });
+    localStorage.removeItem("mv:quickpicks");
+    await loadHome();
+    buildQuickPicks(region);
+  }, [loadHome, buildQuickPicks, region, flashToast]);
+
+  // ── Discord RPC (desktop) ───────────────────────────────
+  const pushRpc = useCallback(async (track: Track) => {
+    if (!isTauri || rpcStatusRef.current !== "on") return;
+    try {
+      await invoke("discord_set_activity", {
+        details: track.title.slice(0, 128),
+        stateText: track.artist.slice(0, 128),
+        largeImage: track.artwork,
+        largeText: "Music Venue",
+        start: Math.floor(Date.now() / 1000),
+      });
+    } catch (e) { console.error("rpc activity", e); }
+  }, []);
+
+  const connectDiscord = useCallback(async () => {
+    if (!isTauri) { flashToast("Discord RPC hanya di aplikasi desktop."); return; }
+    if (!rpcClientId.trim()) { flashToast("Isi Discord Application ID dulu."); return; }
+    setRpcStatus("connecting");
+    try {
+      await invoke("discord_connect", { clientId: rpcClientId.trim() });
+      setRpcStatus("on"); rpcStatusRef.current = "on"; setRpcEnabled(true);
+      if (currentTrackRef.current) pushRpc(currentTrackRef.current);
+      flashToast("Discord terhubung");
+    } catch (e) {
+      console.error(e); setRpcStatus("error");
+      flashToast("Gagal connect. Pastikan Discord desktop terbuka & ID benar.");
+    }
+  }, [rpcClientId, pushRpc, flashToast]);
+
+  const disconnectDiscord = useCallback(async () => {
+    if (isTauri) { try { await invoke("discord_disconnect"); } catch { /* ignore */ } }
+    setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
+  }, []);
+
+  // ── Manual update check ─────────────────────────────────
+  const checkUpdateManually = useCallback(async () => {
+    if (!isTauri) { setUpdateStatus("Update otomatis hanya tersedia di aplikasi desktop."); return; }
+    setUpdateStatus("Memeriksa pembaruan…");
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (update?.available) {
+        setUpdateInfo({ version: update.version, obj: update });
+        setUpdateStatus(`Versi ${update.version} tersedia!`);
+      } else setUpdateStatus("Kamu sudah memakai versi terbaru.");
+    } catch (e) { console.error(e); setUpdateStatus("Gagal memeriksa pembaruan."); }
+  }, []);
+
+  // ── Config export / import (portable settings) ──────────
+  const exportConfig = useCallback(() => {
+    const cfg: Record<string, any> = {};
+    for (const k of Object.keys(localStorage)) if (k.startsWith("mv:")) cfg[k] = localStorage.getItem(k);
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "musicvenue-config.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    flashToast("Konfigurasi diekspor");
+  }, [flashToast]);
+
+  const importConfig = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const cfg = JSON.parse(String(reader.result));
+        for (const k in cfg) if (k.startsWith("mv:")) localStorage.setItem(k, cfg[k]);
+        flashToast("Konfigurasi diimpor — memuat ulang…");
+        setTimeout(() => location.reload(), 800);
+      } catch { flashToast("File konfigurasi tidak valid."); }
+    };
+    reader.readAsText(file);
+  }, [flashToast]);
+
+  const uploadCss = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => { setCustomCss(String(reader.result)); flashToast("Custom CSS diterapkan"); };
+    reader.readAsText(file);
+  }, [flashToast]);
+
+  const toggleAccount = useCallback((p: { id: string; label: string }) => {
+    setAccounts((prev) =>
+      prev.find((a) => a.provider === p.id)
+        ? prev.filter((a) => a.provider !== p.id)
+        : [...prev, { provider: p.id, label: "Lokal" }]
+    );
+    flashToast(`${p.label} ditandai (lokal). Login OAuth asli perlu backend.`);
+  }, [flashToast]);
 
   // ── Init ────────────────────────────────────────────────
   useEffect(() => {
@@ -629,6 +784,17 @@ export default function App() {
     navigator.mediaSession.setActionHandler("nexttrack", () => advance(true));
   }, [currentTrack, playPrev, advance]);
 
+  // Push the current track to Discord Rich Presence.
+  useEffect(() => { if (currentTrack) pushRpc(currentTrack); }, [currentTrack, pushRpc]);
+
+  // Auto-reconnect Discord RPC on launch if it was enabled.
+  useEffect(() => {
+    if (isTauri && rpcEnabled && rpcClientId.trim() && rpcStatusRef.current === "off") {
+      connectDiscord();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Keyboard shortcuts ──────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -724,6 +890,8 @@ export default function App() {
   };
 
   const handleTabClick = (tab: string) => {
+    // Re-clicking Listen Now while already there reshuffles the page.
+    if (tab === "home" && activeTab === "home") { reshuffleHome(); return; }
     setActiveTab(tab);
     if (tab === "home" && !Object.keys(shelves).length) loadHome();
     else if (tab === "radio") runSearch("Lo-fi radio chill");
@@ -736,6 +904,7 @@ export default function App() {
       case "radio": return "Radio";
       case "search": return "Search";
       case "artist": return artistView?.artist?.name || "Artist";
+      case "profile": return "Profile";
       default: return "Music Venue";
     }
   };
@@ -821,7 +990,14 @@ export default function App() {
           </div>
           <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={20} /> Queue</div>
         </div>
-        {coreVersion && <div className="sidebar-foot">Core: {coreVersion}{region?.countryCode ? ` · ${region.countryCode}` : ""}</div>}
+        <div className="sidebar-bottom">
+          <button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
+            <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
+            <div className="profile-brief"><span className="profile-name">{profile.name || "Guest"}</span><span className="profile-sub">Profil &amp; Setelan</span></div>
+            <Settings size={16} />
+          </button>
+          {coreVersion && <div className="sidebar-foot">Core {coreVersion}{region?.countryCode ? ` · ${region.countryCode}` : ""}</div>}
+        </div>
       </aside>
 
       {/* Main */}
@@ -968,6 +1144,136 @@ export default function App() {
             ) : (
               <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Cari lagu favoritmu"}</p><span>Ketik nama artis atau judul lagu di kotak pencarian.</span></div>
             )}
+          </div>
+        )}
+
+        {/* Profile & Settings */}
+        {activeTab === "profile" && (
+          <div className="page profile-page">
+            <div className="profile-hero">
+              <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
+              <div className="profile-hero-info">
+                <span className="artist-hero-label"><UserCircle size={13} /> Profil</span>
+                <h1>{profile.name || "Guest"}</h1>
+                <p>{accounts.length ? `${accounts.length} akun terhubung` : "Belum ada akun terhubung"} · Tema {theme}</p>
+              </div>
+            </div>
+
+            <div className="profile-tabs">
+              {PROFILE_TABS.map((t) => (
+                <button key={t.id} className={`ptab ${profileTab === t.id ? "active" : ""}`} onClick={() => setProfileTab(t.id)}>
+                  <t.Icon size={15} /> {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="profile-content">
+              {profileTab === "appearance" && (
+                <>
+                  <div className="setting-block">
+                    <h3>Tema</h3><p className="setting-desc">Ubah tampilan aplikasi. Dark abu-abu bikin efek kaca player lebih terlihat.</p>
+                    <div className="theme-grid">
+                      {THEME_OPTIONS.map((t) => (
+                        <button key={t.id} className={`theme-card ${theme === t.id ? "active" : ""}`} onClick={() => setTheme(t.id)}>
+                          <span className={`theme-swatch th-${t.id}`}><span className="tsw-bar" /></span>
+                          <div className="theme-card-label"><t.Icon size={15} /> {t.label}</div>
+                          {theme === t.id && <Check size={16} className="theme-check" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="setting-block">
+                    <h3>Custom CSS</h3><p className="setting-desc">Tempel CSS atau unggah file .css untuk tema buatanmu. Langsung diterapkan & tersimpan.</p>
+                    <textarea className="css-editor" value={customCss} spellCheck={false} placeholder={":root { --accent: #7c3aed; }"} onChange={(e) => setCustomCss(e.target.value)} />
+                    <div className="setting-actions">
+                      <label className="btn-ghost file-btn"><Upload size={15} /> Unggah .css<input type="file" accept=".css,text/css" hidden onChange={(e) => e.target.files?.[0] && uploadCss(e.target.files[0])} /></label>
+                      <button className="btn-ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS dihapus"); }}>Reset</button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {profileTab === "accounts" && (
+                <>
+                  <div className="setting-block">
+                    <h3>Profil</h3>
+                    <div className="field-row"><label>Nama</label><input className="text-input" value={profile.name} onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} /></div>
+                    <div className="field-row"><label>Warna</label><input className="color-input" type="color" value={profile.color} onChange={(e) => setProfile((p) => ({ ...p, color: e.target.value }))} /></div>
+                  </div>
+                  <div className="setting-block">
+                    <h3>Hubungkan Akun</h3>
+                    <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi. <span className="badge-warn">OAuth asli perlu backend</span></p>
+                    <div className="provider-list">
+                      {PROVIDERS.map((p) => {
+                        const connected = accounts.find((a) => a.provider === p.id);
+                        return (
+                          <button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
+                            <p.Icon size={18} /><span className="prov-name">{p.label}</span>
+                            {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">Hubungkan</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="setting-block">
+                    <h3>Cadangan Konfigurasi</h3><p className="setting-desc">Simpan semua setelan (tema, CSS, liked music, RPC) ke file dan pulihkan kapan saja — berfungsi penuh tanpa backend.</p>
+                    <div className="setting-actions">
+                      <button className="btn-primary" onClick={exportConfig}><Download size={15} /> Ekspor</button>
+                      <label className="btn-ghost file-btn"><Upload size={15} /> Impor<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {profileTab === "discord" && (
+                <div className="setting-block">
+                  <h3>Discord Rich Presence</h3>
+                  <p className="setting-desc">Tampilkan lagu yang sedang diputar di status Discord-mu.{!isTauri && " (hanya di aplikasi desktop)"}</p>
+                  <div className="field-row"><label>Application ID</label><input className="text-input" value={rpcClientId} placeholder="123456789012345678" onChange={(e) => setRpcClientId(e.target.value)} /></div>
+                  <p className="setting-hint">Buat aplikasi di <b>discord.com/developers/applications</b> → salin <b>Application ID</b>. Discord desktop harus terbuka.</p>
+                  <div className="setting-actions">
+                    {rpcStatus === "on"
+                      ? <button className="btn-ghost" onClick={disconnectDiscord}>Putuskan</button>
+                      : <button className="btn-primary" onClick={connectDiscord}>{rpcStatus === "connecting" ? "Menghubungkan…" : "Hubungkan"}</button>}
+                    <span className={`rpc-dot ${rpcStatus}`} />
+                    <span className="rpc-status-text">{rpcStatus === "on" ? "Terhubung" : rpcStatus === "connecting" ? "Menghubungkan" : rpcStatus === "error" ? "Gagal" : "Tidak aktif"}</span>
+                  </div>
+                  <div className="rpc-preview">
+                    <div className="rpc-preview-head">Preview</div>
+                    <div className="rpc-card">
+                      <img src={currentTrack?.artwork || "https://picsum.photos/120"} className="rpc-img" alt="" />
+                      <div className="rpc-lines">
+                        <span className="rpc-app">MUSIC VENUE</span>
+                        <span className="rpc-details">{currentTrack?.title || "Belum ada lagu diputar"}</span>
+                        <span className="rpc-state">{currentTrack?.artist || "—"}</span>
+                        <span className="rpc-time">{isPlaying ? "sedang diputar" : "dijeda"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {profileTab === "updates" && (
+                <div className="setting-block">
+                  <h3>Pembaruan</h3>
+                  <p className="setting-desc">Versi saat ini: <b>{coreVersion || "web"}</b></p>
+                  <div className="setting-actions">
+                    <button className="btn-primary" onClick={checkUpdateManually}><RefreshCw size={15} /> Periksa Update</button>
+                    {updateInfo && <button className="btn-ghost" onClick={runUpdate}>Perbarui ke {updateInfo.version}</button>}
+                  </div>
+                  {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
+                  <p className="setting-hint">Aplikasi memeriksa update otomatis saat dibuka. Tombol ini untuk memeriksa manual jika auto-update gagal.</p>
+                </div>
+              )}
+
+              {profileTab === "about" && (
+                <div className="setting-block">
+                  <h3>Music Venue</h3>
+                  <p className="setting-desc">Pemutar musik bergaya Apple Music berbasis YouTube Music. Metadata via ytmusic-api, audio via yt-dlp (desktop), lirik via lrclib.net.</p>
+                  <p className="setting-hint">Dibuat dengan Tauri + React. Auto-update aktif untuk versi desktop.</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>
