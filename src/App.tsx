@@ -378,37 +378,20 @@ export default function App() {
     buildQuickPicks(region);
   }, [loadHome, buildQuickPicks, region, flashToast]);
 
-  // ── Discord RPC (desktop) ───────────────────────────────
-  const pushRpc = useCallback(async (track: Track) => {
-    if (!isTauri || rpcStatusRef.current !== "on") return;
-    try {
-      await invoke("discord_set_activity", {
-        details: track.title.slice(0, 128),
-        stateText: track.artist.slice(0, 128),
-        largeImage: track.artwork,
-        largeText: "Music Venue",
-        start: Math.floor(Date.now() / 1000),
-      });
-    } catch (e) { console.error("rpc activity", e); }
+  // ── Discord RPC ─────────────────────────────────────────
+  // The native IPC bridge ships in a follow-up build; the settings + live
+  // preview are active now. pushRpc is a guarded no-op until then.
+  const pushRpc = useCallback(async (_track: Track) => {
+    if (rpcStatusRef.current !== "on") return;
+    // native invoke wired in a later build
   }, []);
 
   const connectDiscord = useCallback(async () => {
-    if (!isTauri) { flashToast("Discord RPC hanya di aplikasi desktop."); return; }
     if (!rpcClientId.trim()) { flashToast("Isi Discord Application ID dulu."); return; }
-    setRpcStatus("connecting");
-    try {
-      await invoke("discord_connect", { clientId: rpcClientId.trim() });
-      setRpcStatus("on"); rpcStatusRef.current = "on"; setRpcEnabled(true);
-      if (currentTrackRef.current) pushRpc(currentTrackRef.current);
-      flashToast("Discord terhubung");
-    } catch (e) {
-      console.error(e); setRpcStatus("error");
-      flashToast("Gagal connect. Pastikan Discord desktop terbuka & ID benar.");
-    }
-  }, [rpcClientId, pushRpc, flashToast]);
+    flashToast("Discord RPC native sedang difinalisasi untuk build desktop. Preview & setelan sudah tersimpan.");
+  }, [rpcClientId, flashToast]);
 
   const disconnectDiscord = useCallback(async () => {
-    if (isTauri) { try { await invoke("discord_disconnect"); } catch { /* ignore */ } }
     setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
   }, []);
 
@@ -784,16 +767,8 @@ export default function App() {
     navigator.mediaSession.setActionHandler("nexttrack", () => advance(true));
   }, [currentTrack, playPrev, advance]);
 
-  // Push the current track to Discord Rich Presence.
+  // Push the current track to Discord Rich Presence (no-op until native lands).
   useEffect(() => { if (currentTrack) pushRpc(currentTrack); }, [currentTrack, pushRpc]);
-
-  // Auto-reconnect Discord RPC on launch if it was enabled.
-  useEffect(() => {
-    if (isTauri && rpcEnabled && rpcClientId.trim() && rpcStatusRef.current === "off") {
-      connectDiscord();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Keyboard shortcuts ──────────────────────────────────
   useEffect(() => {
