@@ -1,4 +1,7 @@
-import YTMusic from "ytmusic-api";
+import YTMusicModule from "ytmusic-api";
+
+// Handle ESM/CJS interop — the constructor could be on .default or directly
+const YTMusicClass = YTMusicModule.default || YTMusicModule;
 
 export default async function handler(req, res) {
   // CORS Headers
@@ -52,7 +55,7 @@ export default async function handler(req, res) {
     }
 
     // Action: search / home — use ytmusic-api for metadata
-    const ytmusic = new YTMusic.default();
+    const ytmusic = new YTMusicClass();
     await ytmusic.initialize();
 
     if (action === 'search') {
