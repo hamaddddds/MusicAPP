@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, Pause, SkipForward, SkipBack,
-  Volume2, VolumeX, Search, Home, Library, Radio,
+  Volume2, VolumeX, Search, Home, Heart, Clock, Radio,
   Menu, X, Minus, Square, Maximize
 } from "lucide-react";
 
@@ -89,19 +89,14 @@ export default function App() {
     fetchTracks("home");
   }, [fetchTracks]);
 
-  // ── Audio Playback (HTML5 Audio via Piped API) ──────────
+  // ── Audio Playback (via Vercel API → Piped) ──────────────
 
   const getAudioUrl = async (videoId: string): Promise<string | null> => {
     try {
-      // Use Piped API to get audio stream URL
-      const res = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
+      // Use our Vercel API to proxy the Piped audio stream lookup
+      const res = await fetch(`${API_URL}?action=stream&videoId=${videoId}`);
       const data = await res.json();
-      // Find best audio stream
-      if (data.audioStreams && data.audioStreams.length > 0) {
-        // Sort by bitrate descending, prefer opus/mp4
-        const sorted = data.audioStreams.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
-        return sorted[0].url;
-      }
+      if (data.url) return data.url;
       return null;
     } catch (e) {
       console.error("Failed to get audio stream", e);
@@ -155,12 +150,32 @@ export default function App() {
     audioRef.current.currentTime = pos * duration;
   };
 
-  const changeVolume = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const volumeBarRef = useRef<HTMLDivElement>(null);
+  const isDraggingVolume = useRef(false);
+
+  const updateVolumeFromEvent = (clientX: number) => {
+    if (!volumeBarRef.current) return;
+    const rect = volumeBarRef.current.getBoundingClientRect();
+    const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     setVolume(pos);
     setIsMuted(pos === 0);
     if (audioRef.current) audioRef.current.volume = pos;
+  };
+
+  const handleVolumeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    isDraggingVolume.current = true;
+    updateVolumeFromEvent(e.clientX);
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (isDraggingVolume.current) updateVolumeFromEvent(ev.clientX);
+    };
+    const onMouseUp = () => {
+      isDraggingVolume.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   };
 
   const toggleMute = () => {
@@ -288,10 +303,10 @@ export default function App() {
         <div className="sidebar-section" style={{ marginTop: '20px' }}>
           <div className="sidebar-title">Library</div>
           <div className="nav-item">
-            <Library size={20} /> Recently Added
+            <Heart size={20} /> Liked Music
           </div>
           <div className="nav-item">
-            <Play size={20} /> Songs
+            <Clock size={20} /> Recent Play
           </div>
         </div>
 
@@ -411,7 +426,7 @@ export default function App() {
           <button className="btn-icon" onClick={toggleMute} style={{ color: 'white' }}>
             {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
-          <div className="progress-bar volume-bar" onClick={changeVolume}>
+          <div className="progress-bar volume-bar" ref={volumeBarRef} onMouseDown={handleVolumeMouseDown}>
             <div className="progress-fill" style={{ width: `${isMuted ? 0 : volume * 100}%` }}></div>
           </div>
         </div>
