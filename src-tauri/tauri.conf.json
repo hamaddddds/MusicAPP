@@ -26,6 +26,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
     "externalBin": ["binaries/yt-dlp"],
     "icon": [
