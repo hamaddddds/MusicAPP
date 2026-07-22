@@ -118,7 +118,15 @@ export default function App() {
     setCurrentTime(0);
     setDuration(0);
     try {
-      const { url } = await resolveStreamUrl(track.videoId, mode);
+      let url: string;
+      if (isTauri) {
+        // Desktop: resolve locally with the bundled yt-dlp sidecar. Runs on the
+        // user's own IP, so the returned URL is playable — free, no API key.
+        url = await invoke<string>("resolve_audio_url", { videoId: track.videoId });
+      } else {
+        // Web: resolve server-side via /api (needs YTDLP_API_KEY on Vercel).
+        url = (await resolveStreamUrl(track.videoId, mode)).url;
+      }
       // Ignore stale responses if the user already picked another track
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
@@ -144,7 +152,9 @@ export default function App() {
   // Direct googlevideo URLs can be IP-locked and fail with 403 — retry once
   // through the server-side mp3 conversion path
   const handleAudioError = () => {
-    if (currentTrack && !triedDownloadModeRef.current) {
+    // Web only: a direct googlevideo URL can be IP-locked, so retry once through
+    // the server-side mp3 conversion path. On desktop yt-dlp already handles this.
+    if (!isTauri && currentTrack && !triedDownloadModeRef.current) {
       triedDownloadModeRef.current = true;
       startStream(currentTrack, "download");
     } else {
