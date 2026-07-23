@@ -28,6 +28,37 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: install frontend dependencies
         run: npm install
+      - name: Generate Changelog
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+            const commits = event.commits || [];
+            let added = [], removed = [], fixed = [], improved = [];
+            commits.forEach(c => {
+              const lines = c.message.split('\n');
+              const firstLine = lines[0];
+              const msg = firstLine.toLowerCase();
+              let desc = firstLine.replace(/^(feat|fix|chore|refactor|perf|style|docs)(\([a-z-]+\))?:\s*/i, '');
+              // Capitalize first letter
+              desc = desc.charAt(0).toUpperCase() + desc.slice(1);
+              if (msg.startsWith('feat') || msg.startsWith('add')) added.push(desc);
+              else if (msg.startsWith('remove') || msg.startsWith('delete') || msg.startsWith('drop')) removed.push(desc);
+              else if (msg.startsWith('fix') || msg.startsWith('bug')) fixed.push(desc);
+              else improved.push(desc);
+            });
+            let out = '';
+            if (added.length) out += '[+] Added\n' + added.map(x => '- ' + x).join('\n') + '\n';
+            if (removed.length) out += '[-] Remove\n' + removed.map(x => '- ' + x).join('\n') + '\n';
+            if (fixed.length) out += '[~] Fixing\n' + fixed.map(x => '- ' + x).join('\n') + '\n';
+            if (improved.length) out += '[*] Improvement\n' + improved.map(x => '- ' + x).join('\n') + '\n';
+            if (!out.trim()) out = '[*] Improvement\n- Minor under the hood improvements and optimizations.';
+            fs.writeFileSync('changelog.txt', out.trim());
+          "
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          cat changelog.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -36,7 +67,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "Music Venue v__VERSION__"
-          releaseBody: "Download Music Venue for Windows. The app will auto-update in the future."
+          releaseBody: ${{ env.CHANGELOG }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
