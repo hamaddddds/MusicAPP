@@ -390,7 +390,11 @@ export default function App() {
       const songs = d.filter((x: any) => x.resultType === "song");
       const videos = d.filter((x: any) => x.resultType === "video");
 
-      setSearchArtist(artists.length > 0 ? { artistId: artists[0].browseId, name: artists[0].artist, thumbnails: artists[0].thumbnails } : null);
+      setSearchArtist(artists.length > 0 ? { 
+        artistId: artists[0].browseId || (artists[0].artists && artists[0].artists[0]?.id), 
+        name: artists[0].artist || (artists[0].artists && artists[0].artists[0]?.name), 
+        thumbnails: artists[0].thumbnails 
+      } : null);
       setSearchPopular(mapTracks(songs));
       setSearchOther(mapTracks(videos));
     } catch {
