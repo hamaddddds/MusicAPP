@@ -142,7 +142,8 @@ button { font-family: inherit; }
 }
 .header-drag { flex: 1; -webkit-app-region: drag; app-region: drag; padding: 16px 0; }
 .header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; text-wrap: balance; }
-.header-right { display: flex; gap: 14px; align-items: center; }
+.header-center { position: absolute; left: 50%; transform: translateX(-50%); z-index: 10; -webkit-app-region: no-drag; app-region: no-drag; }
+.header-right { display: flex; gap: 14px; align-items: center; margin-left: auto; }
 
 .search-box {
   display: flex; align-items: center; gap: 8px;

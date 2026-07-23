@@ -146,6 +146,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [activeTab, setActiveTab] = useState("home");
+  const [activeShelf, setActiveShelf] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -888,9 +889,13 @@ export default function App() {
   const renderShelf = (id: string, title: string, subtitle: string) => {
     const tracks = shelves[id] || [];
     return (
-      <section className="shelf">
-        <div className="shelf-head"><div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div></div>
-        <div className="shelf-scroll">
+      <section key={id} className="shelf">
+        <div className="shelf-head" onClick={() => { setActiveShelf(id); setActiveTab("shelf"); }}><div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div></div>
+        <div className="shelf-scroll" onWheel={(e) => {
+          if (e.deltaY !== 0) {
+            e.currentTarget.scrollLeft += e.deltaY;
+          }
+        }}>
           {loading && !tracks.length ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>) : tracks.map((t) => renderAlbumCard(t, tracks))}
         </div>
       </section>
@@ -1015,7 +1020,18 @@ export default function App() {
             ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Search for your favorite songs"}</p><span>Type an artist name or song title in the search box.</span></div>}
           </div>
         )}
-        {activeTab === "profile" && (
+        {activeTab === "shelf" && activeShelf && (
+            <div className="page">
+              <div className="section-head" style={{ marginTop: 20 }}>
+                <h2>{HOME_SHELVES.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
+                <span className="section-badge muted">{HOME_SHELVES.find(s => s.id === activeShelf)?.subtitle}</span>
+              </div>
+              <div className="grid-container">
+                {shelves[activeShelf]?.map(t => renderAlbumCard(t, shelves[activeShelf]))}
+              </div>
+            </div>
+          )}
+          {activeTab === "profile" && (
           <div className="page profile-page">
             <div className="profile-hero" style={profile.banner ? { backgroundImage: `linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 100%), url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
               {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
