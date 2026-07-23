@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -232,7 +232,7 @@ export default function App() {
         const filtered = prev.filter(a => a.provider !== data.provider);
         return [...filtered, { provider: data.provider, label: data.name, id: String(data.id), avatar: data.avatar || null, username: data.username || null, bio: data.bio || null, banner: data.banner || null }];
       });
-      flashToast(`Berhasil masuk dengan ${data.provider}`);
+      flashToast(`Successfully logged in with ${data.provider}`);
     } catch (e) {
       console.error("Failed to parse auth payload", e);
       flashToast("Gagal memproses data login.");
@@ -417,7 +417,7 @@ export default function App() {
     a.download = "musicvenue-config.json";
     a.click();
     URL.revokeObjectURL(a.href);
-    flashToast("Konfigurasi diekspor");
+    flashToast("Configuration exported");
   }, [flashToast]);
 
   const importConfig = useCallback((file: File) => {
@@ -428,14 +428,14 @@ export default function App() {
         for (const k in cfg) if (k.startsWith("mv:")) localStorage.setItem(k, cfg[k]);
         flashToast("Konfigurasi diimpor â€” memuat ulangâ€¦");
         setTimeout(() => location.reload(), 800);
-      } catch { flashToast("File konfigurasi tidak valid."); }
+      } catch { flashToast("Invalid configuration file."); }
     };
     reader.readAsText(file);
   }, [flashToast]);
 
   const uploadCss = useCallback((file: File) => {
     const reader = new FileReader();
-    reader.onload = () => { setCustomCss(String(reader.result)); flashToast("Custom CSS diterapkan"); };
+    reader.onload = () => { setCustomCss(String(reader.result)); flashToast("Custom CSS applied"); };
     reader.readAsText(file);
   }, [flashToast]);
 
@@ -447,14 +447,14 @@ export default function App() {
       flashToast(`Akun ${p.label} diputus`);
       return;
     }
-    if (p.id === "email") { flashToast("Login email belum tersedia."); return; }
+    if (p.id === "email") { flashToast("Email login is not yet available."); return; }
     let authUrl = `${API_URL}/auth?action=login&provider=${p.id}`;
     if (isTauri) {
       try {
         const port = await invoke<number>("start_oauth_server");
         authUrl += `&port=${port}`;
         await openUrl(authUrl);
-      } catch (e) { console.error(e); flashToast("Gagal membuka browser."); }
+      } catch (e) { console.error(e); flashToast("Failed to open browser."); }
     } else {
       const w = 500; const h = 600; const left = window.screen.width / 2 - w / 2; const top = window.screen.height / 2 - h / 2;
       window.open(authUrl, "MusicVenueAuth", `width=${w},height=${h},top=${top},left=${left}`);
@@ -474,7 +474,7 @@ export default function App() {
       console.error(e);
       setRpcStatus("error");
       rpcStatusRef.current = "error";
-      flashToast("Gagal terhubung ke Discord.");
+      flashToast("Failed to connect to Discord.");
     }
   }, [pushRpc, flashToast]);
 
@@ -495,7 +495,7 @@ export default function App() {
                 const payload = url.searchParams.get("payload");
                 const error = url.searchParams.get("error");
                 if (payload) handleAuthPayload(payload);
-                else if (error) flashToast(`Gagal login: ${error}`);
+                else if (error) flashToast(`Failed to login: ${error}`);
               }
             }
           }).catch(console.error);
@@ -548,7 +548,7 @@ export default function App() {
       await relaunch();
     } catch (e) {
       console.error("update failed", e);
-      flashToast("Gagal memperbarui. Coba lagi nanti.");
+      flashToast("Failed to update. Try again later.");
       setUpdateProgress(null);
     }
   }, [updateInfo, flashToast]);
@@ -570,7 +570,7 @@ export default function App() {
       setIsPlaying(true);
     } catch (e) {
       console.error("Failed to resolve stream", e);
-      if (playRequestRef.current === requestId) { setIsPlaying(false); flashToast("Gagal memuat audio."); }
+      if (playRequestRef.current === requestId) { setIsPlaying(false); flashToast("Failed to load audio."); }
     } finally {
       if (playRequestRef.current === requestId) setStreamLoading(false);
     }
@@ -651,13 +651,13 @@ export default function App() {
     const order = [...orderRef.current];
     order.splice(posRef.current + 1, 0, track);
     orderRef.current = order;
-    flashToast("Diputar setelah ini");
+    flashToast("Playing next");
   }, [playTrack, flashToast]);
 
   const addToQueue = useCallback((track: Track) => {
     if (!currentTrackRef.current) { playTrack(track, [track]); return; }
     orderRef.current = [...orderRef.current, track];
-    flashToast("Ditambahkan ke antrean");
+    flashToast("Added to queue");
   }, [playTrack, flashToast]);
 
   const startMix = useCallback(async (track: Track) => {
@@ -675,15 +675,15 @@ export default function App() {
   const goToArtist = useCallback((artist: string) => { openArtist({ name: artist }); }, [openArtist]);
   const shareTrack = useCallback(async (track: Track) => {
     const link = `https://music.youtube.com/watch?v=${track.videoId}`;
-    try { await navigator.clipboard.writeText(link); flashToast("Link disalin ke clipboard"); }
+    try { await navigator.clipboard.writeText(link); flashToast("Link copied to clipboard"); }
     catch { flashToast(link); }
   }, [flashToast]);
 
   const downloadTrack = useCallback(async (track: Track) => {
     if (isTauri) {
       flashToast("Mengunduhâ€¦");
-      try { const dir = await invoke<string>("download_track", { videoId: track.videoId }); flashToast(`Tersimpan di ${dir}`); }
-      catch { flashToast("Gagal mengunduh."); }
+      try { const dir = await invoke<string>("download_track", { videoId: track.videoId }); flashToast(`Saved to ${dir}`); }
+      catch { flashToast("Failed to download."); }
     } else window.open(`https://music.youtube.com/watch?v=${track.videoId}`, "_blank");
   }, [flashToast]);
 
@@ -691,7 +691,7 @@ export default function App() {
     setBlocked((prev) => (prev.includes(track.artist) ? prev : [...prev, track.artist]));
     setQuickPicks((prev) => prev.filter((t) => t.artist !== track.artist));
     localStorage.removeItem("mv:quickpicks");
-    flashToast(`Tidak merekomendasikan ${track.artist}`);
+    flashToast(`Not recommending ${track.artist}`);
   }, [flashToast]);
 
   const cycleRepeat = useCallback(() => setRepeatMode((m) => (m === "off" ? "all" : m === "all" ? "one" : "off")), []);
@@ -932,12 +932,12 @@ export default function App() {
               </form>
               {showSuggest && (
                 <div className="search-dropdown">
-                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></button>) : <div className="suggest-empty">Tekan Enter untuk mencari â€œ{searchQuery}â€</div>) : searchHistory.length ? (
+                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></button>) : <div className="suggest-empty">Press Enter to search â€œ{searchQuery}â€</div>) : searchHistory.length ? (
                     <>
-                      <div className="suggest-head"><span>Terakhir dicari</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Hapus semua</button></div>
+                      <div className="suggest-head"><span>Recent searches</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Clear all</button></div>
                       {searchHistory.map((h) => <button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}><Clock size={15} /><span>{h}</span><span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span></button>)}
                     </>
-                  ) : <div className="suggest-empty">Belum ada riwayat pencarian.</div>}
+                  ) : <div className="suggest-empty">No search history.</div>}
                 </div>
               )}
             </div>
@@ -954,20 +954,20 @@ export default function App() {
           <div className="page">
             {quickPicks.length > 0 && (
               <section className="shelf">
-                <div className="shelf-head"><div><h2>Pilihan cepat <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Berdasarkan yang sering kamu putar" : "Populer di sekitarmu"}{region?.city ? ` Â· ${region.city}` : ""}</p></div></div>
+                <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}{region?.city ? ` Â· ${region.city}` : ""}</p></div></div>
                 <div className="track-grid">{quickPicks.map((t, i) => <TrackRow key={t.videoId} track={t} context={quickPicks} index={i} />)}</div>
               </section>
             )}
             {HOME_SHELVES.map((s) => <Shelf key={s.id} id={s.id} title={s.title} subtitle={s.subtitle} />)}
             <section className="shelf">
-              <div className="shelf-head"><div><h2>Favourite Music <ChevronRight size={20} /></h2><p>Lagu yang kamu suka</p></div></div>
-              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state"><Heart size={34} /><p>Belum ada lagu favorit</p><span>Tekan ikon â™¥ pada lagu untuk menyimpannya di sini.</span></div>}
+              <div className="shelf-head"><div><h2>Liked Music <ChevronRight size={20} /></h2><p>Songs you like</p></div></div>
+              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state"><Heart size={34} /><p>No liked music yet</p><span>Tekan ikon â™¥ pada lagu untuk menyimpannya di sini.</span></div>}
             </section>
           </div>
         )}
         {activeTab === "favorites" && (
           <div className="page">
-            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music masih kosong</p><span>Semua lagu yang kamu tandai â™¥ akan muncul di sini.</span></div>}
+            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music is empty</p><span>Semua lagu yang kamu tandai â™¥ akan muncul di sini.</span></div>}
           </div>
         )}
         {activeTab === "artist" && (
@@ -991,7 +991,7 @@ export default function App() {
                   <div className="track-grid wide">{artistView.songs.map((t, i) => <TrackRow key={t.videoId} track={t} context={artistView.songs} index={i} />)}</div>
                 </section>
               </>
-            ) : <div className="empty-state big"><User size={44} /><p>Artis tidak ditemukan</p><span>Coba cari nama artis yang lain.</span></div>}
+            ) : <div className="empty-state big"><User size={44} /><p>Artist not found</p><span>Try searching for another artist.</span></div>}
           </div>
         )}
         {(activeTab === "search" || activeTab === "radio") && (
@@ -1004,7 +1004,7 @@ export default function App() {
                     <div className="artist-hero-info">
                       <span className="artist-hero-label"><User size={13} /> Artist</span>
                       <h2>{searchArtist.name}</h2>
-                      <button className="btn-primary sm">Buka halaman artis</button>
+                      <button className="btn-primary sm">Open artist page</button>
                     </div>
                   </div>
                 )}
@@ -1038,7 +1038,7 @@ export default function App() {
                 {profileTab === "appearance" && (
                   <>
                     <div className="setting-block">
-                      <h3>Themes</h3><p className="setting-desc">Ubah tampilan aplikasi.</p>
+                      <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
                       <div className="theme-grid">
                         {[{ id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }, { id: "amoled", label: "Amoled", Icon: Monitor }].map((tOpt) => (
                           <button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
@@ -1050,11 +1050,11 @@ export default function App() {
                       </div>
                     </div>
                     <div className="setting-block">
-                      <h3>Custom CSS</h3><p className="setting-desc">Tempel CSS atau unggah file .css untuk tema buatanmu.</p>
+                      <h3>Custom CSS</h3><p className="setting-desc">Paste CSS or upload a .css file for your custom theme.</p>
                       <textarea className="css-editor" value={customCss} spellCheck={false} onChange={(e) => setCustomCss(e.target.value)} />
                       <div className="setting-actions">
-                        <label className="btn-ghost file-btn"><Upload size={15} /> Unggah .css<input type="file" accept=".css,text/css" hidden onChange={(e) => e.target.files?.[0] && uploadCss(e.target.files[0])} /></label>
-                        <button className="btn-ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS dihapus"); }}>Reset</button>
+                        <label className="btn-ghost file-btn"><Upload size={15} /> Upload .css<input type="file" accept=".css,text/css" hidden onChange={(e) => e.target.files?.[0] && uploadCss(e.target.files[0])} /></label>
+                        <button className="btn-ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS removed"); }}>Reset</button>
                       </div>
                     </div>
                   </>
@@ -1138,16 +1138,16 @@ export default function App() {
       </main>
       {ctxMenu && (
         <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={(e) => e.stopPropagation()}>
-          <button className="ctx-item" onClick={() => { startMix(ctxMenu.track); setCtxMenu(null); }}><Radio size={17} /> Mulai mix</button>
-          <button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Putar setelah ini</button>
-          <button className="ctx-item" onClick={() => { addToQueue(ctxMenu.track); setCtxMenu(null); }}><ListPlus size={17} /> Tambahkan ke antrean</button>
+          <button className="ctx-item" onClick={() => { startMix(ctxMenu.track); setCtxMenu(null); }}><Radio size={17} /> Start mix</button>
+          <button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Play next</button>
+          <button className="ctx-item" onClick={() => { addToQueue(ctxMenu.track); setCtxMenu(null); }}><ListPlus size={17} /> Add to queue</button>
           <div className="ctx-sep" />
-          <button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}><Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} /> {isFavorite(ctxMenu.track.videoId) ? "Hapus dari lagu disukai" : "Tambahkan ke lagu disukai"}</button>
+          <button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}><Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} /> {isFavorite(ctxMenu.track.videoId) ? "Remove from liked music" : "Add to liked music"}</button>
           <button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</button>
-          <button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Buka halaman artis</button>
-          <button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Bagikan</button>
+          <button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Open artist page</button>
+          <button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Share</button>
           <div className="ctx-sep" />
-          <button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Jangan rekomendasikan artis</button>
+          <button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</button>
         </div>
       )}
       {updateInfo && (
@@ -1157,10 +1157,10 @@ export default function App() {
               <RefreshCw size={24} color="var(--accent)" />
               <div>
                 <h3>Music Venue</h3>
-                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Patch : {updateInfo.version}</span>
+                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Version : 2.0 | Patch : {updateInfo.version}</span>
               </div>
             </div>
-            <div className="update-modal-body">Pembaruan tersedia! Restart aplikasi setelah proses selesai.</div>
+            <div className="update-modal-body">{`Changelogs\n[+] Added\n- New feature\n[-] Remove\n- Removed feature\n[~] Fixing\n- Fixed bugs\n[*] Improvement\n- Improved feature`}</div>
             <div className="update-modal-actions">
               <button className="btn-ghost" onClick={() => setUpdateInfo(null)}>Later</button>
               <button className="btn-primary" onClick={runUpdate}>Update Now</button>
