@@ -1,56 +1,97 @@
-# Music Venue (Tauri + React + Typescript)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/hamaddddds/MusicAPP/main/public/icon.png" width="120" alt="Music Venue Logo" />
+  <h1>🎵 Music Venue</h1>
+  <p><strong>Aplikasi pemutar musik modern berbasis YouTube Music dengan estetika Apple Music dan fitur personalisasi mutakhir.</strong></p>
+  
+  <p>
+    <img src="https://img.shields.io/badge/Tauri-v2-FFC131?style=for-the-badge&logo=tauri&logoColor=white" alt="Tauri" />
+    <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React" />
+    <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  </p>
+</div>
 
-Music player berbasis YouTube Music dengan UI ala Apple Music.
+---
 
-## Fitur
+## ✨ Fitur Unggulan
 
-- **Playback**: play/pause (klik atau **Spasi**), next/prev, seek, volume.
-- **Repeat**: off → repeat-all (loop antrean) → repeat-one (ulang 1 lagu). Tombol di player bar (atau tekan **R**).
-- **Shuffle**: off → random → **smart** (menyebar lagu artis yang sama biar variatif). Tombol shuffle (atau **S**).
-- **Lirik tersinkron** (LRC) via [lrclib.net](https://lrclib.net) — highlight baris aktif + klik baris untuk loncat. Buka lewat Now Playing (**L**).
-- **Now Playing** — tampilan penuh dengan artwork besar, background blur, dan lirik.
-- **Sections**: New Music, Trending Now, Viral Hits, dan Favourite Music.
-- **Liked Music** — tandai ♥, tersimpan di `localStorage`.
-- **Queue** — lihat & lompat ke lagu berikutnya.
-- **Media keys OS / lock screen** via Media Session API.
-- **Shortcut keyboard**: `Space` play/pause · `←/→` seek ±5s · `↑/↓` volume · `N/P` next/prev · `S` shuffle · `R` repeat · `M` mute · `L` lirik · `Esc` tutup.
+Music Venue menggabungkan kecepatan Tauri dan kekuatan metadata YouTube Music untuk menghadirkan pengalaman mendengarkan yang premium:
 
-## Streaming per platform
+### 🎧 Playback & Kontrol Superior
+- **Desain UI Premium:** Estetika cantik nan responsif dengan *glassmorphism*, terinspirasi dari antarmuka modern Apple Music.
+- **Lirik Real-Time Tersinkron (LRC):** Integrasi lirik dari `lrclib.net` dengan visual baris yang sinkron dan bisa diklik untuk melompat ke waktu (*seek*) tersebut.
+- **Smart Shuffle & Repeat Mode:** Mainkan lagumu secara acak dengan algoritma cerdas, atau putar ulang lagu kesayanganmu.
+- **Dukungan Media Keys:** Integrasi mulus dengan *Media Session API* dan *lock screen* sistem operasi kamu.
 
-Metadata (search/home) via `ytmusic-api`. Cara memutar audio **berbeda per platform**:
+### 🤖 Rekomendasi Cerdas "For You" (BARU!)
+- Beranda yang dipersonalisasi! Melalui algoritma **"Mix buat kamu"**, Music Venue mempelajari *top played history* lokal kamu dan mengambil data *Radio* asli dari YouTube Music untuk menyajikan trek yang benar-benar kamu nikmati.
+- **Tangga Lagu Akurat:** Selalu *up-to-date* dengan Chart Lokal berdasarkan wilayah (Geo-IP) dan Chart Global dari YouTube Music.
 
-- **🖥️ Desktop (Tauri) — gratis, tanpa API key.** Meng-*bundle* `yt-dlp` sebagai sidecar dan menjalankannya **lokal di mesin user**. Karena jalan di IP residential user, URL audio yang dihasilkan bisa langsung diputar `<audio>` (URL googlevideo terkunci ke IP pengekstrak — makanya ekstraksi dari server datacenter selalu kena 403, tapi dari mesin user aman).
-- **🌐 Web (Vercel) — server datacenter, butuh provider berbayar.** YouTube memblok IP datacenter, jadi web memakai [ytdlp.online](https://ytdlp.online) (berbayar, set `YTDLP_API_KEY`) dengan fallback Piped. Tanpa key, web hanya untuk browse/search.
+### 🎮 Integrasi Discord RPC (BARU!)
+- Pamerkan selera musikmu ke teman-teman di Discord! Fitur *Discord Rich Presence* internal akan menampilkan lagu yang sedang kamu putar secara *real-time* lengkap dengan pratinjau profil dan *progress bar*. 
+- **Persistensi State:** Posisi durasi dan level volumemu selalu tersimpan walau aplikasi di-*restart*!
 
-## Desktop: sidecar yt-dlp
+### 🎨 Kostumisasi & Fitur Lainnya
+- **Dukungan Tema:** Pilih antara *Light*, *Dark*, dan *Amoled* untuk kenyamanan mata.
+- **Custom CSS:** Sisipkan gaya CSS buatanmu sendiri untuk mengubah nuansa aplikasi.
+- **Auto-Update Internal:** Pemeriksa pembaruan langsung dari dalam aplikasi (Desktop only).
+- **Favorit & Antrean (Queue):** Simpan lagu ke daftar putar lokal (`localStorage`) dan kontrol antrean dengan mudah.
 
-- `scripts/download-ytdlp.mjs` mengunduh binary `yt-dlp` terbaru ke `src-tauri/binaries/yt-dlp-<target-triple>[.exe]` (binary di-*gitignore*, diunduh otomatis lewat hook `beforeDev`/`beforeBuild`).
-- Command Rust `resolve_audio_url(video_id)` di `src-tauri/src/lib.rs` menjalankan sidecar `yt-dlp -f bestaudio/best -g` dan mengembalikan URL audio langsung.
-- Frontend (`src/App.tsx`) memanggil command itu via `invoke` saat berjalan di Tauri; di web memakai `/api`.
-- yt-dlp perlu update berkala (YouTube sering berubah). Karena binary diunduh saat build, tiap rilis baru otomatis dapat yt-dlp terbaru. Untuk paksa update lokal: `FORCE_YTDLP=1 node scripts/download-ytdlp.mjs`.
+---
 
-## Web: arsitektur streaming
+## 🚀 Streaming per Platform
 
-1. Frontend memanggil `/api?action=stream&videoId=...`
-2. Backend (Vercel serverless, `api/index.js`) mencoba provider berurutan:
-   - **ytdlp.online `/video/info`** — ambil URL format audio langsung (cepat, tapi URL googlevideo bisa terkunci ke IP server; kalau gagal diputar, frontend otomatis retry dengan `mode=download`)
-   - **ytdlp.online `/download` (mp3)** — konversi async di server mereka; backend menunggu ±6 detik, kalau belum selesai frontend polling `?action=stream_status&taskId=...` sampai `download_url` siap (file disimpan ±1 jam)
-   - **Piped instances** — fallback terakhir (mayoritas instance publik sudah mati per 2026)
-3. Frontend memutar URL hasilnya lewat elemen `<audio>` native.
+Aplikasi ini menggunakan kombinasi *API* lokal dan `ytmusicapi` untuk meta data. Cara pemutaran audio **berbeda bergantung pada platform**:
 
-## Setup wajib: API key ytdlp.online
+### 🖥️ Desktop (Tauri) — *Lancar, Gratis, Tanpa API Key*
+Berjalan langsung di mesinmu! Aplikasi mem-*bundle* `yt-dlp` sebagai *sidecar* lokal untuk mengambil *stream audio* murni tanpa hambatan pemblokiran *datacenter*.
+- URL audio bisa langsung diputar karena menggunakan IP *residential* kamu (aman dari 403 Forbidden).
+- Binary `yt-dlp` akan otomatis diperbarui setiap kamu mem-*build* aplikasi lewat *hook* `beforeDev`/`beforeBuild`.
 
-Endpoint stream **tidak akan jalan tanpa API key** ytdlp.online (butuh Developer Plan — ambil key dari halaman Profile setelah subscribe).
+### 🌐 Web (Vercel) — *Server Datacenter, Membutuhkan API Key*
+Karena IP *datacenter* Vercel diblokir oleh YouTube, web menggunakan layanan pihak ketiga berbayar (seperti [ytdlp.online](https://ytdlp.online)) dengan *fallback* Piped. 
+- Tanpa *API Key*, versi Web hanya dapat digunakan untuk melakukan *browse* dan pencarian metadata, namun audio tidak bisa diputar.
+- Proses konversi dilakukan secara *asynchronous* melalui `api/index.js`.
 
-Di Vercel: **Project → Settings → Environment Variables**, tambahkan:
+---
 
-| Name | Value |
+## ⚙️ Setup Wajib: API Key YTDLP (Khusus Web)
+
+Bila Anda berencana melakukan *deploy* aplikasi ini ke Vercel untuk digunakan via *Web Browser*, pemutaran lagu tidak akan berjalan tanpa API Key ytdlp.online.
+
+Di halaman **Project → Settings → Environment Variables** Vercel, tambahkan:
+
+| Name | Keterangan |
 |------|-------|
-| `YTDLP_API_KEY` | API key kamu |
-| `YTDLP_API_BASE` | *(opsional)* default `https://ytdlp.online/open/v1` |
+| `YTDLP_API_KEY` | API key aktif kamu (wajib Developer Plan) |
+| `YTDLP_API_BASE` | *(Opsional)* default: `https://ytdlp.online/open/v1` |
 
-Lalu redeploy. Tanpa key, `?action=stream` mengembalikan 404 dengan pesan error yang menjelaskan ini.
+*(Abaikan langkah ini jika kamu hanya akan menggunakan aplikasi versi Desktop / Tauri).*
 
-## Recommended IDE Setup
+---
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## ⌨️ Shortcut Keyboard
+
+Bernavigasi bagaikan *power-user*:
+- `Spasi` : Play / Pause
+- `←` / `→` : Mundur / Maju ±5 detik
+- `↑` / `↓` : Naikkan / Turunkan Volume
+- `N` / `P` : Lagu Selanjutnya / Sebelumnya
+- `S` : Ganti mode Shuffle
+- `R` : Ganti mode Repeat
+- `M` : Mute / Unmute
+- `L` : Tampilkan Lirik
+- `Esc` : Tutup layar penuh (Now Playing)
+
+---
+
+## 🛠️ Recommended IDE Setup
+
+Bagi kamu yang ingin berkontribusi atau melakukan kustomisasi kode:
+- [VS Code](https://code.visualstudio.com/) 
+- [Tauri Extension](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) 
+- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) 
+
+---
+<div align="center">
+  <i>Dibuat untuk pengalaman mendengarkan musik terbaik tanpa distraksi.</i>
+</div>
