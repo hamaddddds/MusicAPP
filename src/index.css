@@ -494,17 +494,7 @@ button { font-family: inherit; }
 .ctx-item.danger svg { color: #ff5a6a; }
 .ctx-sep { height: 1px; background: var(--border); margin: 5px 8px; }
 
-  border: 1px solid var(--border); box-shadow: 0 16px 40px rgba(0,0,0,0.55);
-}
-.update-icon {
-  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--accent-soft); color: var(--accent);
-}
-.update-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
-.update-text strong { font-size: 14px; font-weight: 600; }
-.update-text span { font-size: 12.5px; color: var(--text-secondary); }
-.update-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
 .btn-ghost, .btn-primary {
   border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; display: inline-flex; align-items: center; justify-content: center;
   font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s ease;
@@ -701,3 +691,4 @@ button { font-family: inherit; }
 .update-modal-header h3 { font-size: 18px; font-weight: 600; margin: 0; }
 .update-modal-body { font-size: 14px; color: var(--text-secondary); line-height: 1.5; white-space: pre-line; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; font-family: monospace;}
 .update-modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
+
