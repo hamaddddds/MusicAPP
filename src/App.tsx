@@ -1089,6 +1089,28 @@ export default function App() {
                 {profileTab === "appearance" && (
                   <>
                     <div className="setting-block">
+                      <h3>Profile Banner</h3><p className="setting-desc">Upload a custom banner for your profile. (GIF, PNG, JPG)</p>
+                      <div className="setting-actions">
+                        <label className="btn-primary file-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                          <Upload size={15} /> Add banner
+                          <input type="file" accept="image/png, image/jpeg, image/gif, image/webp" hidden onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                const b64 = ev.target?.result as string;
+                                setProfile(p => ({ ...p, banner: b64 }));
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }} />
+                        </label>
+                        {profile.banner && (
+                          <button className="btn-ghost" onClick={() => setProfile(p => ({ ...p, banner: null }))}>Remove</button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="setting-block">
                       <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
                       <div className="theme-grid">
                         {[{ id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }, { id: "amoled", label: "Amoled", Icon: Monitor }].map((tOpt) => (
