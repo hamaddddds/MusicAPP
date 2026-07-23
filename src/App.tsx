@@ -161,7 +161,7 @@ const LanguageSelect = ({ lang, setLang }: { lang: Language, setLang: (l: Langua
   const active = options.find(o => o.value === lang)?.label;
   return (
     <div ref={ref} style={{ position: 'relative', width: 220, fontSize: 13, userSelect: 'none' }}>
-      <div 
+      <div
         onClick={() => setOpen(!open)}
         style={{ padding: '10px 14px', background: 'var(--input-bg)', color: '#fff', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
       >
@@ -170,13 +170,13 @@ const LanguageSelect = ({ lang, setLang }: { lang: Language, setLang: (l: Langua
       </div>
       <AnimatePresence>
         {open && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.15 }}
             style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: '#1c1c1c', border: '1px solid #333', borderRadius: 8, overflow: 'hidden', zIndex: 100, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
           >
             {options.map(o => (
-              <div 
-                key={o.value} 
+              <div
+                key={o.value}
                 onClick={() => { setLang(o.value as Language); localStorage.setItem("mv:lang", o.value); setOpen(false); }}
                 style={{ padding: '10px 14px', cursor: 'pointer', background: lang === o.value ? 'rgba(255,255,255,0.05)' : 'transparent', color: lang === o.value ? '#fff' : '#aaa', transition: '0.2s' }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
@@ -287,7 +287,7 @@ export default function App() {
     try {
       const payloadStr = atob(base64Payload);
       const data = JSON.parse(payloadStr);
-      
+
       setProfile((p) => ({
         ...p,
         name: data.name || p.name,
@@ -297,7 +297,7 @@ export default function App() {
         bio: data.bio || p.bio || null,
         accent_color: data.accent_color || p.accent_color || null,
       }));
-      
+
       setAccounts((prev) => {
         const filtered = prev.filter(a => a.provider !== data.provider);
         return [...filtered, {
@@ -310,7 +310,7 @@ export default function App() {
           banner: data.banner || null,
         }];
       });
-      
+
       flashToast(`Berhasil masuk dengan ${data.provider}`);
     } catch (e) {
       console.error("Failed to parse auth payload", e);
@@ -385,15 +385,15 @@ export default function App() {
     try {
       const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
       const d = await res.json();
-      
+
       const artists = d.filter((x: any) => x.resultType === "artist");
       const songs = d.filter((x: any) => x.resultType === "song");
       const videos = d.filter((x: any) => x.resultType === "video");
 
-      setSearchArtist(artists.length > 0 ? { 
-        artistId: artists[0].browseId || (artists[0].artists && artists[0].artists[0]?.id), 
-        name: artists[0].artist || (artists[0].artists && artists[0].artists[0]?.name), 
-        thumbnails: artists[0].thumbnails 
+      setSearchArtist(artists.length > 0 ? {
+        artistId: artists[0].browseId || (artists[0].artists && artists[0].artists[0]?.id),
+        name: artists[0].artist || (artists[0].artists && artists[0].artists[0]?.name),
+        thumbnails: artists[0].thumbnails
       } : null);
       setSearchPopular(mapTracks(songs));
       setSearchOther(mapTracks(videos));
@@ -432,14 +432,11 @@ export default function App() {
         const d = await (await fetch(`${API_URL}/artist/${encodeURIComponent(aId)}`)).json();
         let songs = [...(d.songs?.results || []), ...(d.singles?.results || [])];
         
-        // FALLBACK: If YouTube Music natively restricts this artist's profile to very few songs,
-        // forcefully fetch their full popular discography via the search endpoint.
         if (songs.length <= 10 && d.name) {
           try {
             const fallbackRes = await fetch(`${API_URL}/search?q=${encodeURIComponent(d.name)}&filter=songs`);
             const fallbackHits = await fallbackRes.json();
             if (Array.isArray(fallbackHits) && fallbackHits.length > songs.length) {
-              // Ensure we tag these fallback songs with the current artist if ytmusicapi misses it
               fallbackHits.forEach((s: any) => {
                 if (!s.artists || s.artists[0]?.name === "Song") {
                   s.artists = [{ name: d.name, id: aId }];
@@ -516,13 +513,13 @@ export default function App() {
       const now = Math.floor(Date.now() / 1000);
       let startTime: number | null = null;
       let endTime: number | null = null;
-      
+
       // If it's playing and we have duration, set start/end timestamps so Discord ticks the time
       if (audio && !audio.paused && audio.duration) {
         startTime = now - Math.floor(audio.currentTime);
         endTime = startTime + Math.floor(audio.duration);
       }
-      
+
       await invoke("set_rpc_activity", {
         details: track.title,
         state: track.artist,
@@ -538,7 +535,7 @@ export default function App() {
 
   const DiscordIcon = ({ size = 24 }: { size?: number }) => (
     <svg width={size} height={size} viewBox="0 0 127.14 96.36" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-      <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14c0,0,.04-.06.05-.09h0c2.69-28.53-3.69-52.05-19.64-72.12ZM42.68,68.3c-5.72,0-10.43-5.26-10.43-11.7s4.65-11.7,10.43-11.7c5.82,0,10.51,5.3,10.43,11.7,0,6.44-4.65,11.7-10.43,11.7Zm41.72,0c-5.72,0-10.43-5.26-10.43-11.7s4.65-11.7,10.43-11.7c5.82,0,10.51,5.3,10.43,11.7,0,6.44-4.61,11.7-10.43,11.7Z"/>
+      <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14c0,0,.04-.06.05-.09h0c2.69-28.53-3.69-52.05-19.64-72.12ZM42.68,68.3c-5.72,0-10.43-5.26-10.43-11.7s4.65-11.7,10.43-11.7c5.82,0,10.51,5.3,10.43,11.7,0,6.44-4.65,11.7-10.43,11.7Zm41.72,0c-5.72,0-10.43-5.26-10.43-11.7s4.65-11.7,10.43-11.7c5.82,0,10.51,5.3,10.43,11.7,0,6.44-4.61,11.7-10.43,11.7Z" />
     </svg>
   );
 
@@ -601,20 +598,20 @@ export default function App() {
     }
 
     if (p.id === "email") {
-       flashToast("Login email belum tersedia.");
-       return;
+      flashToast("Login email belum tersedia.");
+      return;
     }
 
     let authUrl = `${API_URL}/auth?action=login&provider=${p.id}`;
     if (isTauri) {
-      try { 
+      try {
         // Spin up temporary dev server and get port
         const port = await invoke<number>("start_oauth_server");
         authUrl += `&port=${port}`;
-        await openUrl(authUrl); 
-      } catch (e) { 
-        console.error(e); 
-        flashToast("Gagal membuka browser."); 
+        await openUrl(authUrl);
+      } catch (e) {
+        console.error(e);
+        flashToast("Gagal membuka browser.");
       }
     } else {
       const w = 500;
@@ -663,10 +660,10 @@ export default function App() {
             if (urls.length > 0) {
               const url = new URL(urls[0]);
               if (url.protocol === "musicvenue:") {
-                 const payload = url.searchParams.get("payload");
-                 const error = url.searchParams.get("error");
-                 if (payload) handleAuthPayload(payload);
-                 else if (error) flashToast(`Gagal login: ${error}`);
+                const payload = url.searchParams.get("payload");
+                const error = url.searchParams.get("error");
+                if (payload) handleAuthPayload(payload);
+                else if (error) flashToast(`Gagal login: ${error}`);
               }
             }
           }).catch(console.error);
@@ -833,7 +830,7 @@ export default function App() {
   const handleEnded = useCallback(() => {
     if (repeatRef.current === "one" && audioRef.current) {
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
+      audioRef.current.play().catch(() => { });
       return;
     }
     advance(false);
@@ -1182,9 +1179,9 @@ export default function App() {
         <div className="sidebar-bottom">
           <button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
             {profile.avatar ? (
-               <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" />
+              <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" />
             ) : (
-               <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
+              <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
             )}
             <div className="profile-brief"><span className="profile-name">{profile.name || "Guest"}</span><span className="profile-sub">Profil &amp; Setelan</span></div>
             <Settings size={16} />
@@ -1371,7 +1368,7 @@ export default function App() {
             </motion.div>
 
             <AnimatePresence mode="wait">
-              <motion.div 
+              <motion.div
                 key={profileTab}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1379,176 +1376,176 @@ export default function App() {
                 transition={{ duration: 0.2 }}
                 className="profile-content"
               >
-              {profileTab === "appearance" && (
-                <>
-                  <div className="setting-block">
-                    <h3>{t("themes")}</h3><p className="setting-desc">Ubah tampilan aplikasi. Dark abu-abu bikin efek kaca player lebih terlihat.</p>
-                    <div className="theme-grid">
-                      {[
-                        { id: "light", label: t("themeLight"), Icon: Sun },
-                        { id: "dark", label: t("themeDark"), Icon: Moon },
-                        { id: "amoled", label: t("themeAmoled"), Icon: Monitor },
-                      ].map((tOpt) => (
-                        <button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
-                          <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
-                          <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
-                          {theme === tOpt.id && <Check size={16} className="theme-check" />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="setting-block">
-                    <h3>Custom CSS</h3><p className="setting-desc">Tempel CSS atau unggah file .css untuk tema buatanmu. Langsung diterapkan & tersimpan.</p>
-                    <textarea className="css-editor" value={customCss} spellCheck={false} placeholder={":root { --accent: #7c3aed; }"} onChange={(e) => setCustomCss(e.target.value)} />
-                    <div className="setting-actions">
-                      <label className="btn-ghost file-btn"><Upload size={15} /> Unggah .css<input type="file" accept=".css,text/css" hidden onChange={(e) => e.target.files?.[0] && uploadCss(e.target.files[0])} /></label>
-                      <button className="btn-ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS dihapus"); }}>Reset</button>
-                    </div>
-                  </div>
-                  <div className="setting-block">
-                    <h3>{t("language")}</h3>
-                    <div className="setting-actions">
-                      <LanguageSelect lang={lang} setLang={setLang} />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {profileTab === "accounts" && (
-                <>
-                  <div className="setting-block">
-                    <h3>{t("accounts")}</h3>
-                    <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi.</p>
-                    <div className="provider-list">
-                      {PROVIDERS.map((p) => {
-                        const connected = accounts.find((a) => a.provider === p.id);
-                        return (
-                          <button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
-                            {connected?.avatar ? (
-                              <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
-                            ) : p.id === "discord" ? (
-                              <DiscordIcon size={18} />
-                            ) : (
-                              <p.Icon size={18} />
-                            )}
-                            <span className="prov-name">{p.label}</span>
-                            {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">{t("connectAccount")}</span>}
+                {profileTab === "appearance" && (
+                  <>
+                    <div className="setting-block">
+                      <h3>{t("themes")}</h3><p className="setting-desc">Ubah tampilan aplikasi. Dark abu-abu bikin efek kaca player lebih terlihat.</p>
+                      <div className="theme-grid">
+                        {[
+                          { id: "light", label: t("themeLight"), Icon: Sun },
+                          { id: "dark", label: t("themeDark"), Icon: Moon },
+                          { id: "amoled", label: t("themeAmoled"), Icon: Monitor },
+                        ].map((tOpt) => (
+                          <button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
+                            <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
+                            <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
+                            {theme === tOpt.id && <Check size={16} className="theme-check" />}
                           </button>
-                        );
-                      })}
-                    </div>
-                    {isTauri && (
-                      <div style={{ marginTop: 12 }}>
-                        <input 
-                          type="text" 
-                          placeholder="Mode Dev: Paste Token Manual di sini..." 
-                          style={{ width: '100%', padding: '10px 14px', background: '#111', border: '1px solid #333', borderRadius: 8, color: '#fff', fontSize: 13 }}
-                          onChange={(e) => {
-                            const val = e.target.value.trim();
-                            if (val.length > 50) {
-                              handleAuthPayload(val);
-                              e.target.value = '';
-                            }
-                          }}
-                        />
+                        ))}
                       </div>
-                    )}
-                  </div>
-                  <div className="setting-block">
-                    <h3>Cadangan Konfigurasi</h3><p className="setting-desc">Simpan semua setelan (tema, CSS, liked music, RPC) ke file dan pulihkan kapan saja — berfungsi penuh tanpa backend.</p>
-                    <div className="setting-actions">
-                      <button className="btn-primary" onClick={exportConfig}><Download size={15} /> {t("export")}</button>
-                      <label className="btn-ghost file-btn"><Upload size={15} /> {t("import")}<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
                     </div>
-                  </div>
-                </>
-              )}
+                    <div className="setting-block">
+                      <h3>Custom CSS</h3><p className="setting-desc">Tempel CSS atau unggah file .css untuk tema buatanmu. Langsung diterapkan & tersimpan.</p>
+                      <textarea className="css-editor" value={customCss} spellCheck={false} placeholder={":root { --accent: #7c3aed; }"} onChange={(e) => setCustomCss(e.target.value)} />
+                      <div className="setting-actions">
+                        <label className="btn-ghost file-btn"><Upload size={15} /> Unggah .css<input type="file" accept=".css,text/css" hidden onChange={(e) => e.target.files?.[0] && uploadCss(e.target.files[0])} /></label>
+                        <button className="btn-ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS dihapus"); }}>Reset</button>
+                      </div>
+                    </div>
+                    <div className="setting-block">
+                      <h3>{t("language")}</h3>
+                      <div className="setting-actions">
+                        <LanguageSelect lang={lang} setLang={setLang} />
+                      </div>
+                    </div>
+                  </>
+                )}
 
-              {profileTab === "discord" && (
-                <div className="setting-block">
-                  <h3>{t("rpcTitle")}</h3>
-                  <p className="setting-desc">{t("rpcDesc")}{!isTauri && ` ${t("rpcDesktopOnly")}`}</p>
-                  
-                  {(() => {
-                    const dc = accounts.find(a => a.provider === "discord");
-                    if (dc) {
-                      return (
-                        <div className="discord-profile-card" style={{ marginTop: 16, background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #222' }}>
-                          <div style={{ height: 120, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
-                            <div style={{ position: 'absolute', bottom: -40, left: 24 }}>
-                              <img src={dc.avatar || ''} alt="" style={{ width: 80, height: 80, borderRadius: '50%', border: '6px solid #111', objectFit: 'cover' }} />
-                            </div>
-                          </div>
-                          <div style={{ padding: '46px 24px 20px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
-                            </div>
-                            <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} · {dc.id}</span>
-                            {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 12, lineHeight: 1.5 }}>{dc.bio}</p>}
-                          </div>
+                {profileTab === "accounts" && (
+                  <>
+                    <div className="setting-block">
+                      <h3>{t("accounts")}</h3>
+                      <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi.</p>
+                      <div className="provider-list">
+                        {PROVIDERS.map((p) => {
+                          const connected = accounts.find((a) => a.provider === p.id);
+                          return (
+                            <button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
+                              {connected?.avatar ? (
+                                <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                              ) : p.id === "discord" ? (
+                                <DiscordIcon size={18} />
+                              ) : (
+                                <p.Icon size={18} />
+                              )}
+                              <span className="prov-name">{p.label}</span>
+                              {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">{t("connectAccount")}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {isTauri && (
+                        <div style={{ marginTop: 12 }}>
+                          <input
+                            type="text"
+                            placeholder="Mode Dev: Paste Token Manual di sini..."
+                            style={{ width: '100%', padding: '10px 14px', background: '#111', border: '1px solid #333', borderRadius: 8, color: '#fff', fontSize: 13 }}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              if (val.length > 50) {
+                                handleAuthPayload(val);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
                         </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                  
-                  <div className="setting-actions" style={{ marginTop: 16 }}>
-                    {accounts.some(a => a.provider === "discord") ? (
-                      <>
-                        {rpcStatus === "on"
-                          ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {t("disconnectRpc")}</button>
-                          : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? t("connecting") : t("connectRpc")}</button>}
-                        <button className="btn-ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>{t("disconnectAccount")}</button>
-                      </>
-                    ) : (
-                      <button className="btn-primary" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> {t("loginDiscord")}</button>
-                    )}
-                    <span className={`rpc-dot ${rpcStatus}`} />
-                    <span className="rpc-status-text">{rpcStatus === "on" ? t("rpcStatusConnected") : rpcStatus === "connecting" ? t("rpcStatusConnecting") : rpcStatus === "error" ? t("rpcStatusError") : t("rpcStatusOff")}</span>
-                  </div>
-                  <div className="rpc-preview">
-                    <div className="rpc-preview-head">{t("preview").toUpperCase()}</div>
-                    <div className="rpc-card">
-                      <div className="rpc-img-wrapper">
-                        <img src={currentTrack?.artwork || "https://picsum.photos/120"} className={!currentTrack?.artwork ? "rpc-img skeleton" : "rpc-img"} alt="" />
-                        {profile.avatar && accounts.some(a => a.provider === "discord") && (
-                          <img src={profile.avatar} className="rpc-small-img" alt="Discord Avatar" />
-                        )}
+                      )}
+                    </div>
+                    <div className="setting-block">
+                      <h3>Cadangan Konfigurasi</h3><p className="setting-desc">Simpan semua setelan (tema, CSS, liked music, RPC) ke file dan pulihkan kapan saja — berfungsi penuh tanpa backend.</p>
+                      <div className="setting-actions">
+                        <button className="btn-primary" onClick={exportConfig}><Download size={15} /> {t("export")}</button>
+                        <label className="btn-ghost file-btn"><Upload size={15} /> {t("import")}<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
                       </div>
-                      <div className="rpc-lines">
-                        <span className="rpc-app">MUSIC VENUE</span>
-                        <span className="rpc-details">{currentTrack?.title || "Belum ada lagu diputar"}</span>
-                        <span className="rpc-state">{currentTrack?.artist || "—"}</span>
-                        <span className="rpc-time">{isPlaying ? "sedang diputar" : "dijeda"}</span>
+                    </div>
+                  </>
+                )}
+
+                {profileTab === "discord" && (
+                  <div className="setting-block">
+                    <h3>{t("rpcTitle")}</h3>
+                    <p className="setting-desc">{t("rpcDesc")}{!isTauri && ` ${t("rpcDesktopOnly")}`}</p>
+
+                    {(() => {
+                      const dc = accounts.find(a => a.provider === "discord");
+                      if (dc) {
+                        return (
+                          <div className="discord-profile-card" style={{ marginTop: 16, background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #222' }}>
+                            <div style={{ height: 120, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
+                              <div style={{ position: 'absolute', bottom: -40, left: 24 }}>
+                                <img src={dc.avatar || ''} alt="" style={{ width: 80, height: 80, borderRadius: '50%', border: '6px solid #111', objectFit: 'cover' }} />
+                              </div>
+                            </div>
+                            <div style={{ padding: '46px 24px 20px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
+                              </div>
+                              <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} · {dc.id}</span>
+                              {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 12, lineHeight: 1.5 }}>{dc.bio}</p>}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    <div className="setting-actions" style={{ marginTop: 16 }}>
+                      {accounts.some(a => a.provider === "discord") ? (
+                        <>
+                          {rpcStatus === "on"
+                            ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {t("disconnectRpc")}</button>
+                            : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? t("connecting") : t("connectRpc")}</button>}
+                          <button className="btn-ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>{t("disconnectAccount")}</button>
+                        </>
+                      ) : (
+                        <button className="btn-primary" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> {t("loginDiscord")}</button>
+                      )}
+                      <span className={`rpc-dot ${rpcStatus}`} />
+                      <span className="rpc-status-text">{rpcStatus === "on" ? t("rpcStatusConnected") : rpcStatus === "connecting" ? t("rpcStatusConnecting") : rpcStatus === "error" ? t("rpcStatusError") : t("rpcStatusOff")}</span>
+                    </div>
+                    <div className="rpc-preview">
+                      <div className="rpc-preview-head">{t("preview").toUpperCase()}</div>
+                      <div className="rpc-card">
+                        <div className="rpc-img-wrapper">
+                          <img src={currentTrack?.artwork || "https://picsum.photos/120"} className={!currentTrack?.artwork ? "rpc-img skeleton" : "rpc-img"} alt="" />
+                          {profile.avatar && accounts.some(a => a.provider === "discord") && (
+                            <img src={profile.avatar} className="rpc-small-img" alt="Discord Avatar" />
+                          )}
+                        </div>
+                        <div className="rpc-lines">
+                          <span className="rpc-app">MUSIC VENUE</span>
+                          <span className="rpc-details">{currentTrack?.title || "Belum ada lagu diputar"}</span>
+                          <span className="rpc-state">{currentTrack?.artist || "—"}</span>
+                          <span className="rpc-time">{isPlaying ? "sedang diputar" : "dijeda"}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {profileTab === "updates" && (
-                <div className="setting-block">
-                  <h3>{t("update")}</h3>
-                  <p className="setting-desc">Versi saat ini: <b>{coreVersion || "web"}</b></p>
-                  <div className="setting-actions">
-                    <button className="btn-primary" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} />
-                      {isCheckingUpdate ? t("checkingUpdate") : t("checkUpdate")}
-                    </button>
-                    {updateInfo && <button className="btn-ghost" onClick={runUpdate}>Perbarui ke {updateInfo.version}</button>}
+                {profileTab === "updates" && (
+                  <div className="setting-block">
+                    <h3>{t("update")}</h3>
+                    <p className="setting-desc">Versi saat ini: <b>{coreVersion || "web"}</b></p>
+                    <div className="setting-actions">
+                      <button className="btn-primary" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} />
+                        {isCheckingUpdate ? t("checkingUpdate") : t("checkUpdate")}
+                      </button>
+                      {updateInfo && <button className="btn-ghost" onClick={runUpdate}>Perbarui ke {updateInfo.version}</button>}
+                    </div>
+                    {updateStatus && <p className="setting-hint accent">{updateStatus === "Kamu sudah memakai versi terbaru." ? t("upToDate") : updateStatus}</p>}
+                    <p className="setting-hint">{t("updateHint")}</p>
                   </div>
-                  {updateStatus && <p className="setting-hint accent">{updateStatus === "Kamu sudah memakai versi terbaru." ? t("upToDate") : updateStatus}</p>}
-                  <p className="setting-hint">{t("updateHint")}</p>
-                </div>
-              )}
+                )}
 
-              {profileTab === "about" && (
-                <div className="setting-block">
-                  <h3>Music Venue</h3>
-                  <p className="setting-desc">Pemutar musik bergaya Apple Music berbasis YouTube Music. Metadata via ytmusic-api, audio via yt-dlp (desktop), lirik via lrclib.net.</p>
-                  <p className="setting-hint">Dibuat dengan Tauri + React. Auto-update aktif untuk versi desktop.</p>
-                </div>
-              )}
+                {profileTab === "about" && (
+                  <div className="setting-block">
+                    <h3>Music Venue</h3>
+                    <p className="setting-desc">Pemutar musik bergaya Apple Music berbasis YouTube Music. Metadata via ytmusic-api, audio via yt-dlp (desktop), lirik via lrclib.net.</p>
+                    <p className="setting-hint">Dibuat dengan Tauri + React. Auto-update aktif untuk versi desktop.</p>
+                  </div>
+                )}
               </motion.div>
             </AnimatePresence>
           </div>
