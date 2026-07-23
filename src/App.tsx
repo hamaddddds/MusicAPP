@@ -191,6 +191,7 @@ export default function App() {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [justUpdatedChangelog, setJustUpdatedChangelog] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
 
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
@@ -1150,7 +1151,26 @@ export default function App() {
           <button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</button>
         </div>
       )}
-      {updateInfo && (
+      {justUpdatedChangelog && (
+        <div className="update-modal-overlay" style={{ zIndex: 10000 }}>
+          <motion.div className="update-modal" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+            <div className="update-modal-header">
+              <RefreshCw size={24} color="var(--accent)" />
+              <div>
+                <h3>Update Successful!</h3>
+                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Music Venue has been updated to the latest version.</span>
+              </div>
+            </div>
+            <div className="update-modal-body" style={{ whiteSpace: "pre-wrap" }}>
+              {justUpdatedChangelog}
+            </div>
+            <div className="update-modal-actions">
+              <button className="btn-primary" onClick={() => setJustUpdatedChangelog(null)} style={{ width: "100%" }}>Continue</button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {updateInfo && !justUpdatedChangelog && (
         <div className="update-modal-overlay">
           <motion.div className="update-modal" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
             <div className="update-modal-header">
