@@ -144,7 +144,7 @@ function artistScores(history: Record<string, HistEntry>): [string, number][] {
 
 export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(() => load("mv:last-track", null));
   const [activeTab, setActiveTab] = useState("home");
   const [activeShelf, setActiveShelf] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -176,7 +176,7 @@ export default function App() {
   const [updateStatus, setUpdateStatus] = useState<string>("");
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(() => parseFloat(localStorage.getItem("mv:last-time") || "0"));
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
@@ -199,9 +199,9 @@ export default function App() {
   const [lyricsLoading, setLyricsLoading] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
-  const orderRef = useRef<Track[]>([]);
-  const posRef = useRef(0);
-  const contextRef = useRef<Track[]>([]);
+  const orderRef = useRef<Track[]>(load("mv:last-order", []));
+  const posRef = useRef(load("mv:last-pos", 0));
+  const contextRef = useRef<Track[]>(load("mv:last-context", []));
   const currentTrackRef = useRef<Track | null>(null);
   const durationRef = useRef(0);
   const repeatRef = useRef<RepeatMode>("off");
@@ -217,6 +217,16 @@ export default function App() {
   useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
   useEffect(() => { repeatRef.current = repeatMode; }, [repeatMode]);
+  useEffect(() => { localStorage.setItem("mv:last-track", JSON.stringify(currentTrack)); }, [currentTrack]);
+  useEffect(() => { 
+    const t = setInterval(() => { 
+      if (audioRef.current && !audioRef.current.paused) localStorage.setItem("mv:last-time", audioRef.current.currentTime.toString()); 
+      localStorage.setItem("mv:last-order", JSON.stringify(orderRef.current));
+      localStorage.setItem("mv:last-pos", posRef.current.toString());
+      localStorage.setItem("mv:last-context", JSON.stringify(contextRef.current));
+    }, 2000); 
+    return () => clearInterval(t); 
+  }, []);
   useEffect(() => { localStorage.setItem("mv:favorites", JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem("mv:history", JSON.stringify(history)); }, [history]);
   useEffect(() => { localStorage.setItem("mv:blocked", JSON.stringify(blocked)); }, [blocked]);
@@ -492,6 +502,13 @@ export default function App() {
   }, []);
   
   useEffect(() => {
+    const interval = setInterval(() => {
+      if (isTauri) checkForUpdate();
+    }, 120000);
+    return () => clearInterval(interval);
+  }, [checkForUpdate]);
+  
+  useEffect(() => {
     const initApp = async () => {
       if (isTauri) {
         try {
@@ -562,12 +579,12 @@ export default function App() {
 
   const resolveStreamUrl = async (videoId: string): Promise<string> => `${API_URL}/stream/${videoId}`;
 
-  const startStream = useCallback(async (track: Track) => {
+  const startStream = useCallback(async (track: Track, resumeTime?: number) => {
     const requestId = ++playRequestRef.current;
     setStreamLoading(true);
     setPlayerUrl(null);
-    setCurrentTime(0);
-    setDuration(0);
+    if (resumeTime) { setCurrentTime(resumeTime); setDuration(0); }
+    else { setCurrentTime(0); setDuration(0); }
     try {
       let url: string;
       if (isTauri) url = await invoke<string>("resolve_audio_url", { videoId: track.videoId });
@@ -575,6 +592,7 @@ export default function App() {
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
       setIsPlaying(true);
+      if (resumeTime) setTimeout(() => { if (audioRef.current) audioRef.current.currentTime = resumeTime; }, 100);
     } catch (e) {
       console.error("Failed to resolve stream", e);
       if (playRequestRef.current === requestId) { setIsPlaying(false); flashToast("Failed to load audio."); }
@@ -582,6 +600,12 @@ export default function App() {
       if (playRequestRef.current === requestId) setStreamLoading(false);
     }
   }, [flashToast]);
+
+  useEffect(() => {
+    if (isPlaying && !playerUrl && currentTrackRef.current) {
+      startStream(currentTrackRef.current, parseFloat(localStorage.getItem("mv:last-time") || "0"));
+    }
+  }, [isPlaying, playerUrl, startStream]);
 
   const recordPlay = useCallback((track: Track) => {
     setHistory((prev) => {
