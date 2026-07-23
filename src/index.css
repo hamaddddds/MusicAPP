@@ -567,9 +567,19 @@ button { font-family: inherit; }
 .profile-hero-avatar-img {
   width: 96px; height: 96px; border-radius: 50%; flex-shrink: 0; object-fit: cover; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
 }
-.profile-hero-info h1 { font-size: 40px; font-weight: 800; letter-spacing: -0.8px; line-height: 1.05; color: #000; }
-.profile-hero-info .artist-hero-label { color: rgba(0,0,0,0.7); font-weight: 800; }
-.profile-hero-info p { font-size: 13px; color: rgba(0,0,0,0.8); margin-top: 4px; text-transform: capitalize; font-weight: 600; }
+.profile-hero-info { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.glass-text {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  display: inline-flex;
+  align-items: center;
+}
+.profile-hero-info h1.glass-text { font-size: 38px; font-weight: 800; letter-spacing: -0.8px; line-height: 1.05; color: #000; padding: 6px 16px; margin: 0; }
+.profile-hero-info .artist-hero-label.glass-text { color: rgba(0,0,0,0.8); font-weight: 800; padding: 4px 12px; gap: 6px; }
+.profile-hero-info p.glass-text { font-size: 13px; color: rgba(0,0,0,0.85); text-transform: capitalize; font-weight: 700; padding: 5px 14px; margin: 0; }
 
 .profile-tabs { display: flex; gap: 8px; padding: 0 32px; flex-wrap: wrap; }
 .ptab {

@@ -1076,11 +1076,12 @@ export default function App() {
           <div className="page profile-page">
             <div className="profile-hero" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
               {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
-              <div className="profile-hero-info">
-                <span className="artist-hero-label"><UserCircle size={13} /> Profile</span>
-                <h1>{profile.name || "Guest"}</h1>
-                <p>{accounts.length ? `${accounts.length} connected accounts` : "No connected accounts yet"} ... Theme {theme}</p>
-              </div>
+                <div className="profile-hero-info">
+                  <span className="artist-hero-label glass-text"><UserCircle size={13} /> Profile</span>
+                  <h1 className="glass-text">{profile.name || "Guest"}</h1>
+                  <p className="glass-text">Account connected : {accounts.length ? accounts.map(a => a.provider.charAt(0).toUpperCase() + a.provider.slice(1)).join(" - ") : "None"}</p>
+                  <p className="glass-text">Theme : {theme.charAt(0).toUpperCase() + theme.slice(1)}</p>
+                </div>
             </div>
             <motion.div className="profile-tabs" layout>
               {[
