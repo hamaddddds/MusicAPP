@@ -42,6 +42,6 @@ export const translations = {
   }
 };
 
-export function getTranslation(lang: Language, key: keyof typeof translations['en']): string {
+export function getTranslation(_lang: Language, key: keyof typeof translations['en']): string {
   return translations['en'][key] || key;
 }

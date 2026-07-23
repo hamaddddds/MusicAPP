@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { getTranslation, Language } from "./i18n";
 
 // ── Types ────────────────────────────────────────────────
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
@@ -167,8 +166,6 @@ export default function App() {
 
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [customCss, setCustomCss] = useState<string>(() => load("mv:customcss", ""));
-  const [lang] = useState<Language>("en");
-  const t = useCallback((k: any) => getTranslation(lang, k), [lang]);
   const [profileTab, setProfileTab] = useState("appearance");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null }[]>(() => load("mv:accounts", []));
@@ -194,7 +191,7 @@ export default function App() {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
+  const [, setUpdateProgress] = useState<number | null>(null);
 
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -1231,3 +1228,4 @@ export default function App() {
     </div>
   );
 }
+
