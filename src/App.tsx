@@ -191,7 +191,7 @@ export default function App() {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [, setUpdateProgress] = useState<number | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
 
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -1161,10 +1161,26 @@ export default function App() {
               </div>
             </div>
             <div className="update-modal-body">{`Changelogs\n[+] Added\n- New glassmorphic update modal\n[-] Remove\n- Removed multi-language support\n[~] Fixing\n- Fixed missing Discord profile card\n- Fixed TypeScript build errors\n[*] Improvement\n- Improved UI with macOS design language\n- Improved English translations`}</div>
-            <div className="update-modal-actions">
-              <button className="btn-ghost" onClick={() => setUpdateInfo(null)}>Later</button>
-              <button className="btn-primary" onClick={runUpdate}>Update Now</button>
-            </div>
+            {updateProgress !== null ? (
+              <div className="update-progress-container" style={{ padding: "0 24px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Downloading update...</span>
+                  <span style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600 }}>{updateProgress}%</span>
+                </div>
+                <div style={{ width: "100%", height: 6, background: "rgba(255,255,255,0.1)", borderRadius: 4, overflow: "hidden" }}>
+                  <motion.div 
+                    style={{ height: "100%", background: "var(--accent)", borderRadius: 4 }}
+                    animate={{ width: `${updateProgress}%` }}
+                    transition={{ type: "tween", duration: 0.2 }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="update-modal-actions">
+                <button className="btn-ghost" onClick={() => setUpdateInfo(null)}>Later</button>
+                <button className="btn-primary" onClick={runUpdate}>Update Now</button>
+              </div>
+            )}
           </motion.div>
         </div>
       )}
