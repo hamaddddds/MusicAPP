@@ -287,7 +287,12 @@ export default async function handler(req, res) {
     await ytmusic.initialize();
 
     if (action === 'search') {
-      const results = await ytmusic.search(query || "New releases");
+      let results;
+      if (req.query.filter === 'songs') {
+        results = await ytmusic.searchSongs(query || "New releases");
+      } else {
+        results = await ytmusic.search(query || "New releases");
+      }
       res.status(200).json(results);
     } else if (action === 'home') {
       const results = await ytmusic.search("Top hits 2025");

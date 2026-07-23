@@ -35,9 +35,9 @@ const prefersReduced =
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const HOME_SHELVES = [
-  { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "new music release 2026" },
-  { id: "trend", title: "Trending Now", subtitle: "Hottest tracks this week", query: "trending songs 2026" },
-  { id: "viral", title: "Viral Hits", subtitle: "Viral hits you must hear", query: "viral hits 2026" },
+  { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "latest official music video" },
+  { id: "trend", title: "Trending Now", subtitle: "Hottest tracks this week", query: "spotify top 50 global" },
+  { id: "viral", title: "Viral Hits", subtitle: "Viral hits you must hear", query: "tiktok viral hits official audio" },
 ];
 
 const PROVIDERS = [
@@ -893,6 +893,7 @@ export default function App() {
         <div className="shelf-head" onClick={() => { setActiveShelf(id); setActiveTab("shelf"); }}><div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div></div>
         <div className="shelf-scroll" onWheel={(e) => {
           if (e.deltaY !== 0) {
+            e.preventDefault();
             e.currentTarget.scrollLeft += e.deltaY;
           }
         }}>
