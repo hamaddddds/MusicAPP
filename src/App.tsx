@@ -430,7 +430,28 @@ export default function App() {
       }
       if (aId) {
         const d = await (await fetch(`${API_URL}/artist/${encodeURIComponent(aId)}`)).json();
-        const songs = [...(d.songs?.results || []), ...(d.singles?.results || [])];
+        let songs = [...(d.songs?.results || []), ...(d.singles?.results || [])];
+        
+        // FALLBACK: If YouTube Music natively restricts this artist's profile to very few songs,
+        // forcefully fetch their full popular discography via the search endpoint.
+        if (songs.length <= 10 && d.name) {
+          try {
+            const fallbackRes = await fetch(`${API_URL}/search?q=${encodeURIComponent(d.name)}&filter=songs`);
+            const fallbackHits = await fallbackRes.json();
+            if (Array.isArray(fallbackHits) && fallbackHits.length > songs.length) {
+              // Ensure we tag these fallback songs with the current artist if ytmusicapi misses it
+              fallbackHits.forEach((s: any) => {
+                if (!s.artists || s.artists[0]?.name === "Song") {
+                  s.artists = [{ name: d.name, id: aId }];
+                }
+              });
+              songs = fallbackHits;
+            }
+          } catch (err) {
+            console.error("Fallback search failed:", err);
+          }
+        }
+
         setArtistView({ artist: d, songs: mapTracks(songs) });
       } else {
         setArtistView({ artist: null, songs: [] });
