@@ -30,7 +30,7 @@ interface ArtistHead { artistId: string; name: string; thumbnails: any[]; subscr
 interface ArtistPage { artist: ArtistHead | null; songs: Track[]; }
 
 const isTauri = "__TAURI_INTERNALS__" in window;
-const API_URL = isTauri ? "https://musicvenue.vercel.app/api" : "/api";
+const API_URL = "http://127.0.0.1:8000";
 const prefersReduced =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -82,8 +82,8 @@ function mapTracks(data: any): Track[] {
     .filter((item: any) => item.videoId)
     .map((item: any) => ({
       videoId: item.videoId,
-      title: item.name || item.title || "Unknown Title",
-      artist: item.artist?.name || (item.artists && item.artists[0]?.name) || "Unknown Artist",
+      title: item.title || item.name || "Unknown Title",
+      artist: (item.artists && item.artists[0]?.name) || "Unknown Artist",
       artwork: pickArtwork(item.thumbnails),
     }));
 }
@@ -358,14 +358,13 @@ export default function App() {
 
   // ── Data ────────────────────────────────────────────────
   const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}?action=search&query=${encodeURIComponent(query)}`);
+    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
     return mapTracks(await res.json());
   }, []);
 
   const searchSongs = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}?action=search_sections&query=${encodeURIComponent(query)}`);
-    const d = await res.json();
-    return mapTracks(d.popular || []);
+    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&filter=songs`);
+    return mapTracks(await res.json());
   }, []);
 
   const loadHome = useCallback(async () => {
@@ -384,11 +383,16 @@ export default function App() {
     setShowSuggest(false);
     setSearchHistory((prev) => [query, ...prev.filter((x) => x !== query)].slice(0, 8));
     try {
-      const res = await fetch(`${API_URL}?action=search_sections&query=${encodeURIComponent(query)}`);
+      const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
       const d = await res.json();
-      setSearchArtist(d.artist && d.artist.artistId ? d.artist : null);
-      setSearchPopular(mapTracks(d.popular || []));
-      setSearchOther(mapTracks(d.other || []));
+      
+      const artists = d.filter((x: any) => x.resultType === "artist");
+      const songs = d.filter((x: any) => x.resultType === "song");
+      const videos = d.filter((x: any) => x.resultType === "video");
+
+      setSearchArtist(artists.length > 0 ? { artistId: artists[0].browseId, name: artists[0].artist, thumbnails: artists[0].thumbnails } : null);
+      setSearchPopular(mapTracks(songs));
+      setSearchOther(mapTracks(videos));
     } catch {
       setSearchArtist(null); setSearchPopular([]); setSearchOther([]);
     }
@@ -401,7 +405,7 @@ export default function App() {
     if (!q.trim()) { setSuggestions([]); return; }
     suggestTimer.current = window.setTimeout(async () => {
       try {
-        const d = await (await fetch(`${API_URL}?action=suggest&query=${encodeURIComponent(q)}`)).json();
+        const d = await (await fetch(`${API_URL}/suggest?q=${encodeURIComponent(q)}`)).json();
         setSuggestions(d.suggestions || []);
       } catch { setSuggestions([]); }
     }, 180);
@@ -414,11 +418,19 @@ export default function App() {
     setArtistLoading(true);
     setArtistView(null);
     try {
-      const param = opts.artistId
-        ? `artistId=${encodeURIComponent(opts.artistId)}`
-        : `query=${encodeURIComponent(opts.name || "")}`;
-      const d = await (await fetch(`${API_URL}?action=artist&${param}`)).json();
-      setArtistView({ artist: d.artist || null, songs: mapTracks(d.songs || []) });
+      let aId = opts.artistId;
+      if (!aId && opts.name) {
+        const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(opts.name)}&filter=artists`);
+        const hits = await res.json();
+        if (hits.length > 0) aId = hits[0].browseId;
+      }
+      if (aId) {
+        const d = await (await fetch(`${API_URL}/artist/${encodeURIComponent(aId)}`)).json();
+        const songs = [...(d.songs?.results || []), ...(d.singles?.results || [])];
+        setArtistView({ artist: d, songs: mapTracks(songs) });
+      } else {
+        setArtistView({ artist: null, songs: [] });
+      }
     } catch {
       setArtistView({ artist: null, songs: [] });
     }
@@ -652,8 +664,9 @@ export default function App() {
       let reg = load<Region | null>("mv:region", null);
       try {
         if (!reg) {
-          const res = await fetch(`${API_URL}?action=geo`);
-          reg = await res.json();
+          const res = await fetch("https://ipapi.co/json/");
+          const data = await res.json();
+          reg = { country: data.country_name, countryCode: data.country_code, city: data.city };
           localStorage.setItem("mv:region", JSON.stringify(reg));
           setRegion(reg);
         }
@@ -705,20 +718,12 @@ export default function App() {
   }, [updateInfo]);
 
   // ── Stream resolution ────────────────────────────────────
-  const resolveStreamUrl = async (videoId: string, mode?: string): Promise<string> => {
-    const modeParam = mode ? `&mode=${mode}` : "";
-    let res = await fetch(`${API_URL}?action=stream&videoId=${videoId}${modeParam}`);
-    let data = await res.json();
-    for (let i = 0; i < 60 && data.pending && data.taskId; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      res = await fetch(`${API_URL}?action=stream_status&taskId=${encodeURIComponent(data.taskId)}`);
-      data = await res.json();
-    }
-    if (!data.url) throw new Error(data.error || "No stream URL");
-    return data.url;
+  const resolveStreamUrl = async (videoId: string): Promise<string> => {
+    // The Python backend serves the audio stream directly at /stream/{video_id}
+    return `${API_URL}/stream/${videoId}`;
   };
 
-  const startStream = useCallback(async (track: Track, mode?: string) => {
+  const startStream = useCallback(async (track: Track) => {
     const requestId = ++playRequestRef.current;
     setStreamLoading(true);
     setPlayerUrl(null);
@@ -727,7 +732,7 @@ export default function App() {
     try {
       let url: string;
       if (isTauri) url = await invoke<string>("resolve_audio_url", { videoId: track.videoId });
-      else url = await resolveStreamUrl(track.videoId, mode);
+      else url = await resolveStreamUrl(track.videoId);
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
       setIsPlaying(true);
@@ -812,7 +817,7 @@ export default function App() {
   const handleAudioError = useCallback(() => {
     if (!isTauri && currentTrackRef.current && !triedDownloadRef.current) {
       triedDownloadRef.current = true;
-      startStream(currentTrackRef.current, "download");
+      startStream(currentTrackRef.current);
     } else setIsPlaying(false);
   }, [startStream]);
 
@@ -912,10 +917,10 @@ export default function App() {
     setLyrics(null); setLyricsLoading(true);
     (async () => {
       try {
-        const url = `${API_URL}?action=lyrics&title=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}`;
+        const url = `${API_URL}/lyrics/${encodeURIComponent(currentTrack.videoId)}/auto`;
         const d = await (await fetch(url)).json();
         if (cancelled) return;
-        setLyrics({ synced: d.syncedLyrics ? parseLRC(d.syncedLyrics) : [], plain: d.plainLyrics || "" });
+        setLyrics(d.error ? null : { synced: d.synced ? parseLRC(d.synced) : [], plain: d.plain || "" });
       } catch { if (!cancelled) setLyrics({ synced: [], plain: "" }); }
       finally { if (!cancelled) setLyricsLoading(false); }
     })();

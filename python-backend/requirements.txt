@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+ytmusicapi>=1.8
+yt-dlp>=2024.4.9
+httpx>=0.27
+python-dotenv>=1.0
