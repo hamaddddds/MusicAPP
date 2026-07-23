@@ -100,11 +100,14 @@ def get_lyrics_by_video_id(video_id: str, timestamps: bool = False):
     
     # get_lyrics returns dict with 'lyrics' (plain) or 'synced' depending on availability, but wait!
     # actually ytmusicapi's get_lyrics just returns a dict with 'lyrics' and 'source' etc.
-    res = get_yt().get_lyrics(lyrics_id)
-    return {
-        "plain": res.get("lyrics"),
-        "source": res.get("source"),
-    }
+    try:
+        res = get_yt().get_lyrics(lyrics_id)
+        return {
+            "plain": res.get("lyrics"),
+            "source": res.get("source"),
+        }
+    except Exception as e:
+        return {"error": str(e), "plain": None, "source": None}
 
 
 def get_playlist(playlist_id: str, limit: int = 100):

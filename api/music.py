@@ -158,7 +158,7 @@ def normalize_track(t: dict) -> dict:
         "videoId": vid,
         "title": title,
         "artist": artist_name,
-        "thumbnail": thumbnail,
+        "artwork": thumbnail,
         "album": album
     }
 
@@ -194,13 +194,27 @@ def handle_foryou(params: dict):
             except Exception as e:
                 warnings.append(f"Failed to fetch mix for {seed}: {e}")
                 
+    # Helper to extract tracks from get_charts
+    def get_chart_tracks(charts_res: dict) -> list:
+        videos = charts_res.get("videos")
+        chart_items = []
+        if isinstance(videos, list) and len(videos) > 0 and "playlistId" in videos[0]:
+            try:
+                pl_data = yt.get_playlist(videos[0]["playlistId"], limit=limit)
+                chart_items = pl_data.get("tracks", [])
+            except Exception:
+                pass
+        elif isinstance(videos, dict):
+            chart_items = videos.get("items", [])
+        elif charts_res.get("trending") and isinstance(charts_res["trending"], dict):
+            chart_items = charts_res["trending"].get("items", [])
+        return chart_items
+
     # 2. Local Chart
     if country != "ZZ":
         try:
             charts = cached(f"charts:{country}", lambda: yt.get_charts(country=country))
-            chart_items = charts.get("trending", {}).get("items", [])
-            if not chart_items:
-                chart_items = charts.get("videos", {}).get("items", [])
+            chart_items = get_chart_tracks(charts)
             items = [normalize_track(t) for t in chart_items if normalize_track(t)]
             if items:
                 sections.append({
@@ -214,9 +228,7 @@ def handle_foryou(params: dict):
     # 3. Global Chart
     try:
         charts_gl = cached(f"charts:ZZ", lambda: yt.get_charts(country="ZZ"))
-        chart_items_gl = charts_gl.get("trending", {}).get("items", [])
-        if not chart_items_gl:
-            chart_items_gl = charts_gl.get("videos", {}).get("items", [])
+        chart_items_gl = get_chart_tracks(charts_gl)
         items = [normalize_track(t) for t in chart_items_gl if normalize_track(t)]
         if items:
             sections.append({
