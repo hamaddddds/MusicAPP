@@ -44,7 +44,7 @@ CACHE_TTL_SECONDS = 300
 def get_yt() -> YTMusic:
     global _yt
     if _yt is None:
-        _yt = YTMusic()
+        _yt = YTMusic(location="ID")
     return _yt
 
 
