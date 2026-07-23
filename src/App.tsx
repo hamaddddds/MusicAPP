@@ -35,9 +35,9 @@ const prefersReduced =
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const HOME_SHELVES = [
-  { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "latest official music video" },
-  { id: "trend", title: "Trending Now", subtitle: "Hottest tracks this week", query: "spotify top 50 global" },
-  { id: "viral", title: "Viral Hits", subtitle: "Viral hits you must hear", query: "tiktok viral hits official audio" },
+  { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "popular new pop songs official" },
+  { id: "trend", title: "Trending Now", subtitle: "Hottest tracks this week", query: "top 50 global hit songs 2024" },
+  { id: "viral", title: "Viral Hits", subtitle: "Viral hits you must hear", query: "tiktok viral trending hits" },
 ];
 
 const PROVIDERS = [
@@ -178,7 +178,8 @@ export default function App() {
 
   const [currentTime, setCurrentTime] = useState(() => parseFloat(localStorage.getItem("mv:last-time") || "0"));
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(() => parseFloat(localStorage.getItem("mv:volume") || "0.8"));
+  useEffect(() => { localStorage.setItem("mv:volume", volume.toString()); }, [volume]);
   const [isMuted, setIsMuted] = useState(false);
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
   const [streamLoading, setStreamLoading] = useState(false);
@@ -939,7 +940,7 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {playerUrl && <audio ref={audioRef} src={playerUrl} onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />}
+      {playerUrl && <audio key={playerUrl} ref={audioRef} src={playerUrl} onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />}
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
