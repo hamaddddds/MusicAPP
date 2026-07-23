@@ -12,6 +12,8 @@ const YTDLP_BASE = process.env.YTDLP_API_BASE || "https://ytdlp.online/open/v1";
 const YTDLP_KEY = process.env.YTDLP_API_KEY;
 
 const PIPED_INSTANCES = [
+  'https://pipedapi.r4fo.com',
+  'https://pipedapi.in.projectsegfau.lt',
   'https://pipedapi.adminforge.de',
   'https://pipedapi.kavin.rocks',
   'https://api.piped.yt'
