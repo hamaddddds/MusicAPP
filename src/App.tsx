@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+﻿import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -15,7 +15,7 @@ import {
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-// ── Types ────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
 type RepeatMode = "off" | "all" | "one";
 type ShuffleMode = "off" | "random" | "smart";
@@ -47,14 +47,14 @@ const PROVIDERS = [
   { id: "discord", label: "Discord", Icon: Gamepad2 },
 ];
 
-// ── localStorage helpers ─────────────────────────────────
+// â”€â”€ localStorage helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const load = <T,>(k: string, fallback: T): T => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 };
 
-// ── Track mapping / algorithms ───────────────────────────
-// YouTube Music serves tiny thumbnails (60–120px). Google's image CDN lets us
+// â”€â”€ Track mapping / algorithms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// YouTube Music serves tiny thumbnails (60â€“120px). Google's image CDN lets us
 // request a bigger size by rewriting the URL params, so artwork stays crisp.
 function hiResThumb(url: string, size = 512): string {
   if (!url) return url;
@@ -370,7 +370,7 @@ export default function App() {
   }, [history, blocked, searchSongs]);
 
   const reshuffleHome = useCallback(async () => {
-    flashToast("Menyusun ulang…");
+    flashToast("Menyusun ulangâ€¦");
     setShelves((prev) => { const n: Record<string, Track[]> = {}; for (const k in prev) n[k] = shuffleArray(prev[k]); return n; });
     localStorage.removeItem("mv:quickpicks");
     await loadHome();
@@ -398,7 +398,7 @@ export default function App() {
   const checkForUpdate = useCallback(async () => {
     if (!isTauri) { setUpdateStatus("Update otomatis hanya tersedia di aplikasi desktop."); return; }
     setIsCheckingUpdate(true);
-    setUpdateStatus("Memeriksa pembaruan…");
+    setUpdateStatus("Memeriksa pembaruanâ€¦");
     try {
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
@@ -426,7 +426,7 @@ export default function App() {
       try {
         const cfg = JSON.parse(String(reader.result));
         for (const k in cfg) if (k.startsWith("mv:")) localStorage.setItem(k, cfg[k]);
-        flashToast("Konfigurasi diimpor — memuat ulang…");
+        flashToast("Konfigurasi diimpor â€” memuat ulangâ€¦");
         setTimeout(() => location.reload(), 800);
       } catch { flashToast("File konfigurasi tidak valid."); }
     };
@@ -662,7 +662,7 @@ export default function App() {
 
   const startMix = useCallback(async (track: Track) => {
     playTrack(track, [track]);
-    flashToast("Memulai mix…");
+    flashToast("Memulai mixâ€¦");
     try {
       const related = (await searchSongs(track.artist)).filter((t) => t.videoId !== track.videoId);
       const order = [track, ...shuffleArray(related)];
@@ -681,7 +681,7 @@ export default function App() {
 
   const downloadTrack = useCallback(async (track: Track) => {
     if (isTauri) {
-      flashToast("Mengunduh…");
+      flashToast("Mengunduhâ€¦");
       try { const dir = await invoke<string>("download_track", { videoId: track.videoId }); flashToast(`Tersimpan di ${dir}`); }
       catch { flashToast("Gagal mengunduh."); }
     } else window.open(`https://music.youtube.com/watch?v=${track.videoId}`, "_blank");
@@ -932,7 +932,7 @@ export default function App() {
               </form>
               {showSuggest && (
                 <div className="search-dropdown">
-                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></button>) : <div className="suggest-empty">Tekan Enter untuk mencari “{searchQuery}”</div>) : searchHistory.length ? (
+                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></button>) : <div className="suggest-empty">Tekan Enter untuk mencari â€œ{searchQuery}â€</div>) : searchHistory.length ? (
                     <>
                       <div className="suggest-head"><span>Terakhir dicari</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Hapus semua</button></div>
                       {searchHistory.map((h) => <button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}><Clock size={15} /><span>{h}</span><span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span></button>)}
@@ -954,20 +954,20 @@ export default function App() {
           <div className="page">
             {quickPicks.length > 0 && (
               <section className="shelf">
-                <div className="shelf-head"><div><h2>Pilihan cepat <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Berdasarkan yang sering kamu putar" : "Populer di sekitarmu"}{region?.city ? ` · ${region.city}` : ""}</p></div></div>
+                <div className="shelf-head"><div><h2>Pilihan cepat <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Berdasarkan yang sering kamu putar" : "Populer di sekitarmu"}{region?.city ? ` Â· ${region.city}` : ""}</p></div></div>
                 <div className="track-grid">{quickPicks.map((t, i) => <TrackRow key={t.videoId} track={t} context={quickPicks} index={i} />)}</div>
               </section>
             )}
             {HOME_SHELVES.map((s) => <Shelf key={s.id} id={s.id} title={s.title} subtitle={s.subtitle} />)}
             <section className="shelf">
               <div className="shelf-head"><div><h2>Favourite Music <ChevronRight size={20} /></h2><p>Lagu yang kamu suka</p></div></div>
-              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state"><Heart size={34} /><p>Belum ada lagu favorit</p><span>Tekan ikon ♥ pada lagu untuk menyimpannya di sini.</span></div>}
+              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state"><Heart size={34} /><p>Belum ada lagu favorit</p><span>Tekan ikon â™¥ pada lagu untuk menyimpannya di sini.</span></div>}
             </section>
           </div>
         )}
         {activeTab === "favorites" && (
           <div className="page">
-            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music masih kosong</p><span>Semua lagu yang kamu tandai ♥ akan muncul di sini.</span></div>}
+            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music masih kosong</p><span>Semua lagu yang kamu tandai â™¥ akan muncul di sini.</span></div>}
           </div>
         )}
         {activeTab === "artist" && (
@@ -1021,7 +1021,7 @@ export default function App() {
               <div className="profile-hero-info">
                 <span className="artist-hero-label"><UserCircle size={13} /> Profil</span>
                 <h1>{profile.name || "Guest"}</h1>
-                <p>{accounts.length ? `${accounts.length} akun terhubung` : "Belum ada akun terhubung"} · Tema {theme}</p>
+                <p>{accounts.length ? `${accounts.length} akun terhubung` : "Belum ada akun terhubung"} Â· Tema {theme}</p>
               </div>
             </div>
             <motion.div className="profile-tabs" layout>
@@ -1086,8 +1086,32 @@ export default function App() {
                   </>
                 )}
                 {profileTab === "discord" && (
-                  <div className="setting-block">
-                    <h3>Discord Rich Presence</h3>
+                    <div className="setting-block">
+                      <h3>Discord Rich Presence</h3>
+                      <p className="setting-desc">Show the currently playing song on your Discord status.{!isTauri && " (only on desktop app)"}</p>
+
+                      {(() => {
+                        const dc = accounts.find(a => a.provider === "discord");
+                        if (dc) {
+                          return (
+                            <div className="discord-profile-card" style={{ marginTop: 16, background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #222' }}>
+                              <div style={{ height: 120, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
+                                <div style={{ position: 'absolute', bottom: -40, left: 24 }}>
+                                  <img src={dc.avatar || ''} alt="" style={{ width: 80, height: 80, borderRadius: '50%', border: '6px solid #111', objectFit: 'cover' }} />
+                                </div>
+                              </div>
+                              <div style={{ padding: '46px 24px 20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
+                                </div>
+                                <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} · {dc.id}</span>
+                                {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 12, lineHeight: 1.5 }}>{dc.bio}</p>}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     <div className="setting-actions" style={{ marginTop: 16 }}>
                       {accounts.some(a => a.provider === "discord") ? (
                         <>
@@ -1168,10 +1192,10 @@ export default function App() {
                 </div>
               </div>
               <div className="np-lyrics">
-                {lyricsLoading ? <p className="lyric-status">Memuat lirik…</p> : lyrics?.synced.length ? (
+                {lyricsLoading ? <p className="lyric-status">Memuat lirikâ€¦</p> : lyrics?.synced.length ? (
                   <div className="lyric-lines">
                     {lyrics.synced.map((line, i) => (
-                      <p key={i} ref={i === activeLyric ? activeLyricRef : null} className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`} onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}>{line.text || "♪"}</p>
+                      <p key={i} ref={i === activeLyric ? activeLyricRef : null} className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`} onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}>{line.text || "â™ª"}</p>
                     ))}
                   </div>
                 ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div> : <p className="lyric-status">Lirik tidak tersedia untuk lagu ini.</p>}
@@ -1228,4 +1252,5 @@ export default function App() {
     </div>
   );
 }
+
 
