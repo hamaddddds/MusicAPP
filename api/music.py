@@ -87,6 +87,13 @@ def _get_artist(channel_id: str):
             except Exception as e:
                 print(f"Error fetching full artist songs: {e}")
         else:
+            try:
+                search_songs = get_yt().search(data.get('name', ''), filter='songs', limit=50)
+                if search_songs:
+                    data['songs']['results'] = search_songs
+            except Exception as e:
+                print(f"Error fetching fallback songs: {e}")
+            
             artist_info = [{"name": data.get("name"), "id": channel_id}]
             for song in data['songs'].get('results', []):
                 song['artists'] = artist_info
