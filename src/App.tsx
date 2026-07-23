@@ -730,9 +730,22 @@ export default function App() {
 
   // ── Stream resolution ────────────────────────────────────
   const resolveStreamUrl = async (videoId: string): Promise<string> => {
-    // Revert to using the Python backend for streaming, as it has a local yt-dlp proxy
-    // that doesn't require a paid ytdlp.online key.
-    return `http://127.0.0.1:8000/stream/${videoId}`;
+    // 1. Try local Python backend first (if running)
+    try {
+      const infoRes = await fetch(`http://127.0.0.1:8000/stream/${videoId}/info`, { method: "GET" });
+      if (infoRes.ok) return `http://127.0.0.1:8000/stream/${videoId}`;
+    } catch { /* python backend not running or network error */ }
+
+    // 2. Fallback to Vercel JS endpoint (Piped instances)
+    let res = await fetch(`${STREAM_API}?action=stream&videoId=${videoId}`);
+    let data = await res.json();
+    for (let i = 0; i < 60 && data.pending && data.taskId; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      res = await fetch(`${STREAM_API}?action=stream_status&taskId=${encodeURIComponent(data.taskId)}`);
+      data = await res.json();
+    }
+    if (!data.url) throw new Error(data.error || "No stream URL");
+    return data.url;
   };
 
   const startStream = useCallback(async (track: Track) => {
