@@ -30,7 +30,7 @@ interface ArtistHead { artistId: string; name: string; thumbnails: any[]; subscr
 interface ArtistPage { artist: ArtistHead | null; songs: Track[]; }
 
 const isTauri = "__TAURI_INTERNALS__" in window;
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = import.meta.env?.DEV ? "http://127.0.0.1:8000" : (isTauri ? "https://musicvenue.vercel.app/api" : "/api");
 const prefersReduced =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
