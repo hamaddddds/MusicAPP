@@ -55,12 +55,17 @@ def get_charts(country: str = "ZZ"):
 def get_artist(channel_id: str):
     data = get_yt().get_artist(channel_id)
     songs = data.get('songs')
-    if songs and 'browseId' in songs:
-        try:
-            full_songs = get_yt().get_playlist(songs['browseId'], limit=500)
-            data['songs']['results'] = full_songs.get('tracks', [])
-        except Exception as e:
-            print(f"Error fetching full artist songs: {e}")
+    if songs:
+        if songs.get('browseId'):
+            try:
+                full_songs = get_yt().get_playlist(songs['browseId'], limit=500)
+                data['songs']['results'] = full_songs.get('tracks', [])
+            except Exception as e:
+                print(f"Error fetching full artist songs: {e}")
+        else:
+            artist_info = [{"name": data.get("name"), "id": channel_id}]
+            for song in data['songs'].get('results', []):
+                song['artists'] = artist_info
     return data
 
 
