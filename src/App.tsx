@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -448,7 +448,7 @@ export default function App() {
       return;
     }
     if (p.id === "email") { flashToast("Email login is not yet available."); return; }
-    let authUrl = `${API_URL}/auth?action=login&provider=${p.id}`;
+    let authUrl = `https://musicvenue.vercel.app/api/auth?action=login&provider=${p.id}`;
     if (isTauri) {
       try {
         const port = await invoke<number>("start_oauth_server");
