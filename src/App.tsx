@@ -486,10 +486,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (isTauri) {
+      setTimeout(() => invoke("show_main_window").catch(console.error), 150);
+    }
+  }, []);
+  
+  useEffect(() => {
     const initApp = async () => {
       if (isTauri) {
         try {
-          await invoke("show_main_window");
           onOpenUrl((urls) => {
             if (urls.length > 0) {
               const url = new URL(urls[0]);
@@ -760,7 +765,12 @@ export default function App() {
     navigator.mediaSession.setActionHandler("nexttrack", () => advance(true));
   }, [currentTrack, playPrev, advance]);
 
-  useEffect(() => { if (currentTrack) pushRpc(currentTrack); }, [currentTrack, isPlaying, pushRpc]);
+  useEffect(() => { if (currentTrack) pushRpc(currentTrack); }, [currentTrack, isPlaying, duration, pushRpc]);
+  useEffect(() => {
+    if (isPlaying && rpcStatusRef.current === "off" && isTauri) {
+      connectDiscord();
+    }
+  }, [isPlaying, connectDiscord]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
