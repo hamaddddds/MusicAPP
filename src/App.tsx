@@ -15,7 +15,7 @@ import {
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Types Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ... Types ...
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
 type RepeatMode = "off" | "all" | "one";
 type ShuffleMode = "off" | "random" | "smart";
@@ -47,14 +47,14 @@ const PROVIDERS = [
   { id: "discord", label: "Discord", Icon: Gamepad2 },
 ];
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ localStorage helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ... localStorage helpers ...
 const load = <T,>(k: string, fallback: T): T => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 };
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Track mapping / algorithms Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-// YouTube Music serves tiny thumbnails (60Ã¢â‚¬â€œ120px). Google's image CDN lets us
+// ... Track mapping / algorithms ...
+// YouTube Music serves tiny thumbnails (60...120px). Google's image CDN lets us
 // request a bigger size by rewriting the URL params, so artwork stays crisp.
 function hiResThumb(url: string, size = 512): string {
   if (!url) return url;
@@ -383,7 +383,7 @@ export default function App() {
   }, [history, blocked, searchSongs]);
 
   const reshuffleHome = useCallback(async () => {
-    flashToast("Menyusun ulangÃ¢â‚¬Â¦");
+    flashToast("Menyusun ulang...");
     setShelves((prev) => { const n: Record<string, Track[]> = {}; for (const k in prev) n[k] = shuffleArray(prev[k]); return n; });
     localStorage.removeItem("mv:quickpicks");
     await loadHome();
@@ -411,7 +411,7 @@ export default function App() {
   const checkForUpdate = useCallback(async () => {
     if (!isTauri) { setUpdateStatus("Auto-update is only available on the desktop app."); return; }
     setIsCheckingUpdate(true);
-    setUpdateStatus("Memeriksa pembaruanÃ¢â‚¬Â¦");
+    setUpdateStatus("Memeriksa pembaruan...");
     try {
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
@@ -694,7 +694,7 @@ export default function App() {
 
   const startMix = useCallback(async (track: Track) => {
     playTrack(track, [track]);
-    flashToast("Memulai mixÃ¢â‚¬Â¦");
+    flashToast("Memulai mix...");
     try {
       const related = (await searchSongs(track.artist)).filter((t) => t.videoId !== track.videoId);
       const order = [track, ...shuffleArray(related)];
@@ -713,7 +713,7 @@ export default function App() {
 
   const downloadTrack = useCallback(async (track: Track) => {
     if (isTauri) {
-      flashToast("MengunduhÃ¢â‚¬Â¦");
+      flashToast("Mengunduh...");
       try { const dir = await invoke<string>("download_track", { videoId: track.videoId }); flashToast(`Saved to ${dir}`); }
       catch { flashToast("Failed to download."); }
     } else window.open(`https://music.youtube.com/watch?v=${track.videoId}`, "_blank");
@@ -974,7 +974,7 @@ export default function App() {
               </form>
               {showSuggest && (
                 <div className="search-dropdown">
-                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></button>) : <div className="suggest-empty">Press Enter to search Ã¢â‚¬Å“{searchQuery}Ã¢â‚¬Â</div>) : searchHistory.length ? (
+                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></button>) : <div className="suggest-empty">Press Enter to search ...{searchQuery}...</div>) : searchHistory.length ? (
                     <>
                       <div className="suggest-head"><span>Recent searches</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Clear all</button></div>
                       {searchHistory.map((h) => <button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}><Clock size={15} /><span>{h}</span><span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span></button>)}
@@ -996,20 +996,20 @@ export default function App() {
           <div className="page">
             {quickPicks.length > 0 && (
               <section className="shelf">
-                <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}{region?.city ? ` Ã‚Â· ${region.city}` : ""}</p></div></div>
+                <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}{region?.city ? ` ... ${region.city}` : ""}</p></div></div>
                 <div className="track-grid">{quickPicks.map((t, i) => renderTrackRow(t, quickPicks, i))}</div>
               </section>
             )}
             {HOME_SHELVES.map((s) => renderShelf(s.id, s.title, s.subtitle))}
             <section className="shelf">
               <div className="shelf-head"><div><h2>Liked Music <ChevronRight size={20} /></h2><p>Songs you like</p></div></div>
-              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state"><Heart size={34} /><p>No liked music yet</p><span>Press the â™¥ icon on a song to save it here.</span></div>}
+              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state"><Heart size={34} /><p>No liked music yet</p><span>Press the ♥ icon on a song to save it here.</span></div>}
             </section>
           </div>
         )}
         {activeTab === "favorites" && (
           <div className="page">
-            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music is empty</p><span>All songs you mark with â™¥ will appear here.</span></div>}
+            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music is empty</p><span>All songs you mark with ♥ will appear here.</span></div>}
           </div>
         )}
         {activeTab === "artist" && (
@@ -1069,12 +1069,12 @@ export default function App() {
           )}
           {activeTab === "profile" && (
           <div className="page profile-page">
-            <div className="profile-hero" style={profile.banner ? { backgroundImage: `linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 100%), url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
+            <div className="profile-hero" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
               {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
               <div className="profile-hero-info">
                 <span className="artist-hero-label"><UserCircle size={13} /> Profile</span>
                 <h1>{profile.name || "Guest"}</h1>
-                <p>{accounts.length ? `${accounts.length} connected accounts` : "No connected accounts yet"} · Theme {theme}</p>
+                <p>{accounts.length ? `${accounts.length} connected accounts` : "No connected accounts yet"} ... Theme {theme}</p>
               </div>
             </div>
             <motion.div className="profile-tabs" layout>
@@ -1157,7 +1157,7 @@ export default function App() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                   <span style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
                                 </div>
-                                <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} · {dc.id}</span>
+                                <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} ... {dc.id}</span>
                                 {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 12, lineHeight: 1.5 }}>{dc.bio}</p>}
                               </div>
                             </div>
@@ -1282,10 +1282,10 @@ export default function App() {
                 </div>
               </div>
               <div className="np-lyrics">
-                {lyricsLoading ? <p className="lyric-status">Memuat lirikÃ¢â‚¬Â¦</p> : lyrics?.synced.length ? (
+                {lyricsLoading ? <p className="lyric-status">Memuat lirik...</p> : lyrics?.synced.length ? (
                   <div className="lyric-lines">
                     {lyrics.synced.map((line, i) => (
-                      <p key={i} ref={i === activeLyric ? activeLyricRef : null} className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`} onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}>{line.text || "Ã¢â„¢Âª"}</p>
+                      <p key={i} ref={i === activeLyric ? activeLyricRef : null} className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`} onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}>{line.text || "♪"}</p>
                     ))}
                   </div>
                 ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div> : <p className="lyric-status">Lyrics are not available for this song.</p>}
