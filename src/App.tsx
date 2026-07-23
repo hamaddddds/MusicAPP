@@ -281,7 +281,7 @@ export default function App() {
   }, []);
 
   const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&limit=50`);
     return mapTracks(await res.json());
   }, []);
 
@@ -927,16 +927,8 @@ export default function App() {
       <section key={id} className="shelf">
         <div className="shelf-head" onClick={() => { setActiveShelf(id); setActiveTab("shelf"); }}>
           <div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div>
-          <div className="shelf-nav">
-            <button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: -600, behavior: "smooth" }); }}><ChevronLeft size={20} /></button>
-            <button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: 600, behavior: "smooth" }); }}><ChevronRight size={20} /></button>
-          </div>
         </div>
-        <div id={`shelf-${id}`} className="shelf-scroll" onWheel={(e) => {
-          if (e.deltaY !== 0) {
-            e.currentTarget.scrollLeft += e.deltaY;
-          }
-        }}>
+        <div id={`shelf-${id}`} className="shelf-scroll">
           {loading && !tracks.length ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>) : tracks.map((t) => renderAlbumCard(t, tracks))}
         </div>
       </section>
