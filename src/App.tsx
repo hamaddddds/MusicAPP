@@ -857,8 +857,8 @@ export default function App() {
   const VolIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   const upNext = orderRef.current.slice(posRef.current + 1);
 
-  const AlbumCard = ({ track, context }: { track: Track; context: Track[] }) => (
-    <div className="album-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
+  const renderAlbumCard = (track: Track, context: Track[]) => (
+    <div key={track.videoId} className="album-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
       <div className="album-art-wrap">
         <img src={track.artwork} alt={track.title} className="album-artwork" loading="lazy" />
         <div className="album-play-overlay"><div className="mini-play"><Play size={18} fill="currentColor" /></div></div>
@@ -867,10 +867,10 @@ export default function App() {
     </div>
   );
 
-  const TrackRow = ({ track, context, index }: { track: Track; context: Track[]; index: number }) => {
+  const renderTrackRow = (track: Track, context: Track[], index: number) => {
     const playing = currentTrack?.videoId === track.videoId;
     return (
-      <div className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
+      <div key={track.videoId} className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
         <div className="track-row-index">
           <span className="track-num">{index + 1}</span>
           <button className="track-row-play" onClick={() => playTrack(track, context)}>
@@ -885,13 +885,13 @@ export default function App() {
     );
   };
 
-  const Shelf = ({ id, title, subtitle }: { id: string; title: string; subtitle: string }) => {
+  const renderShelf = (id: string, title: string, subtitle: string) => {
     const tracks = shelves[id] || [];
     return (
       <section className="shelf">
         <div className="shelf-head"><div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div></div>
         <div className="shelf-scroll">
-          {loading && !tracks.length ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>) : tracks.map((t) => <AlbumCard key={t.videoId} track={t} context={tracks} />)}
+          {loading && !tracks.length ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>) : tracks.map((t) => renderAlbumCard(t, tracks))}
         </div>
       </section>
     );
@@ -956,19 +956,19 @@ export default function App() {
             {quickPicks.length > 0 && (
               <section className="shelf">
                 <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}{region?.city ? ` Ã‚Â· ${region.city}` : ""}</p></div></div>
-                <div className="track-grid">{quickPicks.map((t, i) => <TrackRow key={t.videoId} track={t} context={quickPicks} index={i} />)}</div>
+                <div className="track-grid">{quickPicks.map((t, i) => renderTrackRow(t, quickPicks, i))}</div>
               </section>
             )}
-            {HOME_SHELVES.map((s) => <Shelf key={s.id} id={s.id} title={s.title} subtitle={s.subtitle} />)}
+            {HOME_SHELVES.map((s) => renderShelf(s.id, s.title, s.subtitle))}
             <section className="shelf">
               <div className="shelf-head"><div><h2>Liked Music <ChevronRight size={20} /></h2><p>Songs you like</p></div></div>
-              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state"><Heart size={34} /><p>No liked music yet</p><span>Press the â™¥ icon on a song to save it here.</span></div>}
+              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state"><Heart size={34} /><p>No liked music yet</p><span>Press the â™¥ icon on a song to save it here.</span></div>}
             </section>
           </div>
         )}
         {activeTab === "favorites" && (
           <div className="page">
-            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music is empty</p><span>All songs you mark with â™¥ will appear here.</span></div>}
+            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music is empty</p><span>All songs you mark with â™¥ will appear here.</span></div>}
           </div>
         )}
         {activeTab === "artist" && (
@@ -989,7 +989,7 @@ export default function App() {
                 </div>
                 <section className="search-section">
                   <div className="section-head"><h2>Songs</h2><span className="section-badge">{artistView.songs.length} lagu</span></div>
-                  <div className="track-grid wide">{artistView.songs.map((t, i) => <TrackRow key={t.videoId} track={t} context={artistView.songs} index={i} />)}</div>
+                  <div className="track-grid wide">{artistView.songs.map((t, i) => renderTrackRow(t, artistView.songs, i))}</div>
                 </section>
               </>
             ) : <div className="empty-state big"><User size={44} /><p>Artist not found</p><span>Try searching for another artist.</span></div>}
@@ -1009,8 +1009,8 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                {searchPopular.length > 0 && <section className="search-section"><div className="section-head"><h2>Popular</h2><span className="section-badge">Paling banyak diputar</span></div><div className="grid-container">{searchPopular.map((t) => <AlbumCard key={t.videoId} track={t} context={searchPopular} />)}</div></section>}
-                {searchOther.length > 0 && <section className="search-section"><div className="section-head"><h2>Other</h2><span className="section-badge muted">Cover, live &amp; remix</span></div><div className="grid-container">{searchOther.map((t) => <AlbumCard key={t.videoId} track={t} context={searchOther} />)}</div></section>}
+                {searchPopular.length > 0 && <section className="search-section"><div className="section-head"><h2>Popular</h2><span className="section-badge">Paling banyak diputar</span></div><div className="grid-container">{searchPopular.map((t) => renderAlbumCard(t, searchPopular))}</div></section>}
+                {searchOther.length > 0 && <section className="search-section"><div className="section-head"><h2>Other</h2><span className="section-badge muted">Cover, live &amp; remix</span></div><div className="grid-container">{searchOther.map((t) => renderAlbumCard(t, searchOther))}</div></section>}
               </>
             ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Search for your favorite songs"}</p><span>Type an artist name or song title in the search box.</span></div>}
           </div>
