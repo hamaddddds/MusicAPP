@@ -56,9 +56,12 @@ jobs:
             if (!out.trim()) out = '[*] Improvement\n- Minor under the hood improvements and optimizations.';
             fs.writeFileSync('changelog.txt', out.trim());
           "
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          cat changelog.txt >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          {
+            echo "CHANGELOG<<EOF"
+            cat changelog.txt
+            echo ""
+            echo "EOF"
+          } >> "$GITHUB_ENV"
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
