@@ -10,7 +10,7 @@ import {
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
   Settings, Palette, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
-  UserCircle, Gamepad2
+  UserCircle, Gamepad2, ChevronLeft
 } from "lucide-react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -44,7 +44,7 @@ const PROVIDERS = [
   { id: "google", label: "Google", Icon: LogIn },
   { id: "github", label: "GitHub", Icon: LogIn },
   { id: "email", label: "Email", Icon: Mail },
-  { id: "discord", label: "Discord", Icon: Gamepad2 },
+  { id: "discord", label: "Discord", Icon: Gamepad2, ChevronLeft },
 ];
 
 // ... localStorage helpers ...
@@ -925,10 +925,15 @@ export default function App() {
     const tracks = shelves[id] || [];
     return (
       <section key={id} className="shelf">
-        <div className="shelf-head" onClick={() => { setActiveShelf(id); setActiveTab("shelf"); }}><div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div></div>
-        <div className="shelf-scroll" onWheel={(e) => {
+        <div className="shelf-head" onClick={() => { setActiveShelf(id); setActiveTab("shelf"); }}>
+          <div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div>
+          <div className="shelf-nav">
+            <button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: -600, behavior: "smooth" }); }}><ChevronLeft size={20} /></button>
+            <button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: 600, behavior: "smooth" }); }}><ChevronRight size={20} /></button>
+          </div>
+        </div>
+        <div id={`shelf-${id}`} className="shelf-scroll" onWheel={(e) => {
           if (e.deltaY !== 0) {
-            e.preventDefault();
             e.currentTarget.scrollLeft += e.deltaY;
           }
         }}>
@@ -1081,7 +1086,7 @@ export default function App() {
               {[
                 { id: "appearance", label: "Themes", Icon: Palette },
                 { id: "accounts", label: "Accounts", Icon: User },
-                { id: "discord", label: "Discord RPC", Icon: Gamepad2 },
+                { id: "discord", label: "Discord RPC", Icon: Gamepad2, ChevronLeft },
                 { id: "updates", label: "Updates", Icon: RefreshCw },
                 { id: "about", label: "About", Icon: Sparkles },
               ].map((tb) => <button key={tb.id} className={`ptab ${profileTab === tb.id ? "active" : ""}`} onClick={() => setProfileTab(tb.id)}><tb.Icon size={15} /> {tb.label}</button>)}

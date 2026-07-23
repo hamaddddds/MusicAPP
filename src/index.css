@@ -172,7 +172,7 @@ button { font-family: inherit; }
 
 /* ── Shelf (horizontal carousel) ─────────────────── */
 .shelf { display: flex; flex-direction: column; gap: 14px; }
-.shelf-head { padding: 0 32px; }
+.shelf-head { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 32px; }
 .shelf-head h2 {
   font-size: 21px; font-weight: 700; letter-spacing: -0.3px;
   display: inline-flex; align-items: center; gap: 2px; cursor: pointer;
@@ -180,6 +180,9 @@ button { font-family: inherit; }
 .shelf-head h2 svg { color: var(--text-tertiary); transition: transform 0.2s; }
 .shelf-head h2:hover svg { transform: translateX(3px); color: var(--text-secondary); }
 .shelf-head p { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.shelf-nav { display: flex; gap: 8px; }
+.shelf-nav button { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--input-bg); color: var(--text-primary); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.15s; }
+.shelf-nav button:hover { background: var(--hover); }
 .shelf-scroll {
   display: flex; gap: 18px; overflow-x: auto; scroll-snap-type: x proximity;
   padding: 4px 32px 6px; scroll-padding-left: 32px;
