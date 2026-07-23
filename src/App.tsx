@@ -1019,9 +1019,9 @@ export default function App() {
             <div className="profile-hero" style={profile.banner ? { backgroundImage: `linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 100%), url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
               {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
               <div className="profile-hero-info">
-                <span className="artist-hero-label"><UserCircle size={13} /> Profil</span>
+                <span className="artist-hero-label"><UserCircle size={13} /> Profile</span>
                 <h1>{profile.name || "Guest"}</h1>
-                <p>{accounts.length ? `${accounts.length} connected accounts` : "No connected accounts yet"} Ã‚Â· Tema {theme}</p>
+                <p>{accounts.length ? `${accounts.length} connected accounts` : "No connected accounts yet"} · Theme {theme}</p>
               </div>
             </div>
             <motion.div className="profile-tabs" layout>
@@ -1104,7 +1104,7 @@ export default function App() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                   <span style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
                                 </div>
-                                <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} Â· {dc.id}</span>
+                                <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} · {dc.id}</span>
                                 {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 12, lineHeight: 1.5 }}>{dc.bio}</p>}
                               </div>
                             </div>
@@ -1160,7 +1160,7 @@ export default function App() {
                 <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Version : 2.0 | Patch : {updateInfo.version}</span>
               </div>
             </div>
-            <div className="update-modal-body">{`Changelogs\n[+] Added\n- New feature\n[-] Remove\n- Removed feature\n[~] Fixing\n- Fixed bugs\n[*] Improvement\n- Improved feature`}</div>
+            <div className="update-modal-body">{`Changelogs\n[+] Added\n- New glassmorphic update modal\n[-] Remove\n- Removed multi-language support\n[~] Fixing\n- Fixed missing Discord profile card\n- Fixed TypeScript build errors\n[*] Improvement\n- Improved UI with macOS design language\n- Improved English translations`}</div>
             <div className="update-modal-actions">
               <button className="btn-ghost" onClick={() => setUpdateInfo(null)}>Later</button>
               <button className="btn-primary" onClick={runUpdate}>Update Now</button>
