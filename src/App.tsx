@@ -1160,7 +1160,9 @@ export default function App() {
                 <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Version : 2.0 | Patch : {updateInfo.version}</span>
               </div>
             </div>
-            <div className="update-modal-body">{`Changelogs\n[+] Added\n- New glassmorphic update modal\n[-] Remove\n- Removed multi-language support\n[~] Fixing\n- Fixed missing Discord profile card\n- Fixed TypeScript build errors\n[*] Improvement\n- Improved UI with macOS design language\n- Improved English translations`}</div>
+            <div className="update-modal-body" style={{ whiteSpace: "pre-wrap" }}>
+              {updateInfo.obj.body || "No changelogs available."}
+            </div>
             {updateProgress !== null ? (
               <div className="update-progress-container" style={{ padding: "0 24px 20px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
