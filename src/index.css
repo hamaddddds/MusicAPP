@@ -385,7 +385,7 @@ button { font-family: inherit; }
 /* ── Queue drawer ────────────────────────────────── */
 .scrim { position: fixed; inset: 0; z-index: var(--z-scrim); background: rgba(0,0,0,0.5); backdrop-filter: blur(2px); }
 .queue-panel {
-  position: fixed; top: 0; right: 0; bottom: 92px; width: 340px; z-index: var(--z-drawer);
+  position: fixed; top: 0; right: 0; bottom: 0; width: 340px; z-index: var(--z-drawer);
   background: var(--panel-bg); backdrop-filter: blur(30px);
   border-left: 1px solid var(--border); display: flex; flex-direction: column;
   padding: 20px 16px; gap: 14px;
@@ -395,7 +395,7 @@ button { font-family: inherit; }
 .queue-now { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 10px; background: var(--accent-soft); }
 .queue-now img { width: 46px; height: 46px; border-radius: 6px; object-fit: cover; }
 .queue-now .track-row-artist { color: var(--accent); }
-.queue-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.queue-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding-bottom: 92px; }
 .queue-item { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background 0.15s; }
 .queue-item:hover { background: var(--hover); }
 .queue-item img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background:var(--surface); }
@@ -494,12 +494,6 @@ button { font-family: inherit; }
 .ctx-item.danger svg { color: #ff5a6a; }
 .ctx-sep { height: 1px; background: var(--border); margin: 5px 8px; }
 
-/* ── Update banner ───────────────────────────────── */
-.update-banner {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: 108px;
-  z-index: var(--z-drawer); display: flex; align-items: center; gap: 14px;
-  padding: 12px 16px; border-radius: 14px; width: min(460px, calc(100vw - 40px));
-  background: var(--panel-bg); backdrop-filter: blur(24px);
   border: 1px solid var(--border); box-shadow: 0 16px 40px rgba(0,0,0,0.55);
 }
 .update-icon {
@@ -688,3 +682,22 @@ button { font-family: inherit; }
   .lyric-line, .lyric-line.past { filter: none !important; }
   .lyric-line.active { transform: none !important; }
 }
+
+/* -- Update Modal ---------------------------------- */
+.update-modal-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+}
+.update-modal {
+  background: var(--panel-bg); backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px; padding: 24px;
+  width: 400px; max-width: 90vw;
+  display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+.update-modal-header { display: flex; align-items: center; gap: 12px; }
+.update-modal-header h3 { font-size: 18px; font-weight: 600; margin: 0; }
+.update-modal-body { font-size: 14px; color: var(--text-secondary); line-height: 1.5; white-space: pre-line; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; font-family: monospace;}
+.update-modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }

@@ -132,75 +132,24 @@ function formatTime(seconds: number) {
   return `${mm}:${ss}`;
 }
 
-// Rank artists by frequency × recency. Half-life ≈ 14 days.
 function artistScores(history: Record<string, HistEntry>): [string, number][] {
   const now = Date.now();
   const scores: Record<string, number> = {};
   for (const h of Object.values(history)) {
     const days = (now - h.last) / 86400000;
-    const recency = Math.pow(0.5, days / 14); // 1.0 today → 0.5 after 14d
+    const recency = Math.pow(0.5, days / 14);
     scores[h.artist] = (scores[h.artist] || 0) + h.count * (0.4 + 0.6 * recency);
   }
   return Object.entries(scores).sort((a, b) => b[1] - a[1]);
 }
 
-const LanguageSelect = ({ lang, setLang }: { lang: Language, setLang: (l: Language) => void }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
-  const options = [
-    { value: "en", label: "English" },
-    { value: "id", label: "Bahasa Indonesia" }
-  ];
-  const active = options.find(o => o.value === lang)?.label;
-  return (
-    <div ref={ref} style={{ position: 'relative', width: 220, fontSize: 13, userSelect: 'none' }}>
-      <div
-        onClick={() => setOpen(!open)}
-        style={{ padding: '10px 14px', background: 'var(--input-bg)', color: '#fff', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-      >
-        {active}
-        <ChevronDown size={16} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', opacity: 0.7 }} />
-      </div>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.15 }}
-            style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: '#1c1c1c', border: '1px solid #333', borderRadius: 8, overflow: 'hidden', zIndex: 100, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
-          >
-            {options.map(o => (
-              <div
-                key={o.value}
-                onClick={() => { setLang(o.value as Language); localStorage.setItem("mv:lang", o.value); setOpen(false); }}
-                style={{ padding: '10px 14px', cursor: 'pointer', background: lang === o.value ? 'rgba(255,255,255,0.05)' : 'transparent', color: lang === o.value ? '#fff' : '#aaa', transition: '0.2s' }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = lang === o.value ? 'rgba(255,255,255,0.05)' : 'transparent'; e.currentTarget.style.color = lang === o.value ? '#fff' : '#aaa'; }}
-              >
-                {o.label}
-              </div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
-
 export default function App() {
-  const [coreVersion, setCoreVersion] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [activeTab, setActiveTab] = useState("home");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Content
   const [shelves, setShelves] = useState<Record<string, Track[]>>({});
   const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
   const [searchPopular, setSearchPopular] = useState<Track[]>([]);
@@ -216,21 +165,19 @@ export default function App() {
   const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
   const [region, setRegion] = useState<Region | null>(() => load("mv:region", null));
 
-  // Appearance / profile / accounts / RPC
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [customCss, setCustomCss] = useState<string>(() => load("mv:customcss", ""));
-  const [lang, setLang] = useState<Language>(() => (localStorage.getItem("mv:lang") as Language) || "id");
-  const t = useCallback((k: keyof typeof import('./i18n').translations['id']) => getTranslation(lang, k), [lang]);
+  const [lang] = useState<Language>("en");
+  const t = useCallback((k: any) => getTranslation(lang, k), [lang]);
   const [profileTab, setProfileTab] = useState("appearance");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null }[]>(() => load("mv:accounts", []));
-  const rpcClientId = "1527667258552352848"; // Hardcoded Discord App ID
+  const rpcClientId = "1527667258552352848";
   const [rpcEnabled, setRpcEnabled] = useState<boolean>(() => load("mv:rpc-enabled", false));
   const [rpcStatus, setRpcStatus] = useState<"off" | "connecting" | "on" | "error">("off");
   const [updateStatus, setUpdateStatus] = useState<string>("");
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
-  // Audio
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
@@ -238,11 +185,9 @@ export default function App() {
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
   const [streamLoading, setStreamLoading] = useState(false);
 
-  // Modes
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [shuffleMode, setShuffleMode] = useState<ShuffleMode>("off");
 
-  // Panels & overlays
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -251,11 +196,9 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
 
-  // Lyrics
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
 
-  // Refs
   const audioRef = useRef<HTMLAudioElement>(null);
   const orderRef = useRef<Track[]>([]);
   const posRef = useRef(0);
@@ -287,30 +230,11 @@ export default function App() {
     try {
       const payloadStr = atob(base64Payload);
       const data = JSON.parse(payloadStr);
-
-      setProfile((p) => ({
-        ...p,
-        name: data.name || p.name,
-        avatar: data.avatar || p.avatar || null,
-        banner: data.banner || p.banner || null,
-        username: data.username || p.username || null,
-        bio: data.bio || p.bio || null,
-        accent_color: data.accent_color || p.accent_color || null,
-      }));
-
+      setProfile((p) => ({ ...p, name: data.name || p.name, avatar: data.avatar || p.avatar || null, banner: data.banner || p.banner || null, username: data.username || p.username || null, bio: data.bio || p.bio || null, accent_color: data.accent_color || p.accent_color || null }));
       setAccounts((prev) => {
         const filtered = prev.filter(a => a.provider !== data.provider);
-        return [...filtered, {
-          provider: data.provider,
-          label: data.name,
-          id: String(data.id),
-          avatar: data.avatar || null,
-          username: data.username || null,
-          bio: data.bio || null,
-          banner: data.banner || null,
-        }];
+        return [...filtered, { provider: data.provider, label: data.name, id: String(data.id), avatar: data.avatar || null, username: data.username || null, bio: data.bio || null, banner: data.banner || null }];
       });
-
       flashToast(`Berhasil masuk dengan ${data.provider}`);
     } catch (e) {
       console.error("Failed to parse auth payload", e);
@@ -318,28 +242,18 @@ export default function App() {
     }
   }, []);
 
-  // Web popup message listener
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (e.data && e.data.type === "MUSICVENUE_AUTH") {
-        if (e.data.error) {
-          console.error("Auth error:", e.data.error);
-        } else if (e.data.payload) {
-          handleAuthPayload(e.data.payload);
-        }
+        if (e.data.error) console.error("Auth error:", e.data.error);
+        else if (e.data.payload) handleAuthPayload(e.data.payload);
       }
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [handleAuthPayload]);
 
-  // Apply theme to the document root.
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("mv:theme", JSON.stringify(theme));
-  }, [theme]);
-
-  // Inject user's custom CSS (client-uploaded theme).
+  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("mv:theme", JSON.stringify(theme)); }, [theme]);
   useEffect(() => {
     let el = document.getElementById("mv-custom-css") as HTMLStyleElement | null;
     if (!el) { el = document.createElement("style"); el.id = "mv-custom-css"; document.head.appendChild(el); }
@@ -356,7 +270,6 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   }, []);
 
-  // ── Data ────────────────────────────────────────────────
   const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
     const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
     return mapTracks(await res.json());
@@ -369,9 +282,7 @@ export default function App() {
 
   const loadHome = useCallback(async () => {
     setLoading(true);
-    const results = await Promise.all(
-      HOME_SHELVES.map((s) => searchTracks(s.query).catch(() => [] as Track[]))
-    );
+    const results = await Promise.all(HOME_SHELVES.map((s) => searchTracks(s.query).catch(() => [] as Track[])));
     const map: Record<string, Track[]> = {};
     HOME_SHELVES.forEach((s, i) => { map[s.id] = results[i]; });
     setShelves(map);
@@ -385,16 +296,10 @@ export default function App() {
     try {
       const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
       const d = await res.json();
-
       const artists = d.filter((x: any) => x.resultType === "artist");
       const songs = d.filter((x: any) => x.resultType === "song");
       const videos = d.filter((x: any) => x.resultType === "video");
-
-      setSearchArtist(artists.length > 0 ? {
-        artistId: artists[0].browseId || (artists[0].artists && artists[0].artists[0]?.id),
-        name: artists[0].artist || (artists[0].artists && artists[0].artists[0]?.name),
-        thumbnails: artists[0].thumbnails
-      } : null);
+      setSearchArtist(artists.length > 0 ? { artistId: artists[0].browseId || (artists[0].artists && artists[0].artists[0]?.id), name: artists[0].artist || (artists[0].artists && artists[0].artists[0]?.name), thumbnails: artists[0].thumbnails } : null);
       setSearchPopular(mapTracks(songs));
       setSearchOther(mapTracks(videos));
     } catch {
@@ -403,7 +308,6 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  // Debounced autocomplete suggestions.
   const fetchSuggestions = useCallback((q: string) => {
     window.clearTimeout(suggestTimer.current);
     if (!q.trim()) { setSuggestions([]); return; }
@@ -415,7 +319,6 @@ export default function App() {
     }, 180);
   }, []);
 
-  // Open the dedicated artist page (all of that artist's songs, nothing else).
   const openArtist = useCallback(async (opts: { artistId?: string; name?: string }) => {
     setActiveTab("artist");
     setShowSuggest(false);
@@ -431,60 +334,37 @@ export default function App() {
       if (aId) {
         const d = await (await fetch(`${API_URL}/artist/${encodeURIComponent(aId)}`)).json();
         let songs = [...(d.songs?.results || []), ...(d.singles?.results || [])];
-        
         if (songs.length <= 10 && d.name) {
           try {
             const fallbackRes = await fetch(`${API_URL}/search?q=${encodeURIComponent(d.name)}&filter=songs`);
             const fallbackHits = await fallbackRes.json();
             if (Array.isArray(fallbackHits) && fallbackHits.length > songs.length) {
-              fallbackHits.forEach((s: any) => {
-                if (!s.artists || s.artists[0]?.name === "Song") {
-                  s.artists = [{ name: d.name, id: aId }];
-                }
-              });
+              fallbackHits.forEach((s: any) => { if (!s.artists || s.artists[0]?.name === "Song") s.artists = [{ name: d.name, id: aId }]; });
               songs = fallbackHits;
             }
-          } catch (err) {
-            console.error("Fallback search failed:", err);
-          }
+          } catch (err) { console.error("Fallback search failed:", err); }
         }
-
         setArtistView({ artist: d, songs: mapTracks(songs) });
-      } else {
-        setArtistView({ artist: null, songs: [] });
-      }
-    } catch {
-      setArtistView({ artist: null, songs: [] });
-    }
+      } else { setArtistView({ artist: null, songs: [] }); }
+    } catch { setArtistView({ artist: null, songs: [] }); }
     setArtistLoading(false);
   }, []);
 
-  // Quick Picks: weighted play history × region-popular, minus blocklist.
   const buildQuickPicks = useCallback(async (reg: Region | null) => {
     const cache = load("mv:quickpicks", null as any);
     const fresh = cache && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
     if (fresh) { setQuickPicks(cache.tracks); return; }
-
     const blockedSet = new Set(blocked);
     const topArtists = artistScores(history).slice(0, 4).map((a) => a[0]);
     const regionQuery = reg?.country ? `top songs ${reg.country}` : "top songs 2026";
-
-    const queries = topArtists.length
-      ? [...topArtists, regionQuery]
-      : [regionQuery, "popular songs 2026", "top hits 2026"];
-
+    const queries = topArtists.length ? [...topArtists, regionQuery] : [regionQuery, "popular songs 2026", "top hits 2026"];
     const groups = await Promise.all(queries.map((q) => searchSongs(q).catch(() => [] as Track[])));
-
-    // Interleave one from each group at a time so the mix stays varied.
     const merged: Track[] = [];
     const seen = new Set<string>();
     for (let round = 0; round < 4; round++) {
       for (const g of groups) {
         const t = g[round];
-        if (t && !seen.has(t.videoId) && !blockedSet.has(t.artist)) {
-          seen.add(t.videoId);
-          merged.push(t);
-        }
+        if (t && !seen.has(t.videoId) && !blockedSet.has(t.artist)) { seen.add(t.videoId); merged.push(t); }
       }
     }
     const picks = merged.slice(0, 12);
@@ -492,20 +372,14 @@ export default function App() {
     localStorage.setItem("mv:quickpicks", JSON.stringify({ at: Date.now(), tracks: picks }));
   }, [history, blocked, searchSongs]);
 
-  // Reshuffle + refresh the home page (triggered by re-clicking Listen Now).
   const reshuffleHome = useCallback(async () => {
     flashToast("Menyusun ulang…");
-    setShelves((prev) => {
-      const n: Record<string, Track[]> = {};
-      for (const k in prev) n[k] = shuffleArray(prev[k]);
-      return n;
-    });
+    setShelves((prev) => { const n: Record<string, Track[]> = {}; for (const k in prev) n[k] = shuffleArray(prev[k]); return n; });
     localStorage.removeItem("mv:quickpicks");
     await loadHome();
     buildQuickPicks(region);
   }, [loadHome, buildQuickPicks, region, flashToast]);
 
-  // ── Discord RPC ─────────────────────────────────────────
   const pushRpc = useCallback(async (track: Track) => {
     if (rpcStatusRef.current !== "on" || !isTauri) return;
     try {
@@ -513,24 +387,9 @@ export default function App() {
       const now = Math.floor(Date.now() / 1000);
       let startTime: number | null = null;
       let endTime: number | null = null;
-
-      // If it's playing and we have duration, set start/end timestamps so Discord ticks the time
-      if (audio && !audio.paused && audio.duration) {
-        startTime = now - Math.floor(audio.currentTime);
-        endTime = startTime + Math.floor(audio.duration);
-      }
-
-      await invoke("set_rpc_activity", {
-        details: track.title,
-        state: track.artist,
-        largeImage: track.artwork || "https://musicvenue.vercel.app/icon.png",
-        largeText: "Sedang diputar di Music Venue",
-        startTime,
-        endTime
-      });
-    } catch (e) {
-      console.error("Gagal push RPC", e);
-    }
+      if (audio && !audio.paused && audio.duration) { startTime = now - Math.floor(audio.currentTime); endTime = startTime + Math.floor(audio.duration); }
+      await invoke("set_rpc_activity", { details: track.title, state: track.artist, largeImage: track.artwork || "https://musicvenue.vercel.app/icon.png", largeText: "Sedang diputar di Music Venue", startTime, endTime });
+    } catch (e) { console.error("Gagal push RPC", e); }
   }, []);
 
   const DiscordIcon = ({ size = 24 }: { size?: number }) => (
@@ -539,8 +398,6 @@ export default function App() {
     </svg>
   );
 
-
-  // ── Manual update check ─────────────────────────────────
   const checkForUpdate = useCallback(async () => {
     if (!isTauri) { setUpdateStatus("Update otomatis hanya tersedia di aplikasi desktop."); return; }
     setIsCheckingUpdate(true);
@@ -548,15 +405,12 @@ export default function App() {
     try {
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
-      if (update?.available) {
-        setUpdateInfo({ version: update.version, obj: update });
-        setUpdateStatus(`Versi ${update.version} tersedia!`);
-      } else setUpdateStatus("Kamu sudah memakai versi terbaru.");
+      if (update?.available) { setUpdateInfo({ version: update.version, obj: update }); setUpdateStatus(`Versi ${update.version} tersedia!`); }
+      else setUpdateStatus("Kamu sudah memakai versi terbaru.");
     } catch (e) { console.error(e); setUpdateStatus("Gagal memeriksa pembaruan."); }
     finally { setIsCheckingUpdate(false); }
   }, []);
 
-  // ── Config export / import (portable settings) ──────────
   const exportConfig = useCallback(() => {
     const cfg: Record<string, any> = {};
     for (const k of Object.keys(localStorage)) if (k.startsWith("mv:")) cfg[k] = localStorage.getItem(k);
@@ -596,28 +450,16 @@ export default function App() {
       flashToast(`Akun ${p.label} diputus`);
       return;
     }
-
-    if (p.id === "email") {
-      flashToast("Login email belum tersedia.");
-      return;
-    }
-
+    if (p.id === "email") { flashToast("Login email belum tersedia."); return; }
     let authUrl = `${API_URL}/auth?action=login&provider=${p.id}`;
     if (isTauri) {
       try {
-        // Spin up temporary dev server and get port
         const port = await invoke<number>("start_oauth_server");
         authUrl += `&port=${port}`;
         await openUrl(authUrl);
-      } catch (e) {
-        console.error(e);
-        flashToast("Gagal membuka browser.");
-      }
+      } catch (e) { console.error(e); flashToast("Gagal membuka browser."); }
     } else {
-      const w = 500;
-      const h = 600;
-      const left = window.screen.width / 2 - w / 2;
-      const top = window.screen.height / 2 - h / 2;
+      const w = 500; const h = 600; const left = window.screen.width / 2 - w / 2; const top = window.screen.height / 2 - h / 2;
       window.open(authUrl, "MusicVenueAuth", `width=${w},height=${h},top=${top},left=${left}`);
     }
   }, [accounts, flashToast]);
@@ -637,25 +479,18 @@ export default function App() {
       rpcStatusRef.current = "error";
       flashToast("Gagal terhubung ke Discord.");
     }
-  }, [pushRpc]);
+  }, [pushRpc, flashToast]);
 
   const disconnectDiscord = useCallback(async () => {
-    try {
-      if (isTauri) await invoke("disconnect_rpc");
-    } catch (e) { console.error(e); }
+    try { if (isTauri) await invoke("disconnect_rpc"); } catch (e) { console.error(e); }
     setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
   }, []);
 
-  // ── Init ────────────────────────────────────────────────
   useEffect(() => {
     const initApp = async () => {
       if (isTauri) {
         try {
-          const version = await invoke("get_core_version");
-          setCoreVersion(version as string);
           await invoke("show_main_window");
-
-          // Register deep link listener (for Prod)
           onOpenUrl((urls) => {
             if (urls.length > 0) {
               const url = new URL(urls[0]);
@@ -667,21 +502,12 @@ export default function App() {
               }
             }
           }).catch(console.error);
-
-          // Listen for dev server payload
-          listen<string>("oauth-payload", (event) => {
-            if (event.payload) {
-              handleAuthPayload(event.payload);
-            }
-          });
-
+          listen<string>("oauth-payload", (event) => { if (event.payload) handleAuthPayload(event.payload); });
         } catch (e) { console.error("Tauri invoke error", e); }
       }
     };
     setTimeout(initApp, 150);
     loadHome();
-
-    // Region (for Quick Picks), then build the picks.
     (async () => {
       let reg = load<Region | null>("mv:region", null);
       try {
@@ -692,13 +518,11 @@ export default function App() {
           localStorage.setItem("mv:region", JSON.stringify(reg));
           setRegion(reg);
         }
-      } catch { /* region optional */ }
+      } catch { }
       buildQuickPicks(reg);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleAuthPayload, loadHome, buildQuickPicks, flashToast]);
 
-  // ── Auto-update (Tauri) ─────────────────────────────────
   useEffect(() => {
     if (!isTauri) return;
     (async () => {
@@ -706,10 +530,8 @@ export default function App() {
         const { check } = await import("@tauri-apps/plugin-updater");
         const update = await check();
         if (update?.available) {
-          const dismissed = localStorage.getItem("mv:update-dismissed");
-          // Persist the latest known version for the client.
           localStorage.setItem("mv:update-latest", update.version);
-          if (dismissed !== update.version) setUpdateInfo({ version: update.version, obj: update });
+          setUpdateInfo({ version: update.version, obj: update });
         }
       } catch (e) { console.error("update check failed", e); }
     })();
@@ -734,16 +556,7 @@ export default function App() {
     }
   }, [updateInfo, flashToast]);
 
-  const dismissUpdate = useCallback(() => {
-    if (updateInfo) localStorage.setItem("mv:update-dismissed", updateInfo.version);
-    setUpdateInfo(null);
-  }, [updateInfo]);
-
-  // ── Stream resolution ────────────────────────────────────
-  const resolveStreamUrl = async (videoId: string): Promise<string> => {
-    // The Python backend serves the audio stream directly at /stream/{video_id}
-    return `${API_URL}/stream/${videoId}`;
-  };
+  const resolveStreamUrl = async (videoId: string): Promise<string> => `${API_URL}/stream/${videoId}`;
 
   const startStream = useCallback(async (track: Track) => {
     const requestId = ++playRequestRef.current;
@@ -769,10 +582,7 @@ export default function App() {
   const recordPlay = useCallback((track: Track) => {
     setHistory((prev) => {
       const cur = prev[track.videoId];
-      return {
-        ...prev,
-        [track.videoId]: { ...track, count: (cur?.count || 0) + 1, last: Date.now() },
-      };
+      return { ...prev, [track.videoId]: { ...track, count: (cur?.count || 0) + 1, last: Date.now() } };
     });
   }, []);
 
@@ -828,11 +638,7 @@ export default function App() {
   }, []);
 
   const handleEnded = useCallback(() => {
-    if (repeatRef.current === "one" && audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => { });
-      return;
-    }
+    if (repeatRef.current === "one" && audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => { }); return; }
     advance(false);
   }, [advance]);
 
@@ -843,7 +649,6 @@ export default function App() {
     } else setIsPlaying(false);
   }, [startStream]);
 
-  // ── Queue operations ────────────────────────────────────
   const playNext = useCallback((track: Track) => {
     if (!currentTrackRef.current) { playTrack(track, [track]); return; }
     const order = [...orderRef.current];
@@ -867,13 +672,10 @@ export default function App() {
       orderRef.current = order;
       contextRef.current = order;
       posRef.current = 0;
-    } catch { /* keep single track */ }
+    } catch { }
   }, [playTrack, searchSongs, flashToast]);
 
-  const goToArtist = useCallback((artist: string) => {
-    openArtist({ name: artist });
-  }, [openArtist]);
-
+  const goToArtist = useCallback((artist: string) => { openArtist({ name: artist }); }, [openArtist]);
   const shareTrack = useCallback(async (track: Track) => {
     const link = `https://music.youtube.com/watch?v=${track.videoId}`;
     try { await navigator.clipboard.writeText(link); flashToast("Link disalin ke clipboard"); }
@@ -883,13 +685,9 @@ export default function App() {
   const downloadTrack = useCallback(async (track: Track) => {
     if (isTauri) {
       flashToast("Mengunduh…");
-      try {
-        const dir = await invoke<string>("download_track", { videoId: track.videoId });
-        flashToast(`Tersimpan di ${dir}`);
-      } catch { flashToast("Gagal mengunduh."); }
-    } else {
-      window.open(`https://music.youtube.com/watch?v=${track.videoId}`, "_blank");
-    }
+      try { const dir = await invoke<string>("download_track", { videoId: track.videoId }); flashToast(`Tersimpan di ${dir}`); }
+      catch { flashToast("Gagal mengunduh."); }
+    } else window.open(`https://music.youtube.com/watch?v=${track.videoId}`, "_blank");
   }, [flashToast]);
 
   const notInterested = useCallback((track: Track) => {
@@ -899,7 +697,6 @@ export default function App() {
     flashToast(`Tidak merekomendasikan ${track.artist}`);
   }, [flashToast]);
 
-  // ── Mode cycling ────────────────────────────────────────
   const cycleRepeat = useCallback(() => setRepeatMode((m) => (m === "off" ? "all" : m === "all" ? "one" : "off")), []);
   const cycleShuffle = useCallback(() => setShuffleMode((m) => (m === "off" ? "random" : m === "random" ? "smart" : "off")), []);
 
@@ -909,7 +706,6 @@ export default function App() {
     if (cur && contextRef.current.length) buildOrder(contextRef.current, cur);
   }, [shuffleMode, buildOrder]);
 
-  // ── Audio element sync ──────────────────────────────────
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !playerUrl) return;
@@ -922,17 +718,11 @@ export default function App() {
     if (audio) audio.volume = isMuted ? 0 : volume;
   }, [volume, isMuted, playerUrl]);
 
-  // ── Favorites ───────────────────────────────────────────
   const isFavorite = useCallback((videoId: string) => favorites.some((t) => t.videoId === videoId), [favorites]);
   const toggleFavorite = useCallback((track: Track) => {
-    setFavorites((prev) =>
-      prev.some((t) => t.videoId === track.videoId)
-        ? prev.filter((t) => t.videoId !== track.videoId)
-        : [track, ...prev]
-    );
+    setFavorites((prev) => prev.some((t) => t.videoId === track.videoId) ? prev.filter((t) => t.videoId !== track.videoId) : [track, ...prev]);
   }, []);
 
-  // ── Lyrics ──────────────────────────────────────────────
   useEffect(() => {
     if (!currentTrack) { setLyrics(null); return; }
     let cancelled = false;
@@ -959,28 +749,20 @@ export default function App() {
   }, [lyrics, currentTime]);
 
   useEffect(() => {
-    if (nowPlayingOpen && activeLyricRef.current) {
-      activeLyricRef.current.scrollIntoView({ block: "center", behavior: prefersReduced ? "auto" : "smooth" });
-    }
+    if (nowPlayingOpen && activeLyricRef.current) activeLyricRef.current.scrollIntoView({ block: "center", behavior: prefersReduced ? "auto" : "smooth" });
   }, [activeLyric, nowPlayingOpen]);
 
-  // ── Media Session ───────────────────────────────────────
   useEffect(() => {
     if (!("mediaSession" in navigator) || !currentTrack) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: currentTrack.title, artist: currentTrack.artist, album: "Music Venue",
-      artwork: [{ src: currentTrack.artwork, sizes: "512x512", type: "image/jpeg" }],
-    });
+    navigator.mediaSession.metadata = new MediaMetadata({ title: currentTrack.title, artist: currentTrack.artist, album: "Music Venue", artwork: [{ src: currentTrack.artwork, sizes: "512x512", type: "image/jpeg" }] });
     navigator.mediaSession.setActionHandler("play", () => setIsPlaying(true));
     navigator.mediaSession.setActionHandler("pause", () => setIsPlaying(false));
     navigator.mediaSession.setActionHandler("previoustrack", () => playPrev());
     navigator.mediaSession.setActionHandler("nexttrack", () => advance(true));
   }, [currentTrack, playPrev, advance]);
 
-  // Push the current track to Discord Rich Presence (no-op until native lands).
   useEffect(() => { if (currentTrack) pushRpc(currentTrack); }, [currentTrack, isPlaying, pushRpc]);
 
-  // ── Keyboard shortcuts ──────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
@@ -1004,26 +786,16 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [togglePlay, advance, playPrev, cycleShuffle, cycleRepeat]);
 
-  // ── Close context menu on any outside interaction ───────
   useEffect(() => {
     if (!ctxMenu) return;
     const close = () => setCtxMenu(null);
-    window.addEventListener("click", close);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
+    window.addEventListener("click", close); window.addEventListener("scroll", close, true); window.addEventListener("resize", close);
+    return () => { window.removeEventListener("click", close); window.removeEventListener("scroll", close, true); window.removeEventListener("resize", close); };
   }, [ctxMenu]);
 
-  // Close the search dropdown on outside click.
   useEffect(() => {
     if (!showSuggest) return;
-    const onDown = (e: MouseEvent) => {
-      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setShowSuggest(false);
-    };
+    const onDown = (e: MouseEvent) => { if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setShowSuggest(false); };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [showSuggest]);
@@ -1036,17 +808,15 @@ export default function App() {
     setCtxMenu({ x: Math.max(8, x), y: Math.max(8, y), track, context });
   };
 
-  // ── Window controls ─────────────────────────────────────
-  const win = () => getCurrentWindow();
-  const handleMinimize = async () => { if (isTauri) await win().minimize(); };
+  const handleMinimize = async () => { if (isTauri) await getCurrentWindow().minimize(); };
   const handleMaximize = async () => {
     if (!isTauri) return;
-    const w = win();
+    const w = getCurrentWindow();
     if (await w.isMaximized()) { await w.unmaximize(); setIsMaximized(false); }
     else { await w.maximize(); setIsMaximized(true); }
   };
-  const handleClose = async () => { if (isTauri) await win().close(); };
-  const handleDrag = async (e: React.MouseEvent) => { if (isTauri && e.button === 0) await win().startDragging(); };
+  const handleClose = async () => { if (isTauri) await getCurrentWindow().close(); };
+  const handleDrag = async (e: React.MouseEvent) => { if (isTauri && e.button === 0) await getCurrentWindow().startDragging(); };
 
   const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
@@ -1070,18 +840,8 @@ export default function App() {
     document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); }
-  };
-
-  const handleTabClick = (tab: string) => {
-    // Re-clicking Listen Now while already there reshuffles the page.
-    if (tab === "home" && activeTab === "home") { reshuffleHome(); return; }
-    setActiveTab(tab);
-    if (tab === "home" && !Object.keys(shelves).length) loadHome();
-    else if (tab === "radio") runSearch("Lo-fi radio chill");
-  };
+  const handleSearch = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); } };
+  const handleTabClick = (tab: string) => { if (tab === "home" && activeTab === "home") { reshuffleHome(); return; } setActiveTab(tab); if (tab === "home" && !Object.keys(shelves).length) loadHome(); else if (tab === "radio") runSearch("Lo-fi radio chill"); };
 
   const getPageTitle = () => {
     switch (activeTab) {
@@ -1099,7 +859,6 @@ export default function App() {
   const VolIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   const upNext = orderRef.current.slice(posRef.current + 1);
 
-  // ── Reusable renderers ──────────────────────────────────
   const AlbumCard = ({ track, context }: { track: Track; context: Track[] }) => (
     <div className="album-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
       <div className="album-art-wrap">
@@ -1113,23 +872,16 @@ export default function App() {
   const TrackRow = ({ track, context, index }: { track: Track; context: Track[]; index: number }) => {
     const playing = currentTrack?.videoId === track.videoId;
     return (
-      <div className={`track-row ${playing ? "playing" : ""}`}
-        onDoubleClick={() => playTrack(track, context)}
-        onContextMenu={(e) => openCtx(e, track, context)}>
+      <div className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
         <div className="track-row-index">
           <span className="track-num">{index + 1}</span>
           <button className="track-row-play" onClick={() => playTrack(track, context)}>
-            {playing && isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+            {playing && streamLoading ? <RefreshCw size={14} className="spin" /> : playing && isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
           </button>
         </div>
         <img src={track.artwork} alt="" className="track-row-art" loading="lazy" />
-        <div className="track-row-text">
-          <span className="track-row-title">{track.title}</span>
-          <span className="track-row-artist">{track.artist}</span>
-        </div>
-        <button className={`track-row-like ${isFavorite(track.videoId) ? "active" : ""}`} onClick={() => toggleFavorite(track)}>
-          <Heart size={16} fill={isFavorite(track.videoId) ? "currentColor" : "none"} />
-        </button>
+        <div className="track-row-text"><span className="track-row-title">{track.title}</span><span className="track-row-artist">{track.artist}</span></div>
+        <button className={`track-row-like ${isFavorite(track.videoId) ? "active" : ""}`} onClick={() => toggleFavorite(track)}><Heart size={16} fill={isFavorite(track.videoId) ? "currentColor" : "none"} /></button>
         <button className="track-row-more" onClick={(e) => openCtx(e, track, context)}><MoreHorizontal size={16} /></button>
       </div>
     );
@@ -1141,26 +893,15 @@ export default function App() {
       <section className="shelf">
         <div className="shelf-head"><div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div></div>
         <div className="shelf-scroll">
-          {loading && !tracks.length
-            ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)
-            : tracks.map((t) => <AlbumCard key={t.videoId} track={t} context={tracks} />)}
+          {loading && !tracks.length ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>) : tracks.map((t) => <AlbumCard key={t.videoId} track={t} context={tracks} />)}
         </div>
       </section>
     );
   };
 
-  // ── Render ──────────────────────────────────────────────
   return (
     <div className="app-container">
-      {playerUrl && (
-        <audio ref={audioRef} src={playerUrl}
-          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-          onDurationChange={(e) => setDuration(e.currentTarget.duration)}
-          onEnded={handleEnded} onError={handleAudioError}
-          onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
-      )}
-
-      {/* Sidebar */}
+      {playerUrl && <audio ref={audioRef} src={playerUrl} onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />}
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
@@ -1171,26 +912,17 @@ export default function App() {
         </div>
         <div className="sidebar-section">
           <div className="sidebar-title">Library</div>
-          <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}>
-            <Heart size={20} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}
-          </div>
+          <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}><Heart size={20} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}</div>
           <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={20} /> Queue</div>
         </div>
         <div className="sidebar-bottom">
           <button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
-            {profile.avatar ? (
-              <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" />
-            ) : (
-              <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
-            )}
+            {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" /> : <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
             <div className="profile-brief"><span className="profile-name">{profile.name || "Guest"}</span><span className="profile-sub">Profil &amp; Setelan</span></div>
             <Settings size={16} />
           </button>
-          {coreVersion && <div className="sidebar-foot">Core {coreVersion}{region?.countryCode ? ` · ${region.countryCode}` : ""}</div>}
         </div>
       </aside>
-
-      {/* Main */}
       <main className="main-content">
         <header className="header">
           <div className="header-drag" onMouseDown={handleDrag}><h1>{getPageTitle()}</h1></div>
@@ -1198,28 +930,15 @@ export default function App() {
             <div className="search-box-wrap" ref={searchBoxRef}>
               <form onSubmit={handleSearch} className="search-box">
                 <Search size={16} />
-                <input type="text" placeholder="Artists, Songs..." value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }}
-                  onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
+                <input type="text" placeholder="Artists, Songs..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }} onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
                 {searchQuery && <button type="button" className="search-clear" onClick={() => { setSearchQuery(""); setSuggestions([]); }}><X size={14} /></button>}
               </form>
               {showSuggest && (
                 <div className="search-dropdown">
-                  {searchQuery.trim() ? (
-                    suggestions.length ? suggestions.map((s) => (
-                      <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}>
-                        <Search size={15} /><span>{s}</span>
-                      </button>
-                    )) : <div className="suggest-empty">Tekan Enter untuk mencari “{searchQuery}”</div>
-                  ) : searchHistory.length ? (
+                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></button>) : <div className="suggest-empty">Tekan Enter untuk mencari “{searchQuery}”</div>) : searchHistory.length ? (
                     <>
                       <div className="suggest-head"><span>Terakhir dicari</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Hapus semua</button></div>
-                      {searchHistory.map((h) => (
-                        <button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}>
-                          <Clock size={15} /><span>{h}</span>
-                          <span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span>
-                        </button>
-                      ))}
+                      {searchHistory.map((h) => <button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}><Clock size={15} /><span>{h}</span><span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span></button>)}
                     </>
                   ) : <div className="suggest-empty">Belum ada riwayat pencarian.</div>}
                 </div>
@@ -1234,47 +953,29 @@ export default function App() {
             )}
           </div>
         </header>
-
-        {/* Home */}
         {activeTab === "home" && (
           <div className="page">
             {quickPicks.length > 0 && (
               <section className="shelf">
                 <div className="shelf-head"><div><h2>Pilihan cepat <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Berdasarkan yang sering kamu putar" : "Populer di sekitarmu"}{region?.city ? ` · ${region.city}` : ""}</p></div></div>
-                <div className="track-grid">
-                  {quickPicks.map((t, i) => <TrackRow key={t.videoId} track={t} context={quickPicks} index={i} />)}
-                </div>
+                <div className="track-grid">{quickPicks.map((t, i) => <TrackRow key={t.videoId} track={t} context={quickPicks} index={i} />)}</div>
               </section>
             )}
             {HOME_SHELVES.map((s) => <Shelf key={s.id} id={s.id} title={s.title} subtitle={s.subtitle} />)}
             <section className="shelf">
               <div className="shelf-head"><div><h2>Favourite Music <ChevronRight size={20} /></h2><p>Lagu yang kamu suka</p></div></div>
-              {favorites.length ? (
-                <div className="track-grid">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div>
-              ) : (
-                <div className="empty-state"><Heart size={34} /><p>Belum ada lagu favorit</p><span>Tekan ikon ♥ pada lagu untuk menyimpannya di sini.</span></div>
-              )}
+              {favorites.length ? <div className="track-grid">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state"><Heart size={34} /><p>Belum ada lagu favorit</p><span>Tekan ikon ♥ pada lagu untuk menyimpannya di sini.</span></div>}
             </section>
           </div>
         )}
-
-        {/* Favorites */}
         {activeTab === "favorites" && (
           <div className="page">
-            {favorites.length ? (
-              <div className="track-grid wide">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div>
-            ) : (
-              <div className="empty-state big"><Heart size={44} /><p>Liked Music masih kosong</p><span>Semua lagu yang kamu tandai ♥ akan muncul di sini.</span></div>
-            )}
+            {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => <TrackRow key={t.videoId} track={t} context={favorites} index={i} />)}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music masih kosong</p><span>Semua lagu yang kamu tandai ♥ akan muncul di sini.</span></div>}
           </div>
         )}
-
-        {/* Artist page */}
         {activeTab === "artist" && (
           <div className="page">
-            {artistLoading ? (
-              <div className="artist-page-head"><div className="artist-avatar sk-avatar" /><div className="artist-page-meta"><div className="sk-line" /><div className="sk-line short" /></div></div>
-            ) : artistView?.artist ? (
+            {artistLoading ? <div className="artist-page-head"><div className="artist-avatar sk-avatar" /><div className="artist-page-meta"><div className="sk-line" /><div className="sk-line short" /></div></div> : artistView?.artist ? (
               <>
                 <div className="artist-page-head">
                   <img className="artist-avatar" src={pickArtwork(artistView.artist.thumbnails)} alt={artistView.artist.name} />
@@ -1293,20 +994,12 @@ export default function App() {
                   <div className="track-grid wide">{artistView.songs.map((t, i) => <TrackRow key={t.videoId} track={t} context={artistView.songs} index={i} />)}</div>
                 </section>
               </>
-            ) : (
-              <div className="empty-state big"><User size={44} /><p>Artis tidak ditemukan</p><span>Coba cari nama artis yang lain.</span></div>
-            )}
+            ) : <div className="empty-state big"><User size={44} /><p>Artis tidak ditemukan</p><span>Coba cari nama artis yang lain.</span></div>}
           </div>
         )}
-
-        {/* Search / Radio */}
         {(activeTab === "search" || activeTab === "radio") && (
           <div className="page">
-            {loading ? (
-              <div className="grid-container">
-                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}
-              </div>
-            ) : searchPopular.length || searchOther.length ? (
+            {loading ? <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div> : searchPopular.length || searchOther.length ? (
               <>
                 {searchArtist && (
                   <div className="artist-hero" onClick={() => openArtist({ artistId: searchArtist.artistId })}>
@@ -1318,74 +1011,39 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                {searchPopular.length > 0 && (
-                  <section className="search-section">
-                    <div className="section-head"><h2>Popular</h2><span className="section-badge">Paling banyak diputar</span></div>
-                    <div className="grid-container">{searchPopular.map((t) => <AlbumCard key={t.videoId} track={t} context={searchPopular} />)}</div>
-                  </section>
-                )}
-                {searchOther.length > 0 && (
-                  <section className="search-section">
-                    <div className="section-head"><h2>Other</h2><span className="section-badge muted">Cover, live &amp; remix</span></div>
-                    <div className="grid-container">{searchOther.map((t) => <AlbumCard key={t.videoId} track={t} context={searchOther} />)}</div>
-                  </section>
-                )}
+                {searchPopular.length > 0 && <section className="search-section"><div className="section-head"><h2>Popular</h2><span className="section-badge">Paling banyak diputar</span></div><div className="grid-container">{searchPopular.map((t) => <AlbumCard key={t.videoId} track={t} context={searchPopular} />)}</div></section>}
+                {searchOther.length > 0 && <section className="search-section"><div className="section-head"><h2>Other</h2><span className="section-badge muted">Cover, live &amp; remix</span></div><div className="grid-container">{searchOther.map((t) => <AlbumCard key={t.videoId} track={t} context={searchOther} />)}</div></section>}
               </>
-            ) : (
-              <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Cari lagu favoritmu"}</p><span>Ketik nama artis atau judul lagu di kotak pencarian.</span></div>
-            )}
+            ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Cari lagu favoritmu"}</p><span>Ketik nama artis atau judul lagu di kotak pencarian.</span></div>}
           </div>
         )}
-
-        {/* Profile & Settings */}
         {activeTab === "profile" && (
           <div className="page profile-page">
             <div className="profile-hero" style={profile.banner ? { backgroundImage: `linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 100%), url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
-              {profile.avatar ? (
-                <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" />
-              ) : (
-                <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>
-              )}
+              {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
               <div className="profile-hero-info">
                 <span className="artist-hero-label"><UserCircle size={13} /> Profil</span>
                 <h1>{profile.name || "Guest"}</h1>
                 <p>{accounts.length ? `${accounts.length} akun terhubung` : "Belum ada akun terhubung"} · Tema {theme}</p>
               </div>
             </div>
-
             <motion.div className="profile-tabs" layout>
               {[
-                { id: "appearance", label: t("themes"), Icon: Palette },
-                { id: "accounts", label: t("accounts"), Icon: User },
-                { id: "discord", label: t("discordRpc"), Icon: Gamepad2 },
-                { id: "updates", label: t("update"), Icon: RefreshCw },
-                { id: "about", label: t("about"), Icon: Sparkles },
-              ].map((tb) => (
-                <button key={tb.id} className={`ptab ${profileTab === tb.id ? "active" : ""}`} onClick={() => setProfileTab(tb.id)}>
-                  <tb.Icon size={15} /> {tb.label}
-                </button>
-              ))}
+                { id: "appearance", label: "Themes", Icon: Palette },
+                { id: "accounts", label: "Accounts", Icon: User },
+                { id: "discord", label: "Discord RPC", Icon: Gamepad2 },
+                { id: "updates", label: "Updates", Icon: RefreshCw },
+                { id: "about", label: "About", Icon: Sparkles },
+              ].map((tb) => <button key={tb.id} className={`ptab ${profileTab === tb.id ? "active" : ""}`} onClick={() => setProfileTab(tb.id)}><tb.Icon size={15} /> {tb.label}</button>)}
             </motion.div>
-
             <AnimatePresence mode="wait">
-              <motion.div
-                key={profileTab}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="profile-content"
-              >
+              <motion.div key={profileTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="profile-content">
                 {profileTab === "appearance" && (
                   <>
                     <div className="setting-block">
-                      <h3>{t("themes")}</h3><p className="setting-desc">Ubah tampilan aplikasi. Dark abu-abu bikin efek kaca player lebih terlihat.</p>
+                      <h3>Themes</h3><p className="setting-desc">Ubah tampilan aplikasi.</p>
                       <div className="theme-grid">
-                        {[
-                          { id: "light", label: t("themeLight"), Icon: Sun },
-                          { id: "dark", label: t("themeDark"), Icon: Moon },
-                          { id: "amoled", label: t("themeAmoled"), Icon: Monitor },
-                        ].map((tOpt) => (
+                        {[{ id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }, { id: "amoled", label: "Amoled", Icon: Monitor }].map((tOpt) => (
                           <button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
                             <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
                             <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
@@ -1395,155 +1053,61 @@ export default function App() {
                       </div>
                     </div>
                     <div className="setting-block">
-                      <h3>Custom CSS</h3><p className="setting-desc">Tempel CSS atau unggah file .css untuk tema buatanmu. Langsung diterapkan & tersimpan.</p>
-                      <textarea className="css-editor" value={customCss} spellCheck={false} placeholder={":root { --accent: #7c3aed; }"} onChange={(e) => setCustomCss(e.target.value)} />
+                      <h3>Custom CSS</h3><p className="setting-desc">Tempel CSS atau unggah file .css untuk tema buatanmu.</p>
+                      <textarea className="css-editor" value={customCss} spellCheck={false} onChange={(e) => setCustomCss(e.target.value)} />
                       <div className="setting-actions">
                         <label className="btn-ghost file-btn"><Upload size={15} /> Unggah .css<input type="file" accept=".css,text/css" hidden onChange={(e) => e.target.files?.[0] && uploadCss(e.target.files[0])} /></label>
                         <button className="btn-ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS dihapus"); }}>Reset</button>
                       </div>
                     </div>
-                    <div className="setting-block">
-                      <h3>{t("language")}</h3>
-                      <div className="setting-actions">
-                        <LanguageSelect lang={lang} setLang={setLang} />
-                      </div>
-                    </div>
                   </>
                 )}
-
                 {profileTab === "accounts" && (
                   <>
                     <div className="setting-block">
-                      <h3>{t("accounts")}</h3>
-                      <p className="setting-desc">Login untuk menyimpan & sinkron konfigurasi.</p>
+                      <h3>Accounts</h3>
                       <div className="provider-list">
                         {PROVIDERS.map((p) => {
                           const connected = accounts.find((a) => a.provider === p.id);
                           return (
                             <button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
-                              {connected?.avatar ? (
-                                <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
-                              ) : p.id === "discord" ? (
-                                <DiscordIcon size={18} />
-                              ) : (
-                                <p.Icon size={18} />
-                              )}
+                              {connected?.avatar ? <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} /> : p.id === "discord" ? <DiscordIcon size={18} /> : <p.Icon size={18} />}
                               <span className="prov-name">{p.label}</span>
-                              {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">{t("connectAccount")}</span>}
+                              {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">Connect Account</span>}
                             </button>
                           );
                         })}
                       </div>
-                      {isTauri && (
-                        <div style={{ marginTop: 12 }}>
-                          <input
-                            type="text"
-                            placeholder="Mode Dev: Paste Token Manual di sini..."
-                            style={{ width: '100%', padding: '10px 14px', background: '#111', border: '1px solid #333', borderRadius: 8, color: '#fff', fontSize: 13 }}
-                            onChange={(e) => {
-                              const val = e.target.value.trim();
-                              if (val.length > 50) {
-                                handleAuthPayload(val);
-                                e.target.value = '';
-                              }
-                            }}
-                          />
-                        </div>
-                      )}
                     </div>
                     <div className="setting-block">
-                      <h3>Cadangan Konfigurasi</h3><p className="setting-desc">Simpan semua setelan (tema, CSS, liked music, RPC) ke file dan pulihkan kapan saja — berfungsi penuh tanpa backend.</p>
+                      <h3>Cadangan Konfigurasi</h3><p className="setting-desc">Simpan semua setelan ke file.</p>
                       <div className="setting-actions">
-                        <button className="btn-primary" onClick={exportConfig}><Download size={15} /> {t("export")}</button>
-                        <label className="btn-ghost file-btn"><Upload size={15} /> {t("import")}<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
+                        <button className="btn-primary" onClick={exportConfig}><Download size={15} /> Export</button>
+                        <label className="btn-ghost file-btn"><Upload size={15} /> Import<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
                       </div>
                     </div>
                   </>
                 )}
-
                 {profileTab === "discord" && (
                   <div className="setting-block">
-                    <h3>{t("rpcTitle")}</h3>
-                    <p className="setting-desc">{t("rpcDesc")}{!isTauri && ` ${t("rpcDesktopOnly")}`}</p>
-
-                    {(() => {
-                      const dc = accounts.find(a => a.provider === "discord");
-                      if (dc) {
-                        return (
-                          <div className="discord-profile-card" style={{ marginTop: 16, background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #222' }}>
-                            <div style={{ height: 120, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
-                              <div style={{ position: 'absolute', bottom: -40, left: 24 }}>
-                                <img src={dc.avatar || ''} alt="" style={{ width: 80, height: 80, borderRadius: '50%', border: '6px solid #111', objectFit: 'cover' }} />
-                              </div>
-                            </div>
-                            <div style={{ padding: '46px 24px 20px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
-                              </div>
-                              <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} · {dc.id}</span>
-                              {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 12, lineHeight: 1.5 }}>{dc.bio}</p>}
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-
+                    <h3>Discord Rich Presence</h3>
                     <div className="setting-actions" style={{ marginTop: 16 }}>
                       {accounts.some(a => a.provider === "discord") ? (
                         <>
-                          {rpcStatus === "on"
-                            ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {t("disconnectRpc")}</button>
-                            : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none' }}><DiscordIcon size={16} /> {rpcStatus === "connecting" ? t("connecting") : t("connectRpc")}</button>}
-                          <button className="btn-ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>{t("disconnectAccount")}</button>
+                          {rpcStatus === "on" ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Disconnect RPC</button> : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Connect RPC</button>}
+                          <button className="btn-ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>Disconnect Account</button>
                         </>
-                      ) : (
-                        <button className="btn-primary" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> {t("loginDiscord")}</button>
-                      )}
-                      <span className={`rpc-dot ${rpcStatus}`} />
-                      <span className="rpc-status-text">{rpcStatus === "on" ? t("rpcStatusConnected") : rpcStatus === "connecting" ? t("rpcStatusConnecting") : rpcStatus === "error" ? t("rpcStatusError") : t("rpcStatusOff")}</span>
-                    </div>
-                    <div className="rpc-preview">
-                      <div className="rpc-preview-head">{t("preview").toUpperCase()}</div>
-                      <div className="rpc-card">
-                        <div className="rpc-img-wrapper">
-                          <img src={currentTrack?.artwork || "https://picsum.photos/120"} className={!currentTrack?.artwork ? "rpc-img skeleton" : "rpc-img"} alt="" />
-                          {profile.avatar && accounts.some(a => a.provider === "discord") && (
-                            <img src={profile.avatar} className="rpc-small-img" alt="Discord Avatar" />
-                          )}
-                        </div>
-                        <div className="rpc-lines">
-                          <span className="rpc-app">MUSIC VENUE</span>
-                          <span className="rpc-details">{currentTrack?.title || "Belum ada lagu diputar"}</span>
-                          <span className="rpc-state">{currentTrack?.artist || "—"}</span>
-                          <span className="rpc-time">{isPlaying ? "sedang diputar" : "dijeda"}</span>
-                        </div>
-                      </div>
+                      ) : <button className="btn-primary" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</button>}
                     </div>
                   </div>
                 )}
-
                 {profileTab === "updates" && (
                   <div className="setting-block">
-                    <h3>{t("update")}</h3>
-                    <p className="setting-desc">Versi saat ini: <b>{coreVersion || "web"}</b></p>
+                    <h3>Updates</h3>
                     <div className="setting-actions">
-                      <button className="btn-primary" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} />
-                        {isCheckingUpdate ? t("checkingUpdate") : t("checkUpdate")}
-                      </button>
-                      {updateInfo && <button className="btn-ghost" onClick={runUpdate}>Perbarui ke {updateInfo.version}</button>}
+                      <button className="btn-primary" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} /> {isCheckingUpdate ? "Checking..." : "Check Updates"}</button>
                     </div>
-                    {updateStatus && <p className="setting-hint accent">{updateStatus === "Kamu sudah memakai versi terbaru." ? t("upToDate") : updateStatus}</p>}
-                    <p className="setting-hint">{t("updateHint")}</p>
-                  </div>
-                )}
-
-                {profileTab === "about" && (
-                  <div className="setting-block">
-                    <h3>Music Venue</h3>
-                    <p className="setting-desc">Pemutar musik bergaya Apple Music berbasis YouTube Music. Metadata via ytmusic-api, audio via yt-dlp (desktop), lirik via lrclib.net.</p>
-                    <p className="setting-hint">Dibuat dengan Tauri + React. Auto-update aktif untuk versi desktop.</p>
+                    {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
                   </div>
                 )}
               </motion.div>
@@ -1551,18 +1115,13 @@ export default function App() {
           </div>
         )}
       </main>
-
-      {/* Context menu */}
       {ctxMenu && (
         <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={(e) => e.stopPropagation()}>
           <button className="ctx-item" onClick={() => { startMix(ctxMenu.track); setCtxMenu(null); }}><Radio size={17} /> Mulai mix</button>
           <button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Putar setelah ini</button>
           <button className="ctx-item" onClick={() => { addToQueue(ctxMenu.track); setCtxMenu(null); }}><ListPlus size={17} /> Tambahkan ke antrean</button>
           <div className="ctx-sep" />
-          <button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}>
-            <Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} />
-            {isFavorite(ctxMenu.track.videoId) ? "Hapus dari lagu disukai" : "Tambahkan ke lagu disukai"}
-          </button>
+          <button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}><Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} /> {isFavorite(ctxMenu.track.videoId) ? "Hapus dari lagu disukai" : "Tambahkan ke lagu disukai"}</button>
           <button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</button>
           <button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Buka halaman artis</button>
           <button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Bagikan</button>
@@ -1570,44 +1129,28 @@ export default function App() {
           <button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Jangan rekomendasikan artis</button>
         </div>
       )}
-
-      {/* Update banner */}
-      <AnimatePresence>
-        {updateInfo && (
-          <motion.div className="update-banner"
-            initial={{ y: prefersReduced ? 0 : 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
-            transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}>
-            <div className="update-icon"><RefreshCw size={18} /></div>
-            <div className="update-text">
-              <strong>Versi baru {updateInfo.version} tersedia</strong>
-              <span>{updateProgress !== null ? `Mengunduh… ${updateProgress}%` : "Perbarui untuk fitur & perbaikan terbaru."}</span>
-            </div>
-            {updateProgress === null && (
-              <div className="update-actions">
-                <button className="btn-ghost" onClick={dismissUpdate}>Nanti</button>
-                <button className="btn-primary" onClick={runUpdate}>Perbarui</button>
+      {updateInfo && (
+        <div className="update-modal-overlay">
+          <motion.div className="update-modal" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+            <div className="update-modal-header">
+              <RefreshCw size={24} color="var(--accent)" />
+              <div>
+                <h3>Music Venue</h3>
+                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Patch : {updateInfo.version}</span>
               </div>
-            )}
+            </div>
+            <div className="update-modal-body">Pembaruan tersedia! Restart aplikasi setelah proses selesai.</div>
+            <div className="update-modal-actions">
+              <button className="btn-ghost" onClick={() => setUpdateInfo(null)}>Later</button>
+              <button className="btn-primary" onClick={runUpdate}>Update Now</button>
+            </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div className="toast" initial={{ y: prefersReduced ? 0 : 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ opacity: 0 }}>
-            {toast}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Now Playing */}
+        </div>
+      )}
+      {toast && <motion.div className="toast" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ opacity: 0 }}>{toast}</motion.div>}
       <AnimatePresence>
         {nowPlayingOpen && currentTrack && (
-          <motion.div className="now-playing"
-            initial={{ y: prefersReduced ? 0 : "100%", opacity: prefersReduced ? 0 : 1 }} animate={{ y: 0, opacity: 1 }}
-            exit={{ y: prefersReduced ? 0 : "100%", opacity: prefersReduced ? 0 : 1 }}
-            transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}>
+          <motion.div className="now-playing" initial={{ y: "100%", opacity: 1 }} animate={{ y: 0, opacity: 1 }} exit={{ y: "100%", opacity: 1 }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}>
             <div className="np-bg" style={{ backgroundImage: `url(${currentTrack.artwork})` }} />
             <button className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></button>
             <div className="np-body">
@@ -1622,67 +1165,43 @@ export default function App() {
                 <div className="np-controls">
                   <button className={`btn-icon ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={20} />{shuffleMode === "smart" && <span className="mode-dot" />}</button>
                   <button className="btn-icon" onClick={playPrev}><SkipBack size={26} fill="currentColor" /></button>
-                  <button className="btn-icon btn-play big" onClick={togglePlay}>{isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}</button>
+                  <button className="btn-icon btn-play big" onClick={togglePlay}>{streamLoading ? <RefreshCw size={26} className="spin" /> : isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}</button>
                   <button className="btn-icon" onClick={() => advance(true)}><SkipForward size={26} fill="currentColor" /></button>
                   <button className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</button>
                 </div>
               </div>
               <div className="np-lyrics">
-                {lyricsLoading ? <p className="lyric-status">Memuat lirik…</p>
-                  : lyrics?.synced.length ? (
-                    <div className="lyric-lines">
-                      {lyrics.synced.map((line, i) => (
-                        <p key={i} ref={i === activeLyric ? activeLyricRef : null}
-                          className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`}
-                          onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}>
-                          {line.text || "♪"}
-                        </p>
-                      ))}
-                    </div>
-                  ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div>
-                    : <p className="lyric-status">Lirik tidak tersedia untuk lagu ini.</p>}
+                {lyricsLoading ? <p className="lyric-status">Memuat lirik…</p> : lyrics?.synced.length ? (
+                  <div className="lyric-lines">
+                    {lyrics.synced.map((line, i) => (
+                      <p key={i} ref={i === activeLyric ? activeLyricRef : null} className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`} onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}>{line.text || "♪"}</p>
+                    ))}
+                  </div>
+                ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div> : <p className="lyric-status">Lirik tidak tersedia untuk lagu ini.</p>}
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Queue drawer */}
       <AnimatePresence>
         {showQueue && (
           <>
             <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowQueue(false)} />
-            <motion.aside className="queue-panel"
-              initial={{ x: prefersReduced ? 0 : "100%" }} animate={{ x: 0 }} exit={{ x: prefersReduced ? 0 : "100%" }}
-              transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}>
+            <motion.aside className="queue-panel" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}>
               <div className="queue-head"><h3>Playing Next</h3><button className="btn-icon" onClick={() => setShowQueue(false)}><X size={18} /></button></div>
-              {currentTrack && (
-                <div className="queue-now"><img src={currentTrack.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{currentTrack.title}</span><span className="track-row-artist">Now Playing</span></div></div>
-              )}
-              <div className="queue-list">
-                {upNext.length ? upNext.map((t, i) => (
-                  <div key={t.videoId + i} className="queue-item"
-                    onClick={() => { const idx = orderRef.current.findIndex((x) => x.videoId === t.videoId); if (idx >= 0) { posRef.current = idx; loadAndPlay(t); } }}
-                    onContextMenu={(e) => openCtx(e, t, orderRef.current)}>
-                    <img src={t.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{t.title}</span><span className="track-row-artist">{t.artist}</span></div>
-                  </div>
-                )) : <p className="lyric-status">Antrean kosong.</p>}
-              </div>
+              {currentTrack && <div className="queue-now"><img src={currentTrack.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{currentTrack.title}</span><span className="track-row-artist">Now Playing</span></div></div>}
+              <div className="queue-list">{upNext.length ? upNext.map((t, i) => <div key={t.videoId + i} className="queue-item" onClick={() => { const idx = orderRef.current.findIndex((x) => x.videoId === t.videoId); if (idx >= 0) { posRef.current = idx; loadAndPlay(t); } }} onContextMenu={(e) => openCtx(e, t, orderRef.current)}><img src={t.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{t.title}</span><span className="track-row-artist">{t.artist}</span></div></div>) : <p className="lyric-status">Antrean kosong.</p>}</div>
             </motion.aside>
           </>
         )}
       </AnimatePresence>
-
-      {/* Player bar */}
       <footer className="player-bar">
         <div className="player-info" onClick={() => currentTrack && setNowPlayingOpen(true)}>
           {currentTrack ? (
             <>
               <img src={currentTrack.artwork} alt="" className="player-artwork" />
-              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{streamLoading ? "Loading audio…" : currentTrack.artist}</span></div>
-              <button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}>
-                <Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} />
-              </button>
+              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span></div>
+              <button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></button>
             </>
           ) : <div className="player-text idle">Not Playing</div>}
         </div>

@@ -1,45 +1,6 @@
-export type Language = 'id' | 'en';
+export type Language = 'en';
 
 export const translations = {
-  id: {
-    home: 'Beranda',
-    search: 'Cari',
-    library: 'Koleksi',
-    radio: 'Radio',
-    history: 'Riwayat',
-    settings: 'Pengaturan',
-    update: 'Pembaruan',
-    checkUpdate: 'Periksa Update',
-    checkingUpdate: 'Memeriksa...',
-    upToDate: 'Kamu sudah memakai versi terbaru.',
-    updateHint: 'Aplikasi memeriksa update otomatis saat dibuka. Tombol ini untuk memeriksa manual jika auto-update gagal.',
-    accounts: 'Akun',
-    connectedAccounts: 'Akun Terhubung',
-    connectAccount: 'Hubungkan Akun',
-    disconnectAccount: 'Putuskan Akun',
-    themes: 'Tampilan',
-    language: 'Bahasa',
-    discordRpc: 'Discord RPC',
-    about: 'Tentang',
-    rpcTitle: 'Discord Rich Presence',
-    rpcDesc: 'Tampilkan lagu yang sedang diputar di status Discord-mu.',
-    rpcDesktopOnly: '(hanya di aplikasi desktop)',
-    connectRpc: 'Hubungkan RPC',
-    connecting: 'Menghubungkan...',
-    disconnectRpc: 'Putuskan RPC',
-    rpcStatusConnected: 'Terhubung ke Client Desktop',
-    rpcStatusConnecting: 'Menghubungkan',
-    rpcStatusError: 'Gagal',
-    rpcStatusOff: 'Tidak aktif',
-    loginDiscord: 'Login Discord',
-    export: 'Ekspor',
-    import: 'Impor',
-    nowPlaying: 'Sedang diputar di Music Venue',
-    preview: 'Preview',
-    themeDark: 'Gelap',
-    themeLight: 'Terang',
-    themeAmoled: 'AMOLED',
-  },
   en: {
     home: 'Home',
     search: 'Search',
@@ -81,6 +42,6 @@ export const translations = {
   }
 };
 
-export function getTranslation(lang: Language, key: keyof typeof translations['id']): string {
-  return translations[lang][key] || translations['id'][key];
+export function getTranslation(lang: Language, key: keyof typeof translations['en']): string {
+  return translations['en'][key] || key;
 }
