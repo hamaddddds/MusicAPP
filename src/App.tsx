@@ -765,7 +765,7 @@ export default function App() {
     navigator.mediaSession.setActionHandler("nexttrack", () => advance(true));
   }, [currentTrack, playPrev, advance]);
 
-  useEffect(() => { if (currentTrack) pushRpc(currentTrack); }, [currentTrack, isPlaying, duration, pushRpc]);
+  useEffect(() => { if (currentTrack && duration > 0) pushRpc(currentTrack); }, [currentTrack, isPlaying, duration, pushRpc]);
   useEffect(() => {
     if (isPlaying && rpcStatusRef.current === "off" && isTauri) {
       connectDiscord();
