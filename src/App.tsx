@@ -202,7 +202,7 @@ export default function App() {
 
   // Content
   const [shelves, setShelves] = useState<Record<string, Track[]>>({});
-  const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
+  const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks:v2", { tracks: [] } as any).tracks || []);
   const [searchPopular, setSearchPopular] = useState<Track[]>([]);
   const [searchOther, setSearchOther] = useState<Track[]>([]);
   const [searchArtist, setSearchArtist] = useState<ArtistHead | null>(null);
@@ -390,7 +390,11 @@ export default function App() {
       const songs = d.filter((x: any) => x.resultType === "song");
       const videos = d.filter((x: any) => x.resultType === "video");
 
-      setSearchArtist(artists.length > 0 ? { artistId: artists[0].browseId, name: artists[0].artist, thumbnails: artists[0].thumbnails } : null);
+      setSearchArtist(artists.length > 0 ? { 
+        artistId: artists[0].browseId || (artists[0].artists && artists[0].artists[0]?.id), 
+        name: artists[0].artist || (artists[0].artists && artists[0].artists[0]?.name), 
+        thumbnails: artists[0].thumbnails 
+      } : null);
       setSearchPopular(mapTracks(songs));
       setSearchOther(mapTracks(videos));
     } catch {
@@ -439,7 +443,7 @@ export default function App() {
 
   // Quick Picks: weighted play history × region-popular, minus blocklist.
   const buildQuickPicks = useCallback(async (reg: Region | null) => {
-    const cache = load("mv:quickpicks", null as any);
+    const cache = load("mv:quickpicks:v2", null as any);
     const fresh = cache && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
     if (fresh) { setQuickPicks(cache.tracks); return; }
 
@@ -467,7 +471,7 @@ export default function App() {
     }
     const picks = merged.slice(0, 12);
     setQuickPicks(picks);
-    localStorage.setItem("mv:quickpicks", JSON.stringify({ at: Date.now(), tracks: picks }));
+    localStorage.setItem("mv:quickpicks:v2", JSON.stringify({ at: Date.now(), tracks: picks }));
   }, [history, blocked, searchSongs]);
 
   // Reshuffle + refresh the home page (triggered by re-clicking Listen Now).
@@ -478,7 +482,7 @@ export default function App() {
       for (const k in prev) n[k] = shuffleArray(prev[k]);
       return n;
     });
-    localStorage.removeItem("mv:quickpicks");
+    localStorage.removeItem("mv:quickpicks:v2");
     await loadHome();
     buildQuickPicks(region);
   }, [loadHome, buildQuickPicks, region, flashToast]);
@@ -873,7 +877,7 @@ export default function App() {
   const notInterested = useCallback((track: Track) => {
     setBlocked((prev) => (prev.includes(track.artist) ? prev : [...prev, track.artist]));
     setQuickPicks((prev) => prev.filter((t) => t.artist !== track.artist));
-    localStorage.removeItem("mv:quickpicks");
+    localStorage.removeItem("mv:quickpicks:v2");
     flashToast(`Tidak merekomendasikan ${track.artist}`);
   }, [flashToast]);
 
