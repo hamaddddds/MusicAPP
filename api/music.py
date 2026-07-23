@@ -134,6 +134,102 @@ def handle_lyrics(params: dict):
     return 200, data
 
 
+
+def normalize_track(t: dict) -> dict:
+    vid = t.get("videoId")
+    if not vid:
+        return {}
+    title = t.get("title", "")
+    artists = t.get("artists", [])
+    artist_name = "Unknown Artist"
+    if artists and isinstance(artists, list):
+        artist_name = ", ".join([a.get("name", "") for a in artists if isinstance(a, dict)])
+    
+    thumbnails = t.get("thumbnails", [])
+    thumbnail = thumbnails[-1]["url"] if thumbnails else ""
+    if thumbnail and thumbnail.startswith("//"):
+        thumbnail = "https:" + thumbnail
+
+    album = t.get("album")
+    if isinstance(album, dict):
+        album = album.get("name", "")
+        
+    return {
+        "videoId": vid,
+        "title": title,
+        "artist": artist_name,
+        "thumbnail": thumbnail,
+        "album": album
+    }
+
+def handle_foryou(params: dict):
+    video_ids = _param(params, "videoIds", "")
+    country = _param(params, "country", "ZZ")
+    limit = int(_param(params, "limit", "10"))
+    
+    sections = []
+    warnings = []
+    yt = get_yt()
+    
+    # 1. Mix buat kamu
+    if video_ids:
+        seed = video_ids.split(",")[0].strip()
+        if seed:
+            try:
+                radio = cached(f"radio:{seed}", lambda: yt.get_watch_playlist(videoId=seed, radio=True, limit=limit*2))
+                tracks = radio.get("tracks", [])
+                items = [normalize_track(t) for t in tracks if normalize_track(t)]
+                seen = set()
+                uniq = []
+                for it in items:
+                    if it["videoId"] and it["videoId"] not in seen:
+                        seen.add(it["videoId"])
+                        uniq.append(it)
+                if uniq:
+                    sections.append({
+                        "id": "mix",
+                        "title": "Mix buat kamu",
+                        "items": uniq[:limit]
+                    })
+            except Exception as e:
+                warnings.append(f"Failed to fetch mix for {seed}: {e}")
+                
+    # 2. Local Chart
+    if country != "ZZ":
+        try:
+            charts = cached(f"charts:{country}", lambda: yt.get_charts(country=country))
+            chart_items = charts.get("trending", {}).get("items", [])
+            if not chart_items:
+                chart_items = charts.get("videos", {}).get("items", [])
+            items = [normalize_track(t) for t in chart_items if normalize_track(t)]
+            if items:
+                sections.append({
+                    "id": f"chart_{country.lower()}",
+                    "title": f"Chart {country.upper()}",
+                    "items": items[:limit]
+                })
+        except Exception as e:
+            warnings.append(f"Failed to fetch chart for {country}: {e}")
+            
+    # 3. Global Chart
+    try:
+        charts_gl = cached(f"charts:ZZ", lambda: yt.get_charts(country="ZZ"))
+        chart_items_gl = charts_gl.get("trending", {}).get("items", [])
+        if not chart_items_gl:
+            chart_items_gl = charts_gl.get("videos", {}).get("items", [])
+        items = [normalize_track(t) for t in chart_items_gl if normalize_track(t)]
+        if items:
+            sections.append({
+                "id": "chart_global",
+                "title": "Chart Global",
+                "items": items[:limit]
+            })
+    except Exception as e:
+        warnings.append(f"Failed to fetch global chart: {e}")
+        
+    return 200, {"sections": sections, "warnings": warnings}
+
+
 def handle_health(_params: dict):
     return 200, {"status": "ok"}
 
@@ -146,6 +242,7 @@ ACTIONS: dict[str, Callable[[dict], tuple[int, Any]]] = {
     "playlist": handle_playlist,
     "lyrics": handle_lyrics,
     "health": handle_health,
+    "foryou": handle_foryou,
 }
 
 

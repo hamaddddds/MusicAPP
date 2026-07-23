@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getTopPlayedIds } from "./lib/playHistory";
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Types Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
@@ -34,11 +35,7 @@ const prefersReduced =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const HOME_SHELVES = [
-  { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "popular new pop songs official" },
-  { id: "trend", title: "Trending Now", subtitle: "Hottest tracks this week", query: "top 50 global hit songs 2024" },
-  { id: "viral", title: "Viral Hits", subtitle: "Viral hits you must hear", query: "tiktok viral trending hits" },
-];
+
 
 const PROVIDERS = [
   { id: "google", label: "Google", Icon: LogIn },
@@ -150,7 +147,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const [shelves, setShelves] = useState<Record<string, Track[]>>({});
+  const [shelves, setShelves] = useState<{id: string, title: string, subtitle?: string, items: Track[]}[]>([]);
   const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
   const [searchPopular, setSearchPopular] = useState<Track[]>([]);
   const [searchOther, setSearchOther] = useState<Track[]>([]);
@@ -280,24 +277,27 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   }, []);
 
-  const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
-    return mapTracks(await res.json());
-  }, []);
-
-  const searchSongs = useCallback(async (query: string): Promise<Track[]> => {
+    const searchSongs = useCallback(async (query: string): Promise<Track[]> => {
     const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&filter=songs`);
     return mapTracks(await res.json());
   }, []);
 
   const loadHome = useCallback(async () => {
     setLoading(true);
-    const results = await Promise.all(HOME_SHELVES.map((s) => searchTracks(s.query).catch(() => [] as Track[])));
-    const map: Record<string, Track[]> = {};
-    HOME_SHELVES.forEach((s, i) => { map[s.id] = results[i]; });
-    setShelves(map);
+    try {
+      const seedIds = getTopPlayedIds(3);
+      const geo = await fetch('/api/index.js?action=geo').then(r => r.json()).catch(() => null);
+      const country = geo?.countryCode || 'ZZ';
+      const res = await fetch(`/api/music.py?action=foryou&videoIds=${seedIds.join(',')}&country=${country}&limit=10`);
+      const data = await res.json();
+      if (data.warnings?.length) console.warn('foryou warnings:', data.warnings);
+      setShelves(data.sections || []);
+    } catch (e) {
+      console.error(e);
+      setShelves([]);
+    }
     setLoading(false);
-  }, [searchTracks]);
+  }, []);
 
   const runSearch = useCallback(async (query: string) => {
     setLoading(true);
@@ -383,8 +383,7 @@ export default function App() {
   }, [history, blocked, searchSongs]);
 
   const reshuffleHome = useCallback(async () => {
-    flashToast("Menyusun ulangÃ¢â‚¬Â¦");
-    setShelves((prev) => { const n: Record<string, Track[]> = {}; for (const k in prev) n[k] = shuffleArray(prev[k]); return n; });
+    flashToast("Menyusun ulang...");
     localStorage.removeItem("mv:quickpicks");
     await loadHome();
     buildQuickPicks(region);
@@ -875,7 +874,7 @@ export default function App() {
   };
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); } };
-  const handleTabClick = (tab: string) => { if (tab === "home" && activeTab === "home") { reshuffleHome(); return; } setActiveTab(tab); if (tab === "home" && !Object.keys(shelves).length) loadHome(); else if (tab === "radio") runSearch("Lo-fi radio chill"); };
+  const handleTabClick = (tab: string) => { if (tab === "home" && activeTab === "home") { reshuffleHome(); return; } setActiveTab(tab); if (tab === "home" && !shelves.length) loadHome(); else if (tab === "radio") runSearch("Lo-fi radio chill"); };
 
   const getPageTitle = () => {
     switch (activeTab) {
@@ -921,18 +920,17 @@ export default function App() {
     );
   };
 
-  const renderShelf = (id: string, title: string, subtitle: string) => {
-    const tracks = shelves[id] || [];
+  const renderShelf = (shelf: {id: string, title: string, subtitle?: string, items: Track[]}) => {
     return (
-      <section key={id} className="shelf">
-        <div className="shelf-head" onClick={() => { setActiveShelf(id); setActiveTab("shelf"); }}><div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div></div>
+      <section key={shelf.id} className="shelf">
+        <div className="shelf-head" onClick={() => { setActiveShelf(shelf.id); setActiveTab("shelf"); }}><div><h2>{shelf.title} <ChevronRight size={20} /></h2>{shelf.subtitle && <p>{shelf.subtitle}</p>}</div></div>
         <div className="shelf-scroll" onWheel={(e) => {
           if (e.deltaY !== 0) {
             e.preventDefault();
             e.currentTarget.scrollLeft += e.deltaY;
           }
         }}>
-          {loading && !tracks.length ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>) : tracks.map((t) => renderAlbumCard(t, tracks))}
+          {loading && !shelf.items.length ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>) : shelf.items.map((t) => renderAlbumCard(t, shelf.items))}
         </div>
       </section>
     );
@@ -1000,7 +998,7 @@ export default function App() {
                 <div className="track-grid">{quickPicks.map((t, i) => renderTrackRow(t, quickPicks, i))}</div>
               </section>
             )}
-            {HOME_SHELVES.map((s) => renderShelf(s.id, s.title, s.subtitle))}
+            {shelves.map((s) => renderShelf(s))}
             <section className="shelf">
               <div className="shelf-head"><div><h2>Liked Music <ChevronRight size={20} /></h2><p>Songs you like</p></div></div>
               {favorites.length ? <div className="track-grid">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state"><Heart size={34} /><p>No liked music yet</p><span>Press the â™¥ icon on a song to save it here.</span></div>}
@@ -1059,11 +1057,11 @@ export default function App() {
         {activeTab === "shelf" && activeShelf && (
             <div className="page">
               <div className="section-head" style={{ marginTop: 20 }}>
-                <h2>{HOME_SHELVES.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
-                <span className="section-badge muted">{HOME_SHELVES.find(s => s.id === activeShelf)?.subtitle}</span>
+                <h2>{shelves.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
+                <span className="section-badge muted">{shelves.find(s => s.id === activeShelf)?.subtitle}</span>
               </div>
               <div className="grid-container">
-                {shelves[activeShelf]?.map(t => renderAlbumCard(t, shelves[activeShelf]))}
+                {shelves.find(s => s.id === activeShelf)?.items?.map(t => renderAlbumCard(t, shelves.find(s => s.id === activeShelf)?.items || []))}
               </div>
             </div>
           )}
