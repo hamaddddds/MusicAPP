@@ -281,7 +281,7 @@ export default function App() {
   }, []);
 
   const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&limit=50`);
+    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&filter=songs&limit=50`);
     return mapTracks(await res.json());
   }, []);
 
