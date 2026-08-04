@@ -27,9 +27,14 @@ def get_yt() -> YTMusic:
     """Return a shared YTMusic client, created lazily on first use."""
     global _yt_instance
     if _yt_instance is None:
-        auth_file = settings.ytmusic_auth_file or None
+        import os
+        auth_file = "oauth.json" if os.path.exists("oauth.json") else (settings.ytmusic_auth_file or None)
         _yt_instance = YTMusic(auth_file) if auth_file else YTMusic()
     return _yt_instance
+
+def reset_yt():
+    global _yt_instance
+    _yt_instance = None
 
 
 def search(query: str, filter: Optional[str] = None, limit: int = 20):

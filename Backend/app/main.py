@@ -1,6 +1,10 @@
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks
+from pydantic import BaseModel
+import json
+import os
+from ytmusicapi.auth.oauth.credentials import OAuthCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -39,6 +43,59 @@ def _call(fn, *args, **kwargs):
 def health():
     return {"status": "ok"}
 
+
+
+
+# ---------------------------------------------------------------------
+# Authentication (OAuth Device Flow)
+# ---------------------------------------------------------------------
+
+class AuthTokenRequest(BaseModel):
+    device_code: str
+
+@app.get("/auth/login")
+def auth_login():
+    if not settings.youtube_client_id or not settings.youtube_client_secret:
+        raise HTTPException(status_code=500, detail="OAuth Client ID/Secret not configured in server.")
+    
+    cred = OAuthCredentials(settings.youtube_client_id, settings.youtube_client_secret)
+    try:
+        code_dict = cred.get_code()
+        return code_dict
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/auth/token")
+def auth_token(req: AuthTokenRequest):
+    if not settings.youtube_client_id or not settings.youtube_client_secret:
+        raise HTTPException(status_code=500, detail="OAuth Client ID/Secret not configured in server.")
+    
+    cred = OAuthCredentials(settings.youtube_client_id, settings.youtube_client_secret)
+    try:
+        # token_from_code will block and poll until user authenticates or it times out
+        token_dict = cred.token_from_code(req.device_code)
+        
+        # Save token_dict to oauth.json
+        auth_file_path = "oauth.json"
+        with open(auth_file_path, "w", encoding="utf-8") as f:
+            json.dump(token_dict, f)
+            
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/auth/status")
+def auth_status():
+    return {"authenticated": os.path.exists("oauth.json")}
+
+@app.post("/auth/logout")
+def auth_logout():
+    if os.path.exists("oauth.json"):
+        os.remove("oauth.json")
+    # also reset yt_instance
+    from app.services.metadata import reset_yt
+    reset_yt()
+    return {"status": "success"}
 
 # ---------------------------------------------------------------------
 # Search & discovery

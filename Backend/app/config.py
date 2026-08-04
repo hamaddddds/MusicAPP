@@ -27,6 +27,8 @@ class Settings:
     cookies_file: str = os.getenv("COOKIES_FILE", "")
     # How long a resolved audio stream URL is cached before re-resolving.
     stream_cache_ttl: int = int(os.getenv("STREAM_CACHE_TTL", "3600"))
+    youtube_client_id: str = os.getenv("YOUTUBE_CLIENT_ID", "")
+    youtube_client_secret: str = os.getenv("YOUTUBE_CLIENT_SECRET", "")
 
 
 settings = Settings()

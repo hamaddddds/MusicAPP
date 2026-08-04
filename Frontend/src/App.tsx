@@ -146,6 +146,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [activeShelf, setActiveShelf] = useState<string | null>(null);
   const [homeShelvesState, setHomeShelvesState] = useState<{id: string, title: string, subtitle: string, query?: string}[]>([]);
+  const [isAuth, setIsAuth] = useState<boolean>(false);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [loginData, setLoginData] = useState<{user_code: string, verification_url: string, device_code: string} | null>(null);
+  const [isPolling, setIsPolling] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -291,8 +295,92 @@ export default function App() {
     return mapTracks(await res.json());
   }, []);
 
+
+  const handleLoginClick = async () => {
+    try {
+      setShowLoginModal(true);
+      setLoginData(null);
+      const res = await fetch(`${API_URL}/auth/login`);
+      const data = await res.json();
+      setLoginData(data);
+    } catch (err) {
+      console.error(err);
+      setShowLoginModal(false);
+    }
+  };
+
+  const startPolling = async () => {
+    if (!loginData || isPolling) return;
+    setIsPolling(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_code: loginData.device_code })
+      });
+      if (res.ok) {
+        setIsAuth(true);
+        setShowLoginModal(false);
+        setLoginData(null);
+        loadHome(); // refresh home
+      } else {
+        console.error("Token polling failed");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsPolling(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_URL}/auth/logout`, { method: "POST" });
+      setIsAuth(false);
+      loadHome(); // refresh home
+    } catch(err) {
+      console.error(err);
+    }
+  };
+
   const loadHome = useCallback(async () => {
     setLoading(true);
+    
+    // Check if authenticated
+    if (isAuth) {
+        try {
+            const homeData = await fetch(`${API_URL}/home`).then(res => res.json());
+            const dynamicShelves: any[] = [];
+            const map: Record<string, Track[]> = {};
+            
+            homeData.forEach((shelf: any, i: number) => {
+                if (shelf.contents && shelf.contents.length > 0) {
+                    const id = `auth_shelf_${i}`;
+                    dynamicShelves.push({ id, title: shelf.title, subtitle: shelf.subtitle || "" });
+                    
+                    // transform contents to Track[]
+                    const tracks: Track[] = shelf.contents.map((c: any) => ({
+                        videoId: c.videoId,
+                        title: c.title,
+                        artists: c.artists,
+                        album: c.album,
+                        thumbnails: c.thumbnails,
+                        duration_seconds: null,
+                    })).filter((c: any) => c.videoId);
+                    
+                    map[id] = tracks;
+                }
+            });
+            
+            setHomeShelvesState(dynamicShelves);
+            setShelves(map);
+            setLoading(false);
+            return;
+        } catch (e) {
+            console.error("Failed to load authenticated home", e);
+            // fallback to history
+        }
+    }
     
     // history is Record<string, HistEntry>
     const historyList = Object.values(history).sort((a, b) => b.last - a.last);
@@ -328,7 +416,7 @@ export default function App() {
     setHomeShelvesState(dynamicShelves);
     setShelves(map);
     setLoading(false);
-  }, [searchTracks, history]);
+  }, [searchTracks, history, isAuth]);
 
   const runSearch = useCallback(async (query: string) => {
     setLoading(true);
@@ -1011,6 +1099,11 @@ export default function App() {
                 </div>
               )}
             </div>
+            {isAuth ? (
+              <Button className="win-btn" onClick={handleLogout} title="Logout"><User size={16} style={{ color: '#3b82f6' }} /></Button>
+            ) : (
+              <Button className="win-btn" onClick={handleLoginClick} title="Login with YouTube"><User size={16} /></Button>
+            )}
             {isTauri && (
               <div className="window-controls">
                 <Button className="win-btn" onClick={handleMinimize}><Minus size={16} /></Button>
@@ -1425,6 +1518,42 @@ export default function App() {
           <Slider value={[isMuted ? 0 : volume * 100]} max={100} step={1} onValueChange={(val) => { setVolume(val[0] / 100); setIsMuted(false); }} className="w-24 cursor-pointer" />
         </div>
       </footer>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="modal-overlay" onClick={() => setShowLoginModal(false)}>
+          <div className="modal-content glass-card" onClick={e => e.stopPropagation()} style={{ width: 400, textAlign: 'center', padding: '2rem' }}>
+            <h2 style={{ marginBottom: 10 }}>Login with Google</h2>
+            <p style={{ color: '#aaa', marginBottom: 20 }}>Connect your YouTube Music account to get personalized recommendations.</p>
+            
+            {loginData ? (
+              <div>
+                <p style={{ marginBottom: 10 }}>Please go to:</p>
+                <a href={loginData.verification_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginBottom: 20, color: '#3b82f6', fontSize: '1.1rem', textDecoration: 'none' }}>
+                  {loginData.verification_url}
+                </a>
+                <p style={{ marginBottom: 10 }}>And enter the code:</p>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', letterSpacing: '4px', background: 'rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', marginBottom: 20 }}>
+                  {loginData.user_code}
+                </div>
+                {!isPolling ? (
+                  <button onClick={startPolling} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '20px', cursor: 'pointer', fontSize: '1rem' }}>
+                    I have entered the code
+                  </button>
+                ) : (
+                  <button disabled style={{ background: '#555', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '20px', cursor: 'wait', fontSize: '1rem' }}>
+                    Waiting for authorization...
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div>Loading code...</div>
+            )}
+            
+            <button onClick={() => setShowLoginModal(false)} style={{ display: 'block', margin: '20px auto 0', background: 'transparent', color: '#aaa', border: 'none', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
