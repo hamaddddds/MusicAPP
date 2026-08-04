@@ -153,7 +153,7 @@ export default function App() {
   const [shelves, setShelves] = useState<Record<string, Track[]>>({});
   const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
   const [searchTopResult, setSearchTopResult] = useState<any>(null);
-  const [searchSongs, setSearchSongs] = useState<Track[]>([]);
+  const [searchSongsResults, setSearchSongsResults] = useState<Track[]>([]);
   const [searchVideos, setSearchVideos] = useState<Track[]>([]);
   const [searchArtists, setSearchArtists] = useState<any[]>([]);
   const [searchAlbums, setSearchAlbums] = useState<any[]>([]);
@@ -323,10 +323,10 @@ export default function App() {
       setSearchTopResult(topResult);
       setSearchArtists(artists);
       setSearchAlbums(albums);
-      setSearchSongs(mapTracks(songs));
+      setSearchSongsResults(mapTracks(songs));
       setSearchVideos(mapTracks(videos));
     } catch {
-      setSearchTopResult(null); setSearchArtists([]); setSearchAlbums([]); setSearchSongs([]); setSearchVideos([]);
+      setSearchTopResult(null); setSearchArtists([]); setSearchAlbums([]); setSearchSongsResults([]); setSearchVideos([]);
     }
     setLoading(false);
   }, []);
@@ -367,9 +367,9 @@ export default function App() {
             }
           } catch (err) { console.error("Fallback search failed:", err); }
         }
-        setArtistView({ artist: d, songs: mapTracks(songs) });
-      } else { setArtistView({ artist: null, songs: [] }); }
-    } catch { setArtistView({ artist: null, songs: [] }); }
+        setArtistView({ artist: d, songs: mapTracks(songs), albums: d.albums?.results || [], singles: d.singles?.results || [] });
+      } else { setArtistView({ artist: null, songs: [], albums: [], singles: [] }); }
+    } catch { setArtistView({ artist: null, songs: [], albums: [], singles: [] }); }
     setArtistLoading(false);
   }, []);
 
@@ -1058,19 +1058,20 @@ export default function App() {
           <div className="page">
             {loading ? (
               <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div>
-            ) : searchTopResult || searchSongs.length || searchVideos.length || searchArtists.length || searchAlbums.length ? (
+            ) : searchTopResult || searchSongsResults.length || searchVideos.length || searchArtists.length || searchAlbums.length ? (
               <>
                 {searchTopResult && (
                   <div className={`top-result-card ${searchTopResult.resultType === 'artist' ? 'is-artist' : ''}`} onClick={() => {
                     if (searchTopResult.resultType === 'artist') {
                       openArtist({ artistId: searchTopResult.browseId || searchTopResult.artists?.[0]?.id, name: searchTopResult.artist });
                     } else if (searchTopResult.videoId) {
-                      playTrack({
+                      const t = {
                         videoId: searchTopResult.videoId,
                         title: searchTopResult.title || searchTopResult.name || "Unknown",
                         artist: searchTopResult.artists?.[0]?.name || searchTopResult.artist || "Unknown",
                         artwork: pickArtwork(searchTopResult.thumbnails)
-                      }, true);
+                      };
+                      playTrack(t, [t]);
                     }
                   }}>
                     <img src={pickArtwork(searchTopResult.thumbnails)} alt="Top Result" className="top-result-img" />
@@ -1082,7 +1083,7 @@ export default function App() {
                   </div>
                 )}
                 
-                {searchSongs.length > 0 && <section className="search-section"><div className="section-head"><h2>Songs</h2></div><div className="grid-container">{searchSongs.map((t) => renderAlbumCard(t, searchSongs))}</div></section>}
+                {searchSongsResults.length > 0 && <section className="search-section"><div className="section-head"><h2>Songs</h2></div><div className="grid-container">{searchSongsResults.map((t) => renderAlbumCard(t, searchSongsResults))}</div></section>}
                 
                 {searchArtists.length > 0 && (
                   <section className="search-section">
