@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 
 // ... Types ...
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
@@ -865,27 +868,8 @@ export default function App() {
   const handleClose = async () => { if (isTauri) await getCurrentWindow().close(); };
   const handleDrag = async (e: React.MouseEvent) => { if (isTauri && e.button === 0) await getCurrentWindow().startDragging(); };
 
-  const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
-    const audio = audioRef.current;
-    if (!audio || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    audio.currentTime = ((e.clientX - rect.left) / rect.width) * duration;
-    if (currentTrack) pushRpc(currentTrack);
-  };
 
-  const volumeBarRef = useRef<HTMLDivElement>(null);
-  const handleVolumeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    const update = (clientX: number) => {
-      if (!volumeBarRef.current) return;
-      const rect = volumeBarRef.current.getBoundingClientRect();
-      const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      setVolume(pos); setIsMuted(pos === 0);
-    };
-    update(e.clientX);
-    const move = (ev: MouseEvent) => update(ev.clientX);
-    const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
-    document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
-  };
+  // const volumeBarRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); } };
   const handleTabClick = (tab: string) => { if (tab === "home" && activeTab === "home") { reshuffleHome(); return; } setActiveTab(tab); if (tab === "home" && !Object.keys(shelves).length) loadHome(); else if (tab === "radio") runSearch("Lo-fi radio chill"); };
@@ -922,14 +906,14 @@ export default function App() {
       <div key={track.videoId} className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
         <div className="track-row-index">
           <span className="track-num">{index + 1}</span>
-          <button className="track-row-play" onClick={() => playTrack(track, context)}>
+          <Button className="track-row-play" onClick={() => playTrack(track, context)}>
             {playing && streamLoading ? <RefreshCw size={14} className="spin" /> : playing && isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-          </button>
+          </Button>
         </div>
         <img src={track.artwork} alt="" className="track-row-art" loading="lazy" />
         <div className="track-row-text"><span className="track-row-title">{track.title}</span><span className="track-row-artist">{track.artist}</span></div>
-        <button className={`track-row-like ${isFavorite(track.videoId) ? "active" : ""}`} onClick={() => toggleFavorite(track)}><Heart size={16} fill={isFavorite(track.videoId) ? "currentColor" : "none"} /></button>
-        <button className="track-row-more" onClick={(e) => openCtx(e, track, context)}><MoreHorizontal size={16} /></button>
+        <Button className={`track-row-like ${isFavorite(track.videoId) ? "active" : ""}`} onClick={() => toggleFavorite(track)}><Heart size={16} fill={isFavorite(track.videoId) ? "currentColor" : "none"} /></Button>
+        <Button className="track-row-more" onClick={(e) => openCtx(e, track, context)}><MoreHorizontal size={16} /></Button>
       </div>
     );
   };
@@ -941,8 +925,8 @@ export default function App() {
         <div className="shelf-head" onClick={() => { setActiveShelf(id); setActiveTab("shelf"); }}>
           <div><h2>{title} <ChevronRight size={20} /></h2><p>{subtitle}</p></div>
           <div className="shelf-nav">
-            <button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: -600, behavior: "smooth" }); }}><ChevronLeft size={20} /></button>
-            <button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: 600, behavior: "smooth" }); }}><ChevronRight size={20} /></button>
+            <Button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: -600, behavior: "smooth" }); }}><ChevronLeft size={20} /></Button>
+            <Button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: 600, behavior: "smooth" }); }}><ChevronRight size={20} /></Button>
           </div>
         </div>
         <div id={`shelf-${id}`} className="shelf-scroll" onWheel={(e) => {
@@ -973,11 +957,11 @@ export default function App() {
           <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={20} /> Queue</div>
         </div>
         <div className="sidebar-bottom">
-          <button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
+          <Button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
             {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" /> : <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
             <div className="profile-brief"><span className="profile-name">{profile.name || "Guest"}</span><span className="profile-sub">Profile & Settings</span></div>
             <Settings size={16} />
-          </button>
+          </Button>
         </div>
       </aside>
       <main className="main-content">
@@ -987,15 +971,15 @@ export default function App() {
             <div className="search-box-wrap" ref={searchBoxRef}>
               <form onSubmit={handleSearch} className="search-box">
                 <Search size={16} />
-                <input type="text" placeholder="Artists, Songs..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }} onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
-                {searchQuery && <button type="button" className="search-clear" onClick={() => { setSearchQuery(""); setSuggestions([]); }}><X size={14} /></button>}
+                <Input type="text" placeholder="Artists, Songs..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }} onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
+                {searchQuery && <Button type="button" className="search-clear" onClick={() => { setSearchQuery(""); setSuggestions([]); }}><X size={14} /></Button>}
               </form>
               {showSuggest && (
                 <div className="search-dropdown">
-                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></button>) : <div className="suggest-empty">Press Enter to search ...{searchQuery}...</div>) : searchHistory.length ? (
+                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <Button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></Button>) : <div className="suggest-empty">Press Enter to search ...{searchQuery}...</div>) : searchHistory.length ? (
                     <>
-                      <div className="suggest-head"><span>Recent searches</span><button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Clear all</button></div>
-                      {searchHistory.map((h) => <button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}><Clock size={15} /><span>{h}</span><span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span></button>)}
+                      <div className="suggest-head"><span>Recent searches</span><Button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Clear all</Button></div>
+                      {searchHistory.map((h) => <Button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}><Clock size={15} /><span>{h}</span><span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span></Button>)}
                     </>
                   ) : <div className="suggest-empty">No search history.</div>}
                 </div>
@@ -1003,9 +987,9 @@ export default function App() {
             </div>
             {isTauri && (
               <div className="window-controls">
-                <button className="win-btn" onClick={handleMinimize}><Minus size={16} /></button>
-                <button className="win-btn" onClick={handleMaximize}>{isMaximized ? <Square size={12} /> : <Maximize size={14} />}</button>
-                <button className="win-btn win-btn-close" onClick={handleClose}><X size={16} /></button>
+                <Button className="win-btn" onClick={handleMinimize}><Minus size={16} /></Button>
+                <Button className="win-btn" onClick={handleMaximize}>{isMaximized ? <Square size={12} /> : <Maximize size={14} />}</Button>
+                <Button className="win-btn win-btn-close" onClick={handleClose}><X size={16} /></Button>
               </div>
             )}
           </div>
@@ -1041,8 +1025,8 @@ export default function App() {
                     <h1>{artistView.artist.name}</h1>
                     {artistView.artist.subscribers && <p>{artistView.artist.subscribers} subscribers</p>}
                     <div className="artist-page-actions">
-                      <button className="btn-primary" onClick={() => artistView.songs.length && playTrack(artistView.songs[0], artistView.songs)}><Play size={17} fill="currentColor" /> Play</button>
-                      <button className="btn-ghost" onClick={() => { if (artistView.songs.length) { setShuffleMode("random"); playTrack(artistView.songs[0], artistView.songs); } }}><Shuffle size={17} /> Shuffle</button>
+                      <Button variant="default" onClick={() => artistView.songs.length && playTrack(artistView.songs[0], artistView.songs)}><Play size={17} fill="currentColor" /> Play</Button>
+                      <Button variant="ghost" onClick={() => { if (artistView.songs.length) { setShuffleMode("random"); playTrack(artistView.songs[0], artistView.songs); } }}><Shuffle size={17} /> Shuffle</Button>
                     </div>
                   </div>
                 </div>
@@ -1138,7 +1122,7 @@ export default function App() {
                 { id: "discord", label: "Discord RPC", Icon: Gamepad2, ChevronLeft },
                 { id: "updates", label: "Updates", Icon: RefreshCw },
                 { id: "about", label: "About", Icon: Sparkles },
-              ].map((tb) => <button key={tb.id} className={`ptab ${profileTab === tb.id ? "active" : ""}`} onClick={() => setProfileTab(tb.id)}><tb.Icon size={15} /> {tb.label}</button>)}
+              ].map((tb) => <Button key={tb.id} className={`ptab ${profileTab === tb.id ? "active" : ""}`} onClick={() => setProfileTab(tb.id)}><tb.Icon size={15} /> {tb.label}</Button>)}
             </motion.div>
             <AnimatePresence mode="wait">
               <motion.div key={profileTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="profile-content">
@@ -1162,7 +1146,7 @@ export default function App() {
                           }} />
                         </label>
                         {profile.banner && (
-                          <button className="btn-ghost" onClick={() => setProfile(p => ({ ...p, banner: null }))}>Remove</button>
+                          <Button variant="ghost" onClick={() => setProfile(p => ({ ...p, banner: null }))}>Remove</Button>
                         )}
                       </div>
                     </div>
@@ -1170,11 +1154,11 @@ export default function App() {
                       <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
                       <div className="theme-grid">
                         {[{ id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }, { id: "amoled", label: "Amoled", Icon: Monitor }].map((tOpt) => (
-                          <button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
+                          <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
                             <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
                             <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
                             {theme === tOpt.id && <Check size={16} className="theme-check" />}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     </div>
@@ -1183,7 +1167,7 @@ export default function App() {
                       <textarea className="css-editor" value={customCss} spellCheck={false} onChange={(e) => setCustomCss(e.target.value)} />
                       <div className="setting-actions">
                         <label className="btn-ghost file-btn"><Upload size={15} /> Upload .css<input type="file" accept=".css,text/css" hidden onChange={(e) => e.target.files?.[0] && uploadCss(e.target.files[0])} /></label>
-                        <button className="btn-ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS removed"); }}>Reset</button>
+                        <Button variant="ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS removed"); }}>Reset</Button>
                       </div>
                     </div>
                   </>
@@ -1196,11 +1180,11 @@ export default function App() {
                         {PROVIDERS.map((p) => {
                           const connected = accounts.find((a) => a.provider === p.id);
                           return (
-                            <button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
+                            <Button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
                               {connected?.avatar ? <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} /> : p.id === "discord" ? <DiscordIcon size={18} /> : <p.Icon size={18} />}
                               <span className="prov-name">{p.label}</span>
                               {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">Connect Account</span>}
-                            </button>
+                            </Button>
                           );
                         })}
                       </div>
@@ -1208,7 +1192,7 @@ export default function App() {
                     <div className="setting-block">
                       <h3>Configuration Backup</h3><p className="setting-desc">Save all settings to a file.</p>
                       <div className="setting-actions">
-                        <button className="btn-primary" onClick={exportConfig}><Download size={15} /> Export</button>
+                        <Button variant="default" onClick={exportConfig}><Download size={15} /> Export</Button>
                         <label className="btn-ghost file-btn"><Upload size={15} /> Import<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
                       </div>
                     </div>
@@ -1244,10 +1228,10 @@ export default function App() {
                     <div className="setting-actions" style={{ marginTop: 16 }}>
                       {accounts.some(a => a.provider === "discord") ? (
                         <>
-                          {rpcStatus === "on" ? <button className="btn-ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Disconnect RPC</button> : <button className="btn-primary" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Connect RPC</button>}
-                          <button className="btn-ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>Disconnect Account</button>
+                          {rpcStatus === "on" ? <Button variant="ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Disconnect RPC</Button> : <Button variant="default" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Connect RPC</Button>}
+                          <Button variant="ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>Disconnect Account</Button>
                         </>
-                      ) : <button className="btn-primary" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</button>}
+                      ) : <Button variant="default" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</Button>}
                     </div>
                   </div>
                 )}
@@ -1255,7 +1239,7 @@ export default function App() {
                   <div className="setting-block">
                     <h3>Updates</h3>
                     <div className="setting-actions">
-                      <button className="btn-primary" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} /> {isCheckingUpdate ? "Checking..." : "Check Updates"}</button>
+                      <Button variant="default" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} /> {isCheckingUpdate ? "Checking..." : "Check Updates"}</Button>
                     </div>
                     {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
                   </div>
@@ -1267,16 +1251,16 @@ export default function App() {
       </main>
       {ctxMenu && (
         <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={(e) => e.stopPropagation()}>
-          <button className="ctx-item" onClick={() => { startMix(ctxMenu.track); setCtxMenu(null); }}><Radio size={17} /> Start mix</button>
-          <button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Play next</button>
-          <button className="ctx-item" onClick={() => { addToQueue(ctxMenu.track); setCtxMenu(null); }}><ListPlus size={17} /> Add to queue</button>
+          <Button className="ctx-item" onClick={() => { startMix(ctxMenu.track); setCtxMenu(null); }}><Radio size={17} /> Start mix</Button>
+          <Button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Play next</Button>
+          <Button className="ctx-item" onClick={() => { addToQueue(ctxMenu.track); setCtxMenu(null); }}><ListPlus size={17} /> Add to queue</Button>
           <div className="ctx-sep" />
-          <button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}><Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} /> {isFavorite(ctxMenu.track.videoId) ? "Remove from liked music" : "Add to liked music"}</button>
-          <button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</button>
-          <button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Open artist page</button>
-          <button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Share</button>
+          <Button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}><Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} /> {isFavorite(ctxMenu.track.videoId) ? "Remove from liked music" : "Add to liked music"}</Button>
+          <Button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</Button>
+          <Button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Open artist page</Button>
+          <Button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Share</Button>
           <div className="ctx-sep" />
-          <button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</button>
+          <Button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</Button>
         </div>
       )}
       {justUpdatedChangelog && (
@@ -1293,7 +1277,7 @@ export default function App() {
               {justUpdatedChangelog}
             </div>
             <div className="update-modal-actions">
-              <button className="btn-primary" onClick={() => setJustUpdatedChangelog(null)} style={{ width: "100%" }}>Continue</button>
+              <Button variant="default" onClick={() => setJustUpdatedChangelog(null)} style={{ width: "100%" }}>Continue</Button>
             </div>
           </motion.div>
         </div>
@@ -1327,8 +1311,8 @@ export default function App() {
               </div>
             ) : (
               <div className="update-modal-actions">
-                <button className="btn-ghost" onClick={() => setUpdateInfo(null)}>Later</button>
-                <button className="btn-primary" onClick={runUpdate}>Update Now</button>
+                <Button variant="ghost" onClick={() => setUpdateInfo(null)}>Later</Button>
+                <Button variant="default" onClick={runUpdate}>Update Now</Button>
               </div>
             )}
           </motion.div>
@@ -1339,22 +1323,22 @@ export default function App() {
         {nowPlayingOpen && currentTrack && (
           <motion.div className="now-playing" initial={{ y: "100%", opacity: 1 }} animate={{ y: 0, opacity: 1 }} exit={{ y: "100%", opacity: 1 }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}>
             <div className="np-bg" style={{ backgroundImage: `url(${currentTrack.artwork})` }} />
-            <button className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></button>
+            <Button className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></Button>
             <div className="np-body">
               <div className="np-left">
                 <img src={currentTrack.artwork} alt="" className="np-art" />
                 <div className="np-meta"><h2>{currentTrack.title}</h2><p>{currentTrack.artist}</p></div>
                 <div className="np-progress">
                   <span>{formatTime(currentTime)}</span>
-                  <div className="progress-bar" onClick={seekTo}><div className="progress-fill" style={{ width: `${progressPct}%` }} /></div>
+                  <Slider value={[progressPct]} max={100} step={0.1} onValueChange={(val) => { if (audioRef.current) audioRef.current.currentTime = val[0] / 100 * duration; }} className="cursor-pointer" />
                   <span>{formatTime(duration)}</span>
                 </div>
                 <div className="np-controls">
-                  <button className={`btn-icon ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={20} />{shuffleMode === "smart" && <span className="mode-dot" />}</button>
-                  <button className="btn-icon" onClick={playPrev}><SkipBack size={26} fill="currentColor" /></button>
-                  <button className="btn-icon btn-play big" onClick={togglePlay}>{streamLoading ? <RefreshCw size={26} className="spin" /> : isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}</button>
-                  <button className="btn-icon" onClick={() => advance(true)}><SkipForward size={26} fill="currentColor" /></button>
-                  <button className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</button>
+                  <Button className={`btn-icon ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={20} />{shuffleMode === "smart" && <span className="mode-dot" />}</Button>
+                  <Button variant="ghost" size="icon" className="" onClick={playPrev}><SkipBack size={26} fill="currentColor" /></Button>
+                  <Button variant="ghost" size="icon" className="btn-play big" onClick={togglePlay}>{streamLoading ? <RefreshCw size={26} className="spin" /> : isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}</Button>
+                  <Button variant="ghost" size="icon" className="" onClick={() => advance(true)}><SkipForward size={26} fill="currentColor" /></Button>
+                  <Button className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</Button>
                 </div>
               </div>
               <div className="np-lyrics">
@@ -1375,7 +1359,7 @@ export default function App() {
           <>
             <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowQueue(false)} />
             <motion.aside className="queue-panel" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}>
-              <div className="queue-head"><h3>Playing Next</h3><button className="btn-icon" onClick={() => setShowQueue(false)}><X size={18} /></button></div>
+              <div className="queue-head"><h3>Playing Next</h3><Button variant="ghost" size="icon" className="" onClick={() => setShowQueue(false)}><X size={18} /></Button></div>
               {currentTrack && <div className="queue-now"><img src={currentTrack.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{currentTrack.title}</span><span className="track-row-artist">Now Playing</span></div></div>}
               <div className="queue-list">{upNext.length ? upNext.map((t, i) => <div key={t.videoId + i} className="queue-item" onClick={() => { const idx = orderRef.current.findIndex((x) => x.videoId === t.videoId); if (idx >= 0) { posRef.current = idx; loadAndPlay(t); } }} onContextMenu={(e) => openCtx(e, t, orderRef.current)}><img src={t.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{t.title}</span><span className="track-row-artist">{t.artist}</span></div></div>) : <p className="lyric-status">Antrean kosong.</p>}</div>
             </motion.aside>
@@ -1388,31 +1372,31 @@ export default function App() {
             <>
               <img src={currentTrack.artwork} alt="" className="player-artwork" />
               <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span></div>
-              <button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></button>
+              <Button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></Button>
             </>
           ) : <div className="player-text idle">Not Playing</div>}
         </div>
 
         <div className="player-controls">
           <div className="control-buttons">
-            <button className={`btn-icon sm ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={17} />{shuffleMode === "smart" && <span className="mode-dot" />}</button>
-            <button className="btn-icon" onClick={playPrev}><SkipBack size={19} fill="currentColor" /></button>
-            <button className="btn-icon btn-play" onClick={togglePlay}>{isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: 2 }} />}</button>
-            <button className="btn-icon" onClick={() => advance(true)}><SkipForward size={19} fill="currentColor" /></button>
-            <button className={`btn-icon sm ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}</button>
+            <Button className={`btn-icon sm ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={17} />{shuffleMode === "smart" && <span className="mode-dot" />}</Button>
+            <Button variant="ghost" size="icon" className="" onClick={playPrev}><SkipBack size={19} fill="currentColor" /></Button>
+            <Button variant="ghost" size="icon" className="btn-play" onClick={togglePlay}>{isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: 2 }} />}</Button>
+            <Button variant="ghost" size="icon" className="" onClick={() => advance(true)}><SkipForward size={19} fill="currentColor" /></Button>
+            <Button className={`btn-icon sm ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}</Button>
           </div>
           <div className="progress-container">
             <span>{formatTime(currentTime)}</span>
-            <div className="progress-bar" onClick={seekTo}><div className="progress-fill" style={{ width: `${progressPct}%` }} /></div>
+            <Slider value={[progressPct]} max={100} step={0.1} onValueChange={(val) => { if (audioRef.current) audioRef.current.currentTime = val[0] / 100 * duration; }} className="cursor-pointer" />
             <span>{formatTime(duration)}</span>
           </div>
         </div>
 
         <div className="player-extras">
-          <button className={`btn-icon sm ${nowPlayingOpen ? "on" : ""}`} onClick={() => currentTrack && setNowPlayingOpen(true)} title="Lyrics"><Mic2 size={18} /></button>
-          <button className="btn-icon sm" onClick={() => setShowQueue(true)} title="Queue"><ListMusic size={18} /></button>
-          <button className="btn-icon sm" onClick={() => setIsMuted((m) => !m)} title="Mute"><VolIcon size={18} /></button>
-          <div className="progress-bar volume-bar" ref={volumeBarRef} onMouseDown={handleVolumeMouseDown}><div className="progress-fill" style={{ width: `${isMuted ? 0 : volume * 100}%` }} /></div>
+          <Button className={`btn-icon sm ${nowPlayingOpen ? "on" : ""}`} onClick={() => currentTrack && setNowPlayingOpen(true)} title="Lyrics"><Mic2 size={18} /></Button>
+          <Button variant="ghost" size="icon" className="sm" onClick={() => setShowQueue(true)} title="Queue"><ListMusic size={18} /></Button>
+          <Button variant="ghost" size="icon" className="sm" onClick={() => setIsMuted((m) => !m)} title="Mute"><VolIcon size={18} /></Button>
+          <Slider value={[isMuted ? 0 : volume * 100]} max={100} step={1} onValueChange={(val) => { setVolume(val[0] / 100); setIsMuted(false); }} className="w-24 cursor-pointer" />
         </div>
       </footer>
     </div>
