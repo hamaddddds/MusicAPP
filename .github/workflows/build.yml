@@ -19,15 +19,15 @@ jobs:
         shell: bash
         run: |
           VER="0.2.${{ github.run_number }}"
-          node -e "const f='package.json';const j=require('./'+f);j.version='$VER';require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
-          node -e "const f='src-tauri/tauri.conf.json';const j=require('./'+f);j.version='$VER';require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
+          node -e "const f='Frontend/package.json';const j=require('./'+f);j.version='$VER';require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
+          node -e "const f='Frontend/src-tauri/tauri.conf.json';const j=require('./'+f);j.version='$VER';require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
           echo "Building version $VER"
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
       - name: install frontend dependencies
-        run: npm install
+        run: cd Frontend && npm install
       - name: Generate Changelog
         shell: bash
         run: |
@@ -75,3 +75,4 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+          projectPath: ./Frontend

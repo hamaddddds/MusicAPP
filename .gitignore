@@ -12,8 +12,8 @@ dist
 dist-ssr
 *.local
 
-# yt-dlp sidecar binaries (downloaded on demand by scripts/download-ytdlp.mjs)
-/src-tauri/binaries/
+# yt-dlp sidecar binaries (downloaded on demand by Frontend/scripts/download-ytdlp.mjs)
+Frontend/src-tauri/binaries/
 
 # Editor directories and files
 .vscode/*
