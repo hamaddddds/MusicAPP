@@ -1,3 +1,8 @@
+# Secrets
+.env
+Backend/.env
+Backend/oauth.json
+
 # Logs
 logs
 *.log

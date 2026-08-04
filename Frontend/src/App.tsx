@@ -322,7 +322,7 @@ export default function App() {
         setIsAuth(true);
         setShowLoginModal(false);
         setLoginData(null);
-        loadHome(); // refresh home
+        loadHome();
       } else {
         console.error("Token polling failed");
       }

@@ -45,9 +45,8 @@ def health():
 
 
 
-
 # ---------------------------------------------------------------------
-# Authentication (OAuth Device Flow)
+# Authentication (OAuth Device Flow for ytmusicapi)
 # ---------------------------------------------------------------------
 
 class AuthTokenRequest(BaseModel):
@@ -55,34 +54,34 @@ class AuthTokenRequest(BaseModel):
 
 @app.get("/auth/login")
 def auth_login():
+    """Start OAuth Device Flow: returns user_code + verification_url."""
     if not settings.youtube_client_id or not settings.youtube_client_secret:
-        raise HTTPException(status_code=500, detail="OAuth Client ID/Secret not configured in server.")
-    
+        raise HTTPException(status_code=500, detail="OAuth not configured.")
     cred = OAuthCredentials(settings.youtube_client_id, settings.youtube_client_secret)
-    try:
-        code_dict = cred.get_code()
-        return code_dict
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    code = cred.get_code()
+    return code  # {device_code, user_code, verification_url, ...}
 
 @app.post("/auth/token")
-def auth_token(req: AuthTokenRequest):
+def auth_token(body: AuthTokenRequest):
+    """Exchange device_code for tokens after user authorized."""
     if not settings.youtube_client_id or not settings.youtube_client_secret:
-        raise HTTPException(status_code=500, detail="OAuth Client ID/Secret not configured in server.")
-    
+        raise HTTPException(status_code=500, detail="OAuth not configured.")
     cred = OAuthCredentials(settings.youtube_client_id, settings.youtube_client_secret)
     try:
-        # token_from_code will block and poll until user authenticates or it times out
-        token_dict = cred.token_from_code(req.device_code)
-        
-        # Save token_dict to oauth.json
-        auth_file_path = "oauth.json"
-        with open(auth_file_path, "w", encoding="utf-8") as f:
-            json.dump(token_dict, f)
-            
-        return {"status": "success"}
+        token = cred.token_from_code(body.device_code)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # Persist token so ytmusicapi can reload it
+    import json, time
+    token_data = dict(token)
+    if "expires_at" not in token_data:
+        token_data["expires_at"] = int(time.time()) + token_data.get("expires_in", 3600)
+    with open("oauth.json", "w", encoding="utf-8") as f:
+        json.dump(token_data, f, indent=2)
+    # Reset the YTMusic singleton so it reloads with auth
+    from app.services.metadata import reset_yt
+    reset_yt()
+    return {"status": "ok"}
 
 @app.get("/auth/status")
 def auth_status():
@@ -92,12 +91,10 @@ def auth_status():
 def auth_logout():
     if os.path.exists("oauth.json"):
         os.remove("oauth.json")
-    # also reset yt_instance
     from app.services.metadata import reset_yt
     reset_yt()
     return {"status": "success"}
 
-# ---------------------------------------------------------------------
 # Search & discovery
 # ---------------------------------------------------------------------
 

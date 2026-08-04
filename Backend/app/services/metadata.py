@@ -36,6 +36,10 @@ def reset_yt():
     global _yt_instance
     _yt_instance = None
 
+def reset_yt():
+    global _yt_instance
+    _yt_instance = None
+
 
 def search(query: str, filter: Optional[str] = None, limit: int = 20):
     """filter: songs | videos | albums | artists | playlists |
