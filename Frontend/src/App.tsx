@@ -26,7 +26,7 @@ interface Region { country: string | null; countryCode: string | null; city: str
 interface CtxMenu { x: number; y: number; track: Track; context: Track[]; }
 interface UpdateInfo { version: string; obj: any; }
 interface ArtistHead { artistId: string; name: string; thumbnails: any[]; subscribers?: string | null; }
-interface ArtistPage { artist: ArtistHead | null; songs: Track[]; }
+interface ArtistPage { artist: ArtistHead | null; songs: Track[]; albums: any[]; singles: any[]; }
 
 const isTauri = "__TAURI_INTERNALS__" in window;
 const API_URL = "http://127.0.0.1:8000";
@@ -152,9 +152,11 @@ export default function App() {
 
   const [shelves, setShelves] = useState<Record<string, Track[]>>({});
   const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
-  const [searchPopular, setSearchPopular] = useState<Track[]>([]);
-  const [searchOther, setSearchOther] = useState<Track[]>([]);
-  const [searchArtist, setSearchArtist] = useState<ArtistHead | null>(null);
+  const [searchTopResult, setSearchTopResult] = useState<any>(null);
+  const [searchSongs, setSearchSongs] = useState<Track[]>([]);
+  const [searchVideos, setSearchVideos] = useState<Track[]>([]);
+  const [searchArtists, setSearchArtists] = useState<any[]>([]);
+  const [searchAlbums, setSearchAlbums] = useState<any[]>([]);
   const [artistView, setArtistView] = useState<ArtistPage | null>(null);
   const [artistLoading, setArtistLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -306,14 +308,25 @@ export default function App() {
     try {
       const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
       const d = await res.json();
-      const artists = d.filter((x: any) => x.resultType === "artist");
-      const songs = d.filter((x: any) => x.resultType === "song");
-      const videos = d.filter((x: any) => x.resultType === "video");
-      setSearchArtist(artists.length > 0 ? { artistId: artists[0].browseId || (artists[0].artists && artists[0].artists[0]?.id), name: artists[0].artist || (artists[0].artists && artists[0].artists[0]?.name), thumbnails: artists[0].thumbnails } : null);
-      setSearchPopular(mapTracks(songs));
-      setSearchOther(mapTracks(videos));
+      if (!Array.isArray(d)) throw new Error();
+      
+      let topResult = null;
+      if (d.length > 0 && d[0].category === "Top result") {
+        topResult = d[0];
+      }
+      
+      const artists = d.filter((x: any) => x.resultType === "artist" && x !== topResult);
+      const songs = d.filter((x: any) => x.resultType === "song" && x !== topResult);
+      const videos = d.filter((x: any) => x.resultType === "video" && x !== topResult);
+      const albums = d.filter((x: any) => x.resultType === "album" && x !== topResult);
+      
+      setSearchTopResult(topResult);
+      setSearchArtists(artists);
+      setSearchAlbums(albums);
+      setSearchSongs(mapTracks(songs));
+      setSearchVideos(mapTracks(videos));
     } catch {
-      setSearchArtist(null); setSearchPopular([]); setSearchOther([]);
+      setSearchTopResult(null); setSearchArtists([]); setSearchAlbums([]); setSearchSongs([]); setSearchVideos([]);
     }
     setLoading(false);
   }, []);
@@ -1043,20 +1056,54 @@ export default function App() {
         )}
         {(activeTab === "search" || activeTab === "radio") && (
           <div className="page">
-            {loading ? <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div> : searchPopular.length || searchOther.length ? (
+            {loading ? (
+              <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div>
+            ) : searchTopResult || searchSongs.length || searchVideos.length || searchArtists.length || searchAlbums.length ? (
               <>
-                {searchArtist && (
-                  <div className="artist-hero" onClick={() => openArtist({ artistId: searchArtist.artistId })}>
-                    <img src={pickArtwork(searchArtist.thumbnails)} alt={searchArtist.name} className="artist-hero-img" />
-                    <div className="artist-hero-info">
-                      <span className="artist-hero-label"><User size={13} /> Artist</span>
-                      <h2>{searchArtist.name}</h2>
-                      <button className="btn-primary sm">Open artist page</button>
+                {searchTopResult && (
+                  <div className={`top-result-card ${searchTopResult.resultType === 'artist' ? 'is-artist' : ''}`} onClick={() => {
+                    if (searchTopResult.resultType === 'artist') {
+                      openArtist({ artistId: searchTopResult.browseId || searchTopResult.artists?.[0]?.id, name: searchTopResult.artist });
+                    } else if (searchTopResult.videoId) {
+                      playTrack({
+                        videoId: searchTopResult.videoId,
+                        title: searchTopResult.title || searchTopResult.name || "Unknown",
+                        artist: searchTopResult.artists?.[0]?.name || searchTopResult.artist || "Unknown",
+                        artwork: pickArtwork(searchTopResult.thumbnails)
+                      }, true);
+                    }
+                  }}>
+                    <img src={pickArtwork(searchTopResult.thumbnails)} alt="Top Result" className="top-result-img" />
+                    <div className="top-result-info">
+                      <span className="section-badge">Top Result</span>
+                      <h2>{searchTopResult.title || searchTopResult.artist || searchTopResult.name || "Top Result"}</h2>
+                      <p className="muted" style={{textTransform: 'capitalize'}}>{searchTopResult.resultType || "Result"}</p>
                     </div>
                   </div>
                 )}
-                {searchPopular.length > 0 && <section className="search-section"><div className="section-head"><h2>Popular</h2><span className="section-badge">Paling banyak diputar</span></div><div className="grid-container">{searchPopular.map((t) => renderAlbumCard(t, searchPopular))}</div></section>}
-                {searchOther.length > 0 && <section className="search-section"><div className="section-head"><h2>Other</h2><span className="section-badge muted">Cover, live &amp; remix</span></div><div className="grid-container">{searchOther.map((t) => renderAlbumCard(t, searchOther))}</div></section>}
+                
+                {searchSongs.length > 0 && <section className="search-section"><div className="section-head"><h2>Songs</h2></div><div className="grid-container">{searchSongs.map((t) => renderAlbumCard(t, searchSongs))}</div></section>}
+                
+                {searchArtists.length > 0 && (
+                  <section className="search-section">
+                    <div className="section-head"><h2>Artists</h2></div>
+                    <div className="grid-container">
+                      {searchArtists.map((a: any, i) => (
+                        <div key={i} className="album-card" onClick={() => openArtist({ artistId: a.browseId || a.artists?.[0]?.id, name: a.artist })}>
+                          <div className="album-art-wrap">
+                            <img src={pickArtwork(a.thumbnails)} alt={a.artist} style={{ borderRadius: '50%' }} />
+                          </div>
+                          <div className="album-info">
+                            <span className="album-title">{a.artist}</span>
+                            <span className="album-artist">Artist</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                
+                {searchVideos.length > 0 && <section className="search-section"><div className="section-head"><h2>Videos</h2><span className="section-badge muted">Live, Covers &amp; Remixes</span></div><div className="grid-container">{searchVideos.map((t) => renderAlbumCard(t, searchVideos))}</div></section>}
               </>
             ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Search for your favorite songs"}</p><span>Type an artist name or song title in the search box.</span></div>}
           </div>
