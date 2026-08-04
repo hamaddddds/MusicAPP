@@ -767,3 +767,28 @@ button { font-family: inherit; }
 .update-modal-body { font-size: 14px; color: var(--text-secondary); line-height: 1.5; white-space: pre-line; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; font-family: monospace;}
 .update-modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 
+
+/* Glassmorphism for Album Cards */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem; /* a bit more rounded for glass effect */
+  transition: all 0.3s ease;
+  padding: 0.5rem; /* add some inner padding */
+  box-sizing: border-box;
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.4), inset 0 0 10px rgba(59, 130, 246, 0.1);
+  transform: translateY(-4px);
+}
+
+.glass-card .album-art-wrap {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}

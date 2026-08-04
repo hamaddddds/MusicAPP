@@ -37,11 +37,6 @@ const prefersReduced =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const HOME_SHELVES = [
-  { id: "new", title: "New Music", subtitle: "Rilisan terbaru buat kamu", query: "popular new pop songs official" },
-  { id: "trend", title: "Trending Now", subtitle: "Hottest tracks this week", query: "top 50 global hit songs 2024" },
-  { id: "viral", title: "Viral Hits", subtitle: "Viral hits you must hear", query: "tiktok viral trending hits" },
-];
 
 const PROVIDERS = [
   { id: "google", label: "Google", Icon: LogIn },
@@ -150,6 +145,7 @@ export default function App() {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(() => load("mv:last-track", null));
   const [activeTab, setActiveTab] = useState("home");
   const [activeShelf, setActiveShelf] = useState<string | null>(null);
+  const [homeShelvesState, setHomeShelvesState] = useState<{id: string, title: string, subtitle: string, query?: string}[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -297,12 +293,42 @@ export default function App() {
 
   const loadHome = useCallback(async () => {
     setLoading(true);
-    const results = await Promise.all(HOME_SHELVES.map((s) => searchTracks(s.query).catch(() => [] as Track[])));
+    
+    // history is Record<string, HistEntry>
+    const historyList = Object.values(history).sort((a, b) => b.last - a.last);
+    const recentHistory = historyList.slice(0, 15);
+    const olderHistory = historyList.slice(15, 30);
+    
+    let similarArtist = "The Weeknd";
+    if (historyList.length > 0) {
+      const randomIdx = Math.floor(Math.random() * Math.min(historyList.length, 10));
+      if (historyList[randomIdx] && historyList[randomIdx].artist) similarArtist = historyList[randomIdx].artist;
+    }
+    
+    const similarTracks = await searchTracks(similarArtist).catch(() => [] as Track[]);
+    const dynamicShelves = [];
     const map: Record<string, Track[]> = {};
-    HOME_SHELVES.forEach((s, i) => { map[s.id] = results[i]; });
+    
+    if (recentHistory.length > 0) {
+       dynamicShelves.push({ id: "keep_listening", title: "Keep listening", subtitle: "Pick up where you left off" });
+       map["keep_listening"] = recentHistory;
+    }
+    
+    dynamicShelves.push({ id: "similar", title: `Similar to ${similarArtist}`, subtitle: "Based on your taste" });
+    map["similar"] = similarTracks;
+    
+    if (olderHistory.length > 0) {
+       dynamicShelves.push({ id: "listen_again", title: "Listen again", subtitle: "Your past favorites" });
+       map["listen_again"] = olderHistory;
+    } else if (recentHistory.length > 0 && historyList.length > 5) {
+       dynamicShelves.push({ id: "listen_again", title: "Listen again", subtitle: "Your past favorites" });
+       map["listen_again"] = [...historyList].sort(() => Math.random() - 0.5).slice(0, 10);
+    }
+    
+    setHomeShelvesState(dynamicShelves);
     setShelves(map);
     setLoading(false);
-  }, [searchTracks]);
+  }, [searchTracks, history]);
 
   const runSearch = useCallback(async (query: string) => {
     setLoading(true);
@@ -891,7 +917,7 @@ export default function App() {
   const upNext = orderRef.current.slice(posRef.current + 1);
 
   const renderAlbumCard = (track: Track, context: Track[]) => (
-    <div key={track.videoId} className="album-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
+    <div key={track.videoId} className="album-card glass-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
       <div className="album-art-wrap">
         <img src={track.artwork} alt={track.title} className="album-artwork" loading="lazy" />
         <div className="album-play-overlay"><div className="mini-play"><Play size={18} fill="currentColor" /></div></div>
@@ -1002,7 +1028,7 @@ export default function App() {
                 <div className="track-grid">{quickPicks.map((t, i) => renderTrackRow(t, quickPicks, i))}</div>
               </section>
             )}
-            {HOME_SHELVES.map((s) => renderShelf(s.id, s.title, s.subtitle))}
+            {homeShelvesState.map((s) => renderShelf(s.id, s.title, s.subtitle))}
             <section className="shelf">
               <div className="shelf-head"><div><h2>Liked Music <ChevronRight size={20} /></h2><p>Songs you like</p></div></div>
               {favorites.length ? <div className="track-grid">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state"><Heart size={34} /><p>No liked music yet</p><span>Press the ♥ icon on a song to save it here.</span></div>}
@@ -1074,7 +1100,7 @@ export default function App() {
                     <div className="section-head"><h2>Artists</h2></div>
                     <div className="grid-container">
                       {searchArtists.map((a: any, i) => (
-                        <div key={i} className="album-card" onClick={() => openArtist({ artistId: a.browseId || a.artists?.[0]?.id, name: a.artist })}>
+                        <div key={i} className="album-card glass-card" onClick={() => openArtist({ artistId: a.browseId || a.artists?.[0]?.id, name: a.artist })}>
                           <div className="album-art-wrap">
                             <img src={pickArtwork(a.thumbnails)} alt={a.artist} style={{ borderRadius: '50%' }} />
                           </div>
@@ -1096,8 +1122,8 @@ export default function App() {
         {activeTab === "shelf" && activeShelf && (
             <div className="page">
               <div className="section-head" style={{ marginTop: 20 }}>
-                <h2>{HOME_SHELVES.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
-                <span className="section-badge muted">{HOME_SHELVES.find(s => s.id === activeShelf)?.subtitle}</span>
+                <h2>{homeShelvesState.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
+                <span className="section-badge muted">{homeShelvesState.find(s => s.id === activeShelf)?.subtitle}</span>
               </div>
               <div className="grid-container">
                 {shelves[activeShelf]?.map(t => renderAlbumCard(t, shelves[activeShelf]))}
