@@ -22,8 +22,9 @@ import { Slider } from "@/components/ui/slider";
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
 type RepeatMode = "off" | "all" | "one";
 type ShuffleMode = "off" | "random" | "smart";
-interface LyricLine { t: number; text: string; }
-interface Lyrics { synced: LyricLine[]; plain: string; }
+interface WordPart { t: number; d: number; text: string } // t start, d duration (seconds)
+interface SyncedLine { t: number; text: string; parts: WordPart[] } // parts synthesized when empty
+interface Lyrics { synced: SyncedLine[]; plain: string }
 interface HistEntry extends Track { count: number; last: number; }
 interface Region { country: string | null; countryCode: string | null; city: string | null; }
 interface CtxMenu { x: number; y: number; track: Track; context: Track[]; }
@@ -106,8 +107,8 @@ function smartOrder(list: Track[], start: Track): Track[] {
   return result;
 }
 
-function parseLRC(lrc: string): LyricLine[] {
-  const out: LyricLine[] = [];
+function parseLRC(lrc: string): SyncedLine[] {
+  const out: SyncedLine[] = [];
   for (const raw of lrc.split("\n")) {
     const matches = [...raw.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
     if (!matches.length) continue;
@@ -116,10 +117,135 @@ function parseLRC(lrc: string): LyricLine[] {
       const min = parseInt(m[1], 10);
       const sec = parseInt(m[2], 10);
       const frac = m[3] ? parseInt(m[3].padEnd(3, "0"), 10) / 1000 : 0;
-      out.push({ t: min * 60 + sec + frac, text });
+      out.push({ t: min * 60 + sec + frac, text, parts: [] });
     }
   }
   return out.sort((a, b) => a.t - b.t);
+}
+
+/** Word timings synthesized from a line when richsync is unavailable. Mirrors
+ * better-lyrics' buildLineSyncedParts: d:0 words get a line-synced fade
+ * rather than a per-word swipe. */
+function synthParts(text: string, lineT: number): WordPart[] {
+  return (text.match(/\S+/g) ?? []).map((w, i) => ({ t: lineT + i * 0.05, d: 0, text: w }));
+}
+
+/** Accepts the new backend shape ({lines:[{t,text,parts}]}) AND the legacy
+ * shape ({synced: LRC-string, plain}), so old/new backends both work. */
+function normalizeLyrics(d: any): Lyrics {
+  const lines: SyncedLine[] = [];
+  if (Array.isArray(d?.lines)) {
+    for (const raw of d.lines) {
+      if (!raw || typeof raw.t === "undefined") continue;
+      const t = Number(raw.t);
+      const text = String(raw.text ?? "");
+      const rawParts: any[] = Array.isArray(raw.parts) ? raw.parts : [];
+      const parts: WordPart[] = rawParts
+        .filter((p: any) => p && typeof p.t === "number")
+        .map((p: any) => ({ t: Number(p.t), d: Number(p.d ?? 0), text: String(p.text ?? "") }))
+        .filter((p) => p.text.trim().length > 0);
+      lines.push({ t, text, parts: parts.length ? parts : synthParts(text, t) });
+    }
+  } else if (typeof d?.synced === "string") {
+    // Legacy: backend still returned LRC under 'synced'.
+    lines.push(...parseLRC(d.synced).map((l) => ({ ...l, parts: synthParts(l.text, l.t) })));
+  }
+  return { synced: lines.sort((a, b) => a.t - b.t), plain: d?.plain || "" };
+}
+
+const SWIPE_START_FROM = -0.2, SWIPE_END_FROM = -0.1;
+const SWIPE_START_TO = 1.4, SWIPE_END_TO = 1.5;
+
+/** Karaoke word-swipe animation (ported from better-lyrics). Each word span has
+ * a ::after overlay (content: attr(data-content), gradient background-clip:text)
+ * whose --lyric-transition-amount-* custom props control the swipe position.
+ *
+ * Rather than relying on pseudo-element WAAPI (element.animate({ pseudoElement })
+ * is silently dropped by some webviews), we drive the two custom props directly
+ * on the word element's inline style from a requestAnimationFrame loop. The
+ * ::after inherits them, so the gradient re-computes every frame. The RAF loop
+ * only runs while the audio is playing; it freezes on pause and re-seeds to the
+ * word-local elapsed time on seek jumps, keeping the swipe frame-accurate. */
+function useLyricAnimation(
+  lines: SyncedLine[] | null,
+  activeIndex: number,
+  currentTime: number,
+  isPlaying: boolean,
+  containerRef: React.RefObject<HTMLDivElement | null>,
+) {
+  // Latest currentTime, read by the RAF loop without re-running the effect.
+  const timeRef = useRef(currentTime);
+  timeRef.current = currentTime;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+
+  // Drive the word swipes + line activation classes from a RAF loop.
+  useEffect(() => {
+    if (prefersReduced) return; // static reveal via CSS class instead
+    const container = containerRef.current;
+    if (!container) return;
+    if (activeIndex < 0) return;
+    const line = lines?.[activeIndex];
+    if (!line) return;
+
+    // Toggle active/past classes on the affected lines.
+    const lineEls = container.querySelectorAll<HTMLElement>(".blyrics--line");
+    const lo = Math.max(0, activeIndex - 1);
+    const hi = Math.min(lineEls.length - 1, activeIndex + 1);
+    for (let i = lo; i <= hi; i++) {
+      const el = lineEls[i];
+      if (!el) continue;
+      el.classList.toggle("blyrics--active", i === activeIndex);
+      el.classList.toggle("blyrics--past", i < activeIndex);
+    }
+
+    // Collect the active line's word spans directly from the DOM.
+    const activeLineEl = container.querySelectorAll<HTMLElement>(".blyrics--line")[activeIndex];
+    const wordNodes = activeLineEl
+      ? [...activeLineEl.querySelectorAll<HTMLSpanElement>(".blyrics--word")]
+      : [];
+    const els: { el: HTMLSpanElement; t: number; d: number }[] = [];
+    for (let j = 0; j < Math.min(wordNodes.length, line.parts.length); j++) {
+      const part = line.parts[j];
+      const el = wordNodes[j];
+      if (!el) continue;
+      els.push({ el, t: part.t, d: part.d });
+    }
+    if (!els.length) return;
+
+    const lineDur = 0.5; // fallback sweep window for line-synced (d:0) words
+
+    let raf = 0;
+    const tick = () => {
+      const now = timeRef.current;
+
+      for (const { el, t, d } of els) {
+        const elapsed = now - t;
+        if (elapsed <= 0) {
+          el.style.setProperty("--lyric-transition-amount-start", String(SWIPE_START_FROM));
+          el.style.setProperty("--lyric-transition-amount-end", String(SWIPE_END_FROM));
+          continue;
+        }
+        const dur = d > 0 ? d : lineDur;
+        const pct = Math.min(1, elapsed / dur);
+        el.style.setProperty("--lyric-transition-amount-start", String(SWIPE_START_FROM + (SWIPE_START_TO - SWIPE_START_FROM) * pct));
+        el.style.setProperty("--lyric-transition-amount-end", String(SWIPE_END_FROM + (SWIPE_END_TO - SWIPE_END_FROM) * pct));
+      }
+      if (isPlayingRef.current) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [lines, activeIndex, containerRef]);
+
+  // Auto-scroll the container so the active line sits ~37% from the top.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || activeIndex < 0) return;
+    const lineEl = el.querySelector<HTMLElement>(".blyrics--line.blyrics--active") || el.children[activeIndex] as HTMLElement | undefined;
+    if (!lineEl) return;
+    const target = lineEl.offsetTop + lineEl.offsetHeight / 2 - el.clientHeight * 0.37;
+    el.scrollTo({ top: Math.max(0, target), behavior: prefersReduced ? "auto" : "smooth" });
+  }, [activeIndex, containerRef]);
 }
 
 function formatTime(seconds: number) {
@@ -214,7 +340,7 @@ export default function App() {
   const shuffleRef = useRef<ShuffleMode>("off");
   const triedDownloadRef = useRef(false);
   const playRequestRef = useRef(0);
-  const activeLyricRef = useRef<HTMLParagraphElement | null>(null);
+  const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const suggestTimer = useRef<number | undefined>(undefined);
   const searchBoxRef = useRef<HTMLDivElement>(null);
@@ -891,7 +1017,7 @@ export default function App() {
         const url = `${API_URL}/lyrics/${encodeURIComponent(currentTrack.videoId)}/auto`;
         const d = await (await fetch(url)).json();
         if (cancelled) return;
-        setLyrics(d.error ? null : { synced: d.synced ? parseLRC(d.synced) : [], plain: d.plain || "" });
+        setLyrics(d.error ? null : normalizeLyrics(d));
       } catch { if (!cancelled) setLyrics({ synced: [], plain: "" }); }
       finally { if (!cancelled) setLyricsLoading(false); }
     })();
@@ -907,9 +1033,13 @@ export default function App() {
     return idx;
   }, [lyrics, currentTime]);
 
-  useEffect(() => {
-    if (nowPlayingOpen && activeLyricRef.current) activeLyricRef.current.scrollIntoView({ block: "center", behavior: prefersReduced ? "auto" : "smooth" });
-  }, [activeLyric, nowPlayingOpen]);
+  useLyricAnimation(
+    lyrics?.synced ?? null,
+    activeLyric,
+    currentTime,
+    isPlaying,
+    lyricsContainerRef,
+  );
 
   useEffect(() => {
     if (!("mediaSession" in navigator) || !currentTrack) return;
@@ -1043,11 +1173,7 @@ export default function App() {
             <Button onClick={(e) => { e.stopPropagation(); document.getElementById(`shelf-${id}`)?.scrollBy({ left: 600, behavior: "smooth" }); }}><ChevronRight size={20} /></Button>
           </div>
         </div>
-        <div id={`shelf-${id}`} className="shelf-scroll" onWheel={(e) => {
-          if (e.deltaY !== 0) {
-            e.currentTarget.scrollLeft += e.deltaY;
-          }
-        }}>
+        <div id={`shelf-${id}`} className="shelf-scroll">
           {loading && !tracks.length ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>) : tracks.map((t) => renderAlbumCard(t, tracks))}
         </div>
       </section>
@@ -1446,7 +1572,7 @@ export default function App() {
             <div className="np-body">
               <div className="np-left">
                 <img src={currentTrack.artwork} alt="" className="np-art" />
-                <div className="np-meta"><h2>{currentTrack.title}</h2><p>{currentTrack.artist}</p></div>
+                <div className="np-meta"><h2>{currentTrack.artist}</h2><p>{currentTrack.title}</p></div>
                 <div className="np-progress">
                   <span>{formatTime(currentTime)}</span>
                   <Slider value={[progressPct]} max={100} step={0.1} onValueChange={(val) => { if (audioRef.current) audioRef.current.currentTime = val[0] / 100 * duration; }} className="cursor-pointer" />
@@ -1460,12 +1586,34 @@ export default function App() {
                   <Button className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</Button>
                 </div>
               </div>
-              <div className="np-lyrics">
+              <div className="np-lyrics" ref={lyricsContainerRef}>
                 {lyricsLoading ? <p className="lyric-status">Memuat lirik...</p> : lyrics?.synced.length ? (
                   <div className="lyric-lines">
-                    {lyrics.synced.map((line, i) => (
-                      <p key={i} ref={i === activeLyric ? activeLyricRef : null} className={`lyric-line ${i === activeLyric ? "active" : ""} ${i < activeLyric ? "past" : ""}`} onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}>{line.text || "♪"}</p>
-                    ))}
+                    {lyrics.synced.map((line, i) => {
+                      const active = i === activeLyric;
+                      const past = i < activeLyric;
+                      return (
+                        <div
+                          key={i}
+                          className={`blyrics--line ${active ? "blyrics--active" : ""} ${past ? "blyrics--past" : ""}`}
+                          onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}
+                        >
+                          <span className="blyrics-line-main">
+                            {line.parts.map((p, j) => (
+                              <span key={`${i}-${j}`} className="blyrics-word-group">
+                                <span
+                                  className={`blyrics--word${active && prefersReduced ? " blyrics--reduced-active" : ""}`}
+                                  data-key={`L${i}W${j}`}
+                                  data-time={p.t.toFixed(3)}
+                                  data-duration={p.d.toFixed(3)}
+                                  data-content={p.text}
+                                >{p.text}</span>{" "}
+                              </span>
+                            ))}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div> : <p className="lyric-status">Lyrics are not available for this song.</p>}
               </div>
@@ -1490,7 +1638,7 @@ export default function App() {
           {currentTrack ? (
             <>
               <img src={currentTrack.artwork} alt="" className="player-artwork" />
-              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span></div>
+              <div className="player-text"><span className="player-title">{currentTrack.artist}</span><span className="player-artist">{currentTrack.title}</span></div>
               <Button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></Button>
             </>
           ) : <div className="player-text idle">Not Playing</div>}

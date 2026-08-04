@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "music-venue-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd Frontend && npm run dev"],
       "port": 1420
     }
   ]

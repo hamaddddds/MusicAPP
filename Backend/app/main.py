@@ -156,6 +156,9 @@ def watch(video_id: str, radio: bool = False, limit: int = Query(25, ge=1, le=10
 
 @app.get("/lyrics/{video_id}/auto")
 def auto_lyrics(video_id: str):
+    """Normalized lyrics: { error?, lines: [{t, text, parts: [{t, d, text}]}], plain, source }.
+    lines[].parts carries word-level richsync when available; an empty parts
+    list means the frontend should synthesize per-word timings."""
     return _call(metadata.get_lyrics_by_video_id, video_id)
 
 

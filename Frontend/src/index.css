@@ -160,11 +160,12 @@ button { font-family: inherit; }
   flex-direction: column;
   gap: 22px;
 }
-.drag-region { height: 38px; width: 100%; -webkit-app-region: drag; app-region: drag; }
+.drag-region { height: 14px; width: 100%; -webkit-app-region: drag; app-region: drag; }
 .sidebar-brand {
   display: flex; align-items: center; gap: 9px;
   font-size: 19px; font-weight: 700; letter-spacing: -0.4px;
-  padding: 0 10px 2px;
+  padding: 2px 10px 2px;
+  margin-top: -22px; /* cancel the sidebar's 22px gap so the logo hugs the top */
 }
 .sidebar-brand svg { color: var(--accent); }
 .sidebar-section { display: flex; flex-direction: column; gap: 2px; }
@@ -244,9 +245,14 @@ button { font-family: inherit; }
 .shelf-nav button { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--input-bg); color: var(--text-primary); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.15s; }
 .shelf-nav button:hover { background: var(--hover); }
 .shelf-scroll {
-  display: flex; gap: 18px; overflow-x: auto; scroll-snap-type: x proximity;
+  display: flex; gap: 18px; overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x proximity; scroll-behavior: smooth;
   padding: 4px 32px 6px; scroll-padding-left: 32px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.22) transparent;
 }
+.shelf-scroll::-webkit-scrollbar { height: 6px; }
+.shelf-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 3px; }
+.shelf-scroll::-webkit-scrollbar-track { background: transparent; }
 .shelf-scroll .album-card { width: 168px; min-width: 168px; scroll-snap-align: start; }
 
 /* ── Album card ──────────────────────────────────── */
@@ -309,10 +315,13 @@ button { font-family: inherit; }
 .track-grid.wide { padding: 0 32px; }
 .track-row {
   display: flex; align-items: center; gap: 12px;
-  padding: 8px 10px; border-radius: 8px; cursor: default;
+  padding: 8px 10px; border-radius: 10px; cursor: default;
   transition: background 0.15s;
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.07);
 }
-.track-row:hover { background: var(--hover); }
+.track-row:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); }
 .track-row.playing .track-row-title { color: var(--accent); }
 .track-row-index {
   width: 22px; text-align: center; flex-shrink: 0; position: relative;
@@ -380,9 +389,21 @@ button { font-family: inherit; }
 .btn-icon.on { color: var(--accent); opacity: 1; }
 .btn-icon.on:hover { color: var(--accent); opacity: 0.8; }
 .mode-dot { position: absolute; bottom: -1px; right: 0; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+/* Glass control buttons in the mini player bar (macOS-style frosted controls). */
+.player-bar .btn-icon.sm,
+.player-bar .btn-play {
+  background: rgba(255,255,255,0.10);
+  backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.player-bar .btn-icon.sm { border-radius: 50%; width: 34px; height: 34px; color: #fff; }
+.player-bar .btn-icon.sm:hover { background: rgba(255,255,255,0.18); color: #fff; opacity: 1; }
+.player-bar .btn-icon.sm.on { color: var(--accent); }
 .btn-play {
   width: 38px; height: 38px; border-radius: 50%;
   background: var(--btn-play-bg); color: var(--btn-play-fg); padding: 0;
+  border: none;
 }
 .btn-play:hover { transform: scale(1.06); opacity: 1; }
 .btn-play:active { transform: scale(0.95); }
@@ -413,6 +434,9 @@ button { font-family: inherit; }
   z-index: 2; background: rgba(255,255,255,0.14); border: none; color: #fff;
   width: 42px; height: 30px; border-radius: 16px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; -webkit-app-region: no-drag;
+  backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.16);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
 }
 .np-close:hover { background: rgba(255,255,255,0.24); }
 .np-body {
@@ -420,28 +444,112 @@ button { font-family: inherit; }
   padding: 70px 64px 56px; align-items: center; overflow: hidden;
 }
 .np-left { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 26px; }
-.np-art { width: 340px; height: 340px; border-radius: 18px; object-fit: cover; box-shadow: 0 24px 60px rgba(0,0,0,0.6); }
+.np-art {
+  width: 340px; height: 340px; border-radius: 20px; object-fit: cover;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+}
 .np-art.spinning { animation: none; }
 .np-meta { text-align: center; }
 .np-meta h2 { font-size: 26px; font-weight: 700; letter-spacing: -0.4px; text-wrap: balance; }
 .np-meta p { font-size: 17px; color: var(--text-secondary); margin-top: 4px; }
 .np-progress { width: 100%; display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .np-controls { display: flex; align-items: center; gap: 26px; }
+/* Glass buttons inside the Now Playing view (macOS-style frosted controls). */
+.np-controls .btn-icon {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(255,255,255,0.10);
+  backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.16);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
+  color: #fff;
+}
+.np-controls .btn-icon:hover { opacity: 0.9; background: rgba(255,255,255,0.18); }
+.np-controls .btn-play.big {
+  width: 60px; height: 60px; background: rgba(255,255,255,0.92); color: #111;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.np-controls .btn-play.big:hover { background: #fff; transform: scale(1.05); }
 
-.np-lyrics { flex: 1; height: 100%; overflow-y: auto; padding: 20% 0; mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent); }
-.lyric-lines { display: flex; flex-direction: column; gap: 8px; }
-.lyric-line {
+.np-lyrics {
+  flex: 1; height: 100%; overflow-y: auto; padding: 20% 0;
+  mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent);
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
+.lyric-lines {
+  display: flex; flex-direction: column; gap: 8px;
+  width: min(640px, 100%); margin: 0 auto;
+  padding: 18px 26px; border-radius: 22px;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+/* ── Karaoke lyrics (technique ported from better-lyrics, GPL-3.0) ── */
+/* inherits: true so the ::after overlay reads the animated values set on the
+   word element (we drive the swipe from the word's inline style, not WAAPI on
+   the pseudo-element). */
+@property --lyric-transition-amount-start {
+  syntax: "<number>"; inherits: true; initial-value: -0.2;
+}
+@property --lyric-transition-amount-end {
+  syntax: "<number>"; inherits: true; initial-value: -0.1;
+}
+
+.blyrics--line {
+  --blyrics-scale: 0.82;
+  --blyrics-active-scale: 1.05;
+  --blyrics-lyric-active-color: #fff;
+  --blyrics-lyric-inactive-color: rgba(255,255,255,0.26);
+  --blyrics-glow-color: rgba(255, 255, 255, 0.55);
   font-size: 30px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.28;
-  color: rgba(255,255,255,0.30); cursor: pointer; padding: 7px 0;
-  filter: blur(1.6px); transform-origin: left center; will-change: transform, filter;
+  color: var(--blyrics-lyric-inactive-color); cursor: pointer; padding: 7px 0;
+  max-width: 100%; transform: scale(var(--blyrics-scale)); transform-origin: left center;
+  will-change: transform, filter; filter: blur(1.6px);
   transition: color 0.45s ease, filter 0.45s ease, opacity 0.45s ease,
               transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.lyric-line.past { color: rgba(255,255,255,0.24); filter: blur(1.2px); }
-.lyric-line:hover { color: rgba(255,255,255,0.55); filter: blur(0); }
-.lyric-line.active {
-  color: #fff; filter: blur(0); transform: scale(1.06);
-  text-shadow: 0 0 26px rgba(255,255,255,0.3);
+.blyrics--line.blyrics--past { color: rgba(255,255,255,0.20); filter: blur(1.2px); }
+.blyrics--line:hover { color: rgba(255,255,255,0.55); filter: blur(0); }
+.blyrics--line.blyrics--active {
+  color: var(--blyrics-lyric-active-color); filter: blur(0);
+  transform: scale(var(--blyrics-active-scale));
+  text-shadow: 0 0 26px rgba(255,255,255,0.35);
+}
+.blyrics-line-main { display: block; max-width: 100%; white-space: normal; }
+/* Each word + its trailing space sits in a group so words keep normal spacing. */
+.blyrics-word-group { display: inline; white-space: pre-wrap; }
+.blyrics--word {
+  position: relative; display: inline-block; color: inherit; white-space: pre;
+}
+/* The ::after overlay is the "lit" copy of the word. It must NOT set its own
+   --lyric-transition-amount-* (that would shadow the word's animated values —
+   @property registers inherits:false), so it inherits the animated inline
+   values from .blyrics--word. */
+.blyrics--word::after {
+  content: attr(data-content);
+  position: absolute; left: -2rem; top: -2rem; width: 100%;
+  padding: 2rem; box-sizing: content-box; pointer-events: none;
+  color: transparent; white-space: pre; opacity: 0;
+  transition: opacity 0.2s ease;
+  background-image: linear-gradient(
+    90deg,
+    var(--blyrics-lyric-active-color)
+      calc(100% * var(--lyric-transition-amount-start) - 4rem * var(--lyric-transition-amount-start) + 2rem),
+    #00000000
+      calc(100% * var(--lyric-transition-amount-end) - 4rem * var(--lyric-transition-amount-end) + 2rem + 1px)
+  );
+  -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(0 0 0 var(--blyrics-glow-color));
+}
+/* Words on the active line are "armed": the overlay is visible and the gradient
+   position (driven by --lyric-transition-amount-* inline on the word) reveals
+   the portion already sung. */
+.blyrics--line.blyrics--active .blyrics--word::after { opacity: 1; }
+/* Reduced motion: statically reveal the whole active line (no swipe). */
+.blyrics--word.blyrics--reduced-active::after {
+  opacity: 1;
 }
 .lyric-plain { font-size: 17px; line-height: 1.9; color: var(--text-secondary); white-space: pre-wrap; }
 .lyric-status { font-size: 15px; color: var(--text-secondary); padding: 8px 0; }
@@ -459,9 +567,15 @@ button { font-family: inherit; }
 .queue-now { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 10px; background: var(--accent-soft); }
 .queue-now img { width: 46px; height: 46px; border-radius: 6px; object-fit: cover; }
 .queue-now .track-row-artist { color: var(--accent); }
-.queue-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding-bottom: 92px; }
-.queue-item { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background 0.15s; }
-.queue-item:hover { background: var(--hover); }
+.queue-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-bottom: 92px; }
+.queue-item {
+  display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px;
+  cursor: pointer; transition: background 0.15s;
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.07);
+}
+.queue-item:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); }
 .queue-item img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background:var(--surface); }
 
 /* ── Search sections (Popular / Other) ───────────── */
@@ -667,12 +781,16 @@ button { font-family: inherit; }
 
 .theme-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; }
 .theme-card {
-  position: relative; display: flex; flex-direction: column; gap: 10px;
+  position: relative; display: flex; flex-direction: column; align-items: stretch;
+  justify-content: center; text-align: center; gap: 10px;
   padding: 12px; border-radius: 12px; border: 2px solid var(--border);
   background: var(--input-bg); cursor: pointer; transition: border-color 0.15s; font-family: inherit;
 }
 .theme-card.active { border-color: var(--accent); }
-.theme-card-label { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.theme-card-label {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  font-size: 13px; font-weight: 600; color: var(--text-primary);
+}
 .theme-swatch { height: 46px; border-radius: 8px; position: relative; overflow: hidden; border: 1px solid var(--border); }
 .theme-swatch .tsw-bar { position: absolute; bottom: 6px; left: 6px; right: 6px; height: 12px; border-radius: 6px; backdrop-filter: blur(4px); }
 .th-light { background: #f4f4f6; } .th-light .tsw-bar { background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.1); }
@@ -732,7 +850,7 @@ button { font-family: inherit; }
   .np-left { width: 100%; }
   .np-art { width: 240px; height: 240px; }
   .np-lyrics { width: 100%; padding: 10px 0; mask-image: none; }
-  .lyric-line { font-size: 22px; }
+  .blyrics--line { font-size: 22px; }
   .player-info { width: 40%; }
   .player-extras .volume-bar { display: none; }
 }
@@ -744,8 +862,9 @@ button { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
   .album-card:hover .album-art-wrap { transform: none; }
-  .lyric-line, .lyric-line.past { filter: none !important; }
-  .lyric-line.active { transform: none !important; }
+  .blyrics--line, .blyrics--line.blyrics--past { filter: none !important; }
+  .blyrics--line { --blyrics-scale: 1; --blyrics-active-scale: 1; }
+  .blyrics--line.blyrics--active { transform: none !important; }
 }
 
 /* -- Update Modal ---------------------------------- */
