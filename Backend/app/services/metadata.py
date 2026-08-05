@@ -233,6 +233,7 @@ def get_lyrics_by_video_id(video_id: str):
         result["lines"] = [
             {
                 "t": round(getattr(l, "start_time", 0) / 1000, 3),
+                "end": round(getattr(l, "end_time", 0) / 1000, 3),
                 "text": getattr(l, "text", ""),
                 "parts": [],
             }

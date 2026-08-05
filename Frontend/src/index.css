@@ -227,7 +227,7 @@ button { font-family: inherit; }
   color: var(--text-secondary); cursor: pointer; transition: background 0.15s, color 0.15s;
 }
 .win-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
-.win-btn-close:hover { background: var(--accent); color: #fff; }
+.win-btn-close:hover { background: rgba(255,255,255,0.2); color: #fff; }
 
 .page { padding: 4px 0 20px; display: flex; flex-direction: column; gap: 34px; }
 
@@ -305,6 +305,44 @@ button { font-family: inherit; }
 .grid-container {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 26px 18px; padding: 8px 32px 20px;
+}
+
+/* ── Top Result card ─────────────────────────────── */
+.top-result-card {
+  display: flex; align-items: center; gap: 28px;
+  margin: 4px 32px 18px; padding: 22px 26px;
+  max-width: 760px; width: fit-content; min-width: 480px;
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 18px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+  cursor: pointer; transition: background 0.2s, transform 0.2s;
+}
+.top-result-card:hover { background: rgba(255,255,255,0.09); transform: translateY(-2px); }
+.top-result-media { position: relative; flex-shrink: 0; }
+.top-result-img {
+  width: 132px; height: 132px; border-radius: 14px;
+  object-fit: cover; /* keep the square thumbnail HD, uncropped */
+  display: block; box-shadow: 0 10px 26px rgba(0,0,0,0.45);
+  background: var(--surface);
+}
+.top-result-play {
+  position: absolute; right: -8px; bottom: -8px;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.top-result-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.top-result-info .section-badge { align-self: flex-start; }
+.top-result-info h2 {
+  font-size: 30px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1;
+  color: var(--text-primary); text-wrap: balance;
+}
+.top-result-artist {
+  font-size: 16px; font-weight: 500; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* ── Track list ──────────────────────────────────── */
@@ -450,7 +488,7 @@ button { font-family: inherit; }
 .progress-bar { flex: 1; height: 5px; background: var(--track-bg); border-radius: 3px; position: relative; cursor: pointer; transition: height 0.12s; }
 .progress-bar:hover { height: 7px; }
 .progress-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--text-primary); border-radius: 3px; }
-.progress-bar:hover .progress-fill { background: var(--accent); }
+.progress-bar:hover .progress-fill { background: var(--text-primary); }
 
 .player-extras { width: 30%; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .volume-bar { width: 92px; flex: none; }
@@ -577,33 +615,40 @@ button { font-family: inherit; }
 .blyrics-line-main { display: block; max-width: 100%; white-space: normal; }
 /* Each word + its trailing space sits in a group so words keep normal spacing. */
 .blyrics-word-group { display: inline; white-space: pre-wrap; }
+/* The base word text is dim on the active line: not-yet-sung and already-sung
+   words stay at low opacity (not bright white). Only the currently-sung word
+   ramps up via --lyric-lit, and its ::after overlay paints it solid white. */
 .blyrics--word {
   position: relative; display: inline-block; color: inherit; white-space: pre;
 }
-/* The ::after overlay is the "lit" copy of the word. It must NOT set its own
-   --lyric-transition-amount-* (that would shadow the word's animated values —
-   @property registers inherits:false), so it inherits the animated inline
-   values from .blyrics--word. */
+.blyrics--line.blyrics--active .blyrics--word {
+  color: rgba(255, 255, 255, 0.18);
+}
+/* The ::after overlay is the bright "lit" copy of the word. Its opacity is
+   driven by --lyric-lit (set inline on the word by the animation tick): the
+   currently-sung word shines bright, past words fade back to dim, upcoming
+   words stay dim. @property inherits:true lets the pseudo read it. */
+@property --lyric-lit {
+  syntax: "<number>"; inherits: true; initial-value: 0;
+}
 .blyrics--word::after {
   content: attr(data-content);
   position: absolute; left: -2rem; top: -2rem; width: 100%;
   padding: 2rem; box-sizing: content-box; pointer-events: none;
-  color: transparent; white-space: pre; opacity: 0;
-  transition: opacity 0.2s ease;
+  color: transparent; white-space: pre;
+  opacity: 0;
+  transition: opacity 0.15s ease;
   background-image: linear-gradient(
     90deg,
+    var(--blyrics-lyric-active-color),
     var(--blyrics-lyric-active-color)
-      calc(100% * var(--lyric-transition-amount-start) - 4rem * var(--lyric-transition-amount-start) + 2rem),
-    #00000000
-      calc(100% * var(--lyric-transition-amount-end) - 4rem * var(--lyric-transition-amount-end) + 2rem + 1px)
   );
   -webkit-background-clip: text; background-clip: text;
-  filter: drop-shadow(0 0 0 var(--blyrics-glow-color));
+  filter: drop-shadow(0 0 10px var(--blyrics-glow-color));
 }
-/* Words on the active line are "armed": the overlay is visible and the gradient
-   position (driven by --lyric-transition-amount-* inline on the word) reveals
-   the portion already sung. */
-.blyrics--line.blyrics--active .blyrics--word::after { opacity: 1; }
+/* Active line: each word's overlay opacity follows --lyric-lit (the passing
+   light), with a subtle floor so the current word reads clearly. */
+.blyrics--line.blyrics--active .blyrics--word::after { opacity: var(--lyric-lit, 0); }
 /* Reduced motion: statically reveal the whole active line (no swipe). */
 .blyrics--word.blyrics--reduced-active::after {
   opacity: 1;
@@ -740,7 +785,7 @@ button { font-family: inherit; }
 .btn-ghost:hover { background: rgba(255,255,255,0.16); }
 .btn-ghost:active { transform: scale(0.97); }
 .btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { opacity: 0.88; box-shadow: 0 4px 12px rgba(250, 36, 60, 0.3); }
+.btn-primary:hover { opacity: 0.88; }
 .btn-primary:active { transform: scale(0.97); }
 
 /* ── Animations ────────────────────────────────────── */

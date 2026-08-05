@@ -23,7 +23,7 @@ interface Track { videoId: string; title: string; artist: string; artwork: strin
 type RepeatMode = "off" | "all" | "one";
 type ShuffleMode = "off" | "random" | "smart";
 interface WordPart { t: number; d: number; text: string } // t start, d duration (seconds)
-interface SyncedLine { t: number; text: string; parts: WordPart[] } // parts synthesized when empty
+interface SyncedLine { t: number; end?: number; text: string; parts: WordPart[] } // parts synthesized when empty
 interface Lyrics { synced: SyncedLine[]; plain: string }
 interface HistEntry extends Track { count: number; last: number; }
 interface Region { country: string | null; countryCode: string | null; city: string | null; }
@@ -123,14 +123,28 @@ function parseLRC(lrc: string): SyncedLine[] {
   return out.sort((a, b) => a.t - b.t);
 }
 
-/** Word timings synthesized from a line when richsync is unavailable. Mirrors
- * better-lyrics' buildLineSyncedParts: d:0 words get a line-synced fade
- * rather than a per-word swipe. */
-function synthParts(text: string, lineT: number): WordPart[] {
-  return (text.match(/\S+/g) ?? []).map((w, i) => ({ t: lineT + i * 0.05, d: 0, text: w }));
+/** Word timings synthesized from a line when richsync is unavailable. When the
+ * line has a known end time, words get proportional durations spanning [t, end]
+ * so the karaoke swipe advances word-by-word left→right. Without an end time,
+ * words are line-synced (d:0 → sweep over the line window). */
+function synthParts(text: string, lineT: number, lineEnd?: number): WordPart[] {
+  const tokens = (text.match(/\S+/g) ?? []);
+  if (!tokens.length) return [];
+  const span = (lineEnd ?? 0) - lineT;
+  if (span > 0) {
+    const nonWs = tokens.reduce((n, tk) => n + tk.length, 0) || 1;
+    let cursor = 0;
+    return tokens.map((tk) => {
+      const wStart = lineT + (span * cursor) / nonWs;
+      cursor += tk.length;
+      const wEnd = lineT + (span * cursor) / nonWs;
+      return { t: wStart, d: wEnd - wStart, text: tk };
+    });
+  }
+  return tokens.map((w, i) => ({ t: lineT + i * 0.05, d: 0, text: w }));
 }
 
-/** Accepts the new backend shape ({lines:[{t,text,parts}]}) AND the legacy
+/** Accepts the new backend shape ({lines:[{t,end,text,parts}]}) AND the legacy
  * shape ({synced: LRC-string, plain}), so old/new backends both work. */
 function normalizeLyrics(d: any): Lyrics {
   const lines: SyncedLine[] = [];
@@ -138,13 +152,14 @@ function normalizeLyrics(d: any): Lyrics {
     for (const raw of d.lines) {
       if (!raw || typeof raw.t === "undefined") continue;
       const t = Number(raw.t);
+      const end = raw.end != null ? Number(raw.end) : undefined;
       const text = String(raw.text ?? "");
       const rawParts: any[] = Array.isArray(raw.parts) ? raw.parts : [];
       const parts: WordPart[] = rawParts
         .filter((p: any) => p && typeof p.t === "number")
         .map((p: any) => ({ t: Number(p.t), d: Number(p.d ?? 0), text: String(p.text ?? "") }))
         .filter((p) => p.text.trim().length > 0);
-      lines.push({ t, text, parts: parts.length ? parts : synthParts(text, t) });
+      lines.push({ t, end, text, parts: parts.length ? parts : synthParts(text, t, end) });
     }
   } else if (typeof d?.synced === "string") {
     // Legacy: backend still returned LRC under 'synced'.
@@ -153,19 +168,16 @@ function normalizeLyrics(d: any): Lyrics {
   return { synced: lines.sort((a, b) => a.t - b.t), plain: d?.plain || "" };
 }
 
-const SWIPE_START_FROM = -0.2, SWIPE_END_FROM = -0.1;
-const SWIPE_START_TO = 1.4, SWIPE_END_TO = 1.5;
-
-/** Karaoke word-swipe animation (ported from better-lyrics). Each word span has
- * a ::after overlay (content: attr(data-content), gradient background-clip:text)
- * whose --lyric-transition-amount-* custom props control the swipe position.
+/** Karaoke "passing light" lyric animation. Each word span has a ::after overlay
+ * (content: attr(data-content), solid white, background-clip:text) whose opacity
+ * is driven by --lyric-lit (set inline on the word). Only the word currently
+ * being sung is lit bright; past words fade back to dim and upcoming words stay
+ * dim, so the eye tracks the active word as it advances left→right.
  *
- * Rather than relying on pseudo-element WAAPI (element.animate({ pseudoElement })
- * is silently dropped by some webviews), we drive the two custom props directly
- * on the word element's inline style from a requestAnimationFrame loop. The
- * ::after inherits them, so the gradient re-computes every frame. The RAF loop
- * only runs while the audio is playing; it freezes on pause and re-seeds to the
- * word-local elapsed time on seek jumps, keeping the swipe frame-accurate. */
+ * We drive the custom prop directly on the word's inline style from a
+ * requestAnimationFrame loop (pseudo-element WAAPI is dropped by some webviews).
+ * The ::after inherits it, so the overlay re-computes every frame. The RAF loop
+ * only runs while audio plays; it freezes on pause and re-seeds on seek. */
 function useLyricAnimation(
   lines: SyncedLine[] | null,
   activeIndex: number,
@@ -214,23 +226,32 @@ function useLyricAnimation(
     }
     if (!els.length) return;
 
-    const lineDur = 0.5; // fallback sweep window for line-synced (d:0) words
+    // Sweep window for line-synced (d:0) words — use the line's own duration
+    // when known so the whole line lights progressively, not all at once.
+    const lineDur = Math.max(0.3, (line.end ?? 0) - line.t || 0.6);
 
     let raf = 0;
     const tick = () => {
       const now = timeRef.current;
 
+      // "Passing light" karaoke: only the word currently being sung is lit
+      // bright; past words fade back to dim, upcoming words stay dim. A small
+      // lead time lights each word slightly before its timestamp so the swipe
+      // keeps up with the vocals (no perceived lag).
+      const LEAD_MS = 0.08; // 80ms lead — word starts lighting a touch early
       for (const { el, t, d } of els) {
-        const elapsed = now - t;
-        if (elapsed <= 0) {
-          el.style.setProperty("--lyric-transition-amount-start", String(SWIPE_START_FROM));
-          el.style.setProperty("--lyric-transition-amount-end", String(SWIPE_END_FROM));
-          continue;
-        }
         const dur = d > 0 ? d : lineDur;
-        const pct = Math.min(1, elapsed / dur);
-        el.style.setProperty("--lyric-transition-amount-start", String(SWIPE_START_FROM + (SWIPE_START_TO - SWIPE_START_FROM) * pct));
-        el.style.setProperty("--lyric-transition-amount-end", String(SWIPE_END_FROM + (SWIPE_END_TO - SWIPE_END_FROM) * pct));
+        const elapsed = now - t + LEAD_MS;
+        let lit: number;
+        if (elapsed <= 0) {
+          lit = 0; // not yet sung
+        } else if (elapsed < dur) {
+          // currently being sung — shine bright, ramping up quickly
+          lit = 0.5 + 0.5 * (elapsed / dur);
+        } else {
+          lit = 0; // already sung → fade back to dim
+        }
+        el.style.setProperty("--lyric-lit", lit.toFixed(3));
       }
       if (isPlayingRef.current) raf = requestAnimationFrame(tick);
     };
@@ -311,7 +332,6 @@ export default function App() {
   const [searchTopResult, setSearchTopResult] = useState<any>(null);
   const [searchSongsResults, setSearchSongsResults] = useState<Track[]>([]);
   const [searchVideos, setSearchVideos] = useState<Track[]>([]);
-  const [searchArtists, setSearchArtists] = useState<any[]>([]);
   const [searchAlbums, setSearchAlbums] = useState<any[]>([]);
   const [artistView, setArtistView] = useState<ArtistPage | null>(null);
   const [artistLoading, setArtistLoading] = useState(false);
@@ -586,18 +606,16 @@ export default function App() {
         topResult = d[0];
       }
       
-      const artists = d.filter((x: any) => x.resultType === "artist" && x !== topResult);
       const songs = d.filter((x: any) => x.resultType === "song" && x !== topResult);
       const videos = d.filter((x: any) => x.resultType === "video" && x !== topResult);
       const albums = d.filter((x: any) => x.resultType === "album" && x !== topResult);
-      
+
       setSearchTopResult(topResult);
-      setSearchArtists(artists);
       setSearchAlbums(albums);
       setSearchSongsResults(mapTracks(songs));
       setSearchVideos(mapTracks(videos));
     } catch {
-      setSearchTopResult(null); setSearchArtists([]); setSearchAlbums([]); setSearchSongsResults([]); setSearchVideos([]);
+      setSearchTopResult(null); setSearchAlbums([]); setSearchSongsResults([]); setSearchVideos([]);
     }
     setLoading(false);
   }, []);
@@ -1316,7 +1334,7 @@ export default function App() {
           <div className="page">
             {loading ? (
               <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div>
-            ) : searchTopResult || searchSongsResults.length || searchVideos.length || searchArtists.length || searchAlbums.length ? (
+            ) : searchTopResult || searchSongsResults.length || searchVideos.length || searchAlbums.length ? (
               <>
                 {searchTopResult && (
                   <div className={`top-result-card ${searchTopResult.resultType === 'artist' ? 'is-artist' : ''}`} onClick={() => {
@@ -1327,40 +1345,24 @@ export default function App() {
                         videoId: searchTopResult.videoId,
                         title: searchTopResult.title || searchTopResult.name || "Unknown",
                         artist: searchTopResult.artists?.[0]?.name || searchTopResult.artist || "Unknown",
-                        artwork: pickArtwork(searchTopResult.thumbnails)
+                        artwork: hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)
                       };
                       playTrack(t, [t]);
                     }
                   }}>
-                    <img src={pickArtwork(searchTopResult.thumbnails)} alt="Top Result" className="top-result-img" />
+                    <div className="top-result-media">
+                      <img src={hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)} alt="Top Result" className="top-result-img" />
+                      <span className="top-result-play"><Play size={22} fill="currentColor" /></span>
+                    </div>
                     <div className="top-result-info">
                       <span className="section-badge">Top Result</span>
                       <h2>{searchTopResult.title || searchTopResult.artist || searchTopResult.name || "Top Result"}</h2>
-                      <p className="muted" style={{textTransform: 'capitalize'}}>{searchTopResult.resultType || "Result"}</p>
+                      <p className="top-result-artist">{searchTopResult.artists?.[0]?.name || searchTopResult.artist || searchTopResult.resultType || "Result"}</p>
                     </div>
                   </div>
                 )}
                 
                 {searchSongsResults.length > 0 && <section className="search-section"><div className="section-head"><h2>Songs</h2></div><div className="grid-container">{searchSongsResults.map((t) => renderAlbumCard(t, searchSongsResults))}</div></section>}
-                
-                {searchArtists.length > 0 && (
-                  <section className="search-section">
-                    <div className="section-head"><h2>Artists</h2></div>
-                    <div className="grid-container">
-                      {searchArtists.map((a: any, i) => (
-                        <div key={i} className="album-card glass-card" onClick={() => openArtist({ artistId: a.browseId || a.artists?.[0]?.id, name: a.artist })}>
-                          <div className="album-art-wrap">
-                            <img src={pickArtwork(a.thumbnails)} alt={a.artist} style={{ borderRadius: '50%' }} />
-                          </div>
-                          <div className="album-info">
-                            <span className="album-title">{a.artist}</span>
-                            <span className="album-artist">Artist</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
                 
                 {searchVideos.length > 0 && <section className="search-section"><div className="section-head"><h2>Videos</h2><span className="section-badge muted">Live, Covers &amp; Remixes</span></div><div className="grid-container">{searchVideos.map((t) => renderAlbumCard(t, searchVideos))}</div></section>}
               </>

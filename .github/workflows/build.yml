@@ -15,13 +15,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-      - name: Auto version (0.2.<run_number>) so releases/updater bump automatically
+      - name: Auto version (1.5.<run_number>) so releases/updater bump automatically
+        id: version
         shell: bash
         run: |
-          VER="0.2.${{ github.run_number }}"
+          VER="1.5.${{ github.run_number }}"
           node -e "const f='Frontend/package.json';const j=require('./'+f);j.version='$VER';require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
           node -e "const f='Frontend/src-tauri/tauri.conf.json';const j=require('./'+f);j.version='$VER';require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
           echo "Building version $VER"
+          echo "VER=$VER" >> "$GITHUB_OUTPUT"
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -69,10 +71,37 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: app-v__VERSION__
-          releaseName: "Music Venue v__VERSION__"
+          releaseName: "Music Venue v__VERSION__ (beta)"
           releaseBody: ${{ env.CHANGELOG }}
           releaseDraft: false
-          prerelease: false
+          prerelease: true
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           projectPath: ./Frontend
+      - name: Clean up release assets (keep only the installer exe)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VER: ${{ steps.version.outputs.VER }}
+        run: |
+          TAG="app-v${VER}"
+          # Delete msi, sig, and updater json so only the installer exe remains.
+          gh release view "$TAG" --json assets -q '.assets[].name' | while read -r f; do
+            case "$f" in
+              *.msi|*.msi.sig|*.exe.sig|latest.json|latest.json.sig)
+                echo "deleting asset: $f"
+                gh release delete-asset "$TAG" "$f" --yes || true
+                ;;
+            esac
+          done
+          # Rename the NSIS installer to "Music Venue (version).exe"
+          NEW="Music Venue (${VER}).exe"
+          if ! gh release view "$TAG" --json assets -q '.assets[].name' | grep -q "^${NEW}$"; then
+            OLD=$(gh release view "$TAG" --json assets -q '.assets[].name' | grep -i "setup\.exe$" | head -n1)
+            if [ -n "$OLD" ]; then
+              gh release download "$TAG" -p "$OLD" -R "$GITHUB_REPOSITORY" --dir /tmp/rel
+              gh release delete-asset "$TAG" "$OLD" --yes || true
+              gh release upload "$TAG" "/tmp/rel/$OLD" --clobber --target "$GITHUB_REPOSITORY" --repo "$GITHUB_REPOSITORY" --rename "$NEW" 2>/dev/null || \
+              gh release upload "$TAG" "/tmp/rel/$OLD" --clobber --repo "$GITHUB_REPOSITORY" --rename "$NEW"
+            fi
+          fi
