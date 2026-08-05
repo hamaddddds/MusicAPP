@@ -104,11 +104,13 @@ jobs:
             gh release download "$TAG" -p "$OLD" -R "$GITHUB_REPOSITORY" --dir /tmp/rel
             gh release download "$TAG" -p "latest.json" -R "$GITHUB_REPOSITORY" --dir /tmp/rel || true
             gh release delete-asset "$TAG" "$OLD" --yes || true
-            gh release upload "$TAG" "/tmp/rel/$OLD" --clobber --target "$GITHUB_REPOSITORY" --repo "$GITHUB_REPOSITORY" --rename "$NEW" 2>/dev/null || \
-            gh release upload "$TAG" "/tmp/rel/$OLD" --clobber --repo "$GITHUB_REPOSITORY" --rename "$NEW"
+            # gh upload uses the local file's basename as the asset name, so
+            # copy to the desired name before uploading.
+            mv "/tmp/rel/$OLD" "/tmp/rel/$NEW"
+            gh release upload "$TAG" "/tmp/rel/$NEW" --clobber
             # Patch latest.json: replace the old installer URL with the new name.
             if [ -f /tmp/rel/latest.json ]; then
               sed -i "s|$OLD|$NEW|g" /tmp/rel/latest.json
-              gh release upload "$TAG" "/tmp/rel/latest.json" --clobber --repo "$GITHUB_REPOSITORY" --rename "latest.json" || true
+              gh release upload "$TAG" "/tmp/rel/latest.json" --clobber || true
             fi
           fi
