@@ -1267,7 +1267,7 @@ export default function App() {
             <div className="search-box-wrap" ref={searchBoxRef}>
               <form onSubmit={handleSearch} className="search-box">
                 <Search size={16} />
-                <Input type="text" placeholder="Artists, Songs..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }} onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
+                <Input type="text" placeholder="Artists, songs, or albums" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }} onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
                 {searchQuery && <Button type="button" className="search-clear" onClick={() => { setSearchQuery(""); setSuggestions([]); }}><X size={14} /></Button>}
               </form>
               {showSuggest && (

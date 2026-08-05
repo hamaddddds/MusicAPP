@@ -207,7 +207,7 @@ button { font-family: inherit; }
   position: absolute; left: 50%; transform: translateX(-50%); z-index: 10;
   -webkit-app-region: no-drag; app-region: no-drag;
   display: flex; align-items: center; justify-content: center;
-  width: min(420px, 40vw);
+  width: min(320px, 34vw);
 }
 .header-right { display: flex; gap: 14px; align-items: center; margin-left: auto; }
 
@@ -244,11 +244,20 @@ button { font-family: inherit; }
 .win-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
 .win-btn-close:hover { background: rgba(255,255,255,0.2); color: #fff; }
 
-.page { padding: 4px 0 20px; display: flex; flex-direction: column; gap: 34px; }
+.page { padding: 8px 0 24px; display: flex; flex-direction: column; gap: 24px; }
 
-/* ── Shelf (horizontal carousel) ─────────────────── */
-.shelf { display: flex; flex-direction: column; gap: 14px; }
-.shelf-head { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 32px; }
+/* ── Shelf (horizontal carousel) — each section is one big glass card ── */
+.shelf {
+  display: flex; flex-direction: column; gap: 14px;
+  margin: 0 28px;
+  padding: 18px 6px 16px;
+  background: rgba(255,255,255,0.045);
+  backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 20px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.shelf-head { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 26px; }
 .shelf-head h2 {
   font-size: 21px; font-weight: 700; letter-spacing: -0.3px;
   display: inline-flex; align-items: center; gap: 2px; cursor: pointer;
@@ -262,7 +271,7 @@ button { font-family: inherit; }
 .shelf-scroll {
   display: flex; gap: 18px; overflow-x: auto; overflow-y: hidden;
   scroll-snap-type: x proximity; scroll-behavior: smooth;
-  padding: 4px 32px 8px; scroll-padding-left: 32px;
+  padding: 4px 26px 8px; scroll-padding-left: 26px;
   /* Custom slider look: slim fixed thumb, no hover brighten. */
   scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent;
 }
@@ -323,7 +332,7 @@ button { font-family: inherit; }
 /* ── Grid (search) ───────────────────────────────── */
 .grid-container {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 26px 18px; padding: 8px 32px 20px;
+  gap: 26px 18px; padding: 8px 26px 20px;
 }
 
 /* ── Top Result card ─────────────────────────────── */
@@ -367,9 +376,9 @@ button { font-family: inherit; }
 /* ── Track list ──────────────────────────────────── */
 .track-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 2px 36px; padding: 0 32px;
+  gap: 2px 36px; padding: 0 26px;
 }
-.track-grid.wide { padding: 0 32px; }
+.track-grid.wide { padding: 0 26px; }
 .track-row {
   display: flex; align-items: center; gap: 12px;
   padding: 8px 10px; border-radius: 10px; cursor: default;
@@ -699,9 +708,17 @@ button { font-family: inherit; }
 .queue-item:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); }
 .queue-item img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background:var(--surface); }
 
-/* ── Search sections (Popular / Other) ───────────── */
-.search-section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
-.section-head { display: flex; align-items: baseline; gap: 12px; padding: 0 32px; }
+/* ── Search sections (Popular / Other) — each is one big glass card ── */
+.search-section {
+  display: flex; flex-direction: column; gap: 12px; margin: 0 28px 18px;
+  padding: 18px 6px 16px;
+  background: rgba(255,255,255,0.045);
+  backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 20px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.section-head { display: flex; align-items: baseline; gap: 12px; padding: 0 26px; }
 .section-head h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; }
 .section-badge {
   font-size: 11px; font-weight: 600; color: var(--accent);
