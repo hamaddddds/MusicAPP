@@ -78,7 +78,7 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           projectPath: ./Frontend
-      - name: Clean up release assets (keep installer exe + latest.json, drop sigs)
+      - name: Clean up release assets (keep updater files intact, drop msi only)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -95,32 +95,16 @@ jobs:
                 ;;
             esac
           done
-          # Keep latest.json (the updater reads the embedded signature from it)
-          # and the installer .exe. Delete msi, standalone .sig files, and the
-          # separate latest.json.sig — the signature is already inside latest.json.
+          # IMPORTANT: keep latest.json, the installer .exe, and its .exe.sig
+          # exactly as Tauri uploaded them. The updater verifies the payload
+          # against the .sig sibling of the download URL — renaming or deleting
+          # those breaks in-app updates.
+          # Only drop the MSI artifacts (we build NSIS only).
           gh release view "$TAG" --json assets -q '.assets[].name' | while read -r f; do
             case "$f" in
-              *.msi|*.msi.sig|*.exe.sig|latest.json.sig)
+              *.msi|*.msi.sig)
                 echo "deleting asset: $f"
                 gh release delete-asset "$TAG" "$f" --yes || true
                 ;;
             esac
           done
-          # Rename the NSIS installer to "Music Venue (version).exe" and patch
-          # latest.json so the updater still points at the new file name.
-          NEW="Music Venue (${VER}).exe"
-          OLD=$(gh release view "$TAG" --json assets -q '.assets[].name' | grep -i "setup\.exe$" | head -n1)
-          if [ -n "$OLD" ] && [ "$OLD" != "$NEW" ]; then
-            gh release download "$TAG" -p "$OLD" -R "$GITHUB_REPOSITORY" --dir /tmp/rel
-            gh release download "$TAG" -p "latest.json" -R "$GITHUB_REPOSITORY" --dir /tmp/rel || true
-            gh release delete-asset "$TAG" "$OLD" --yes || true
-            # gh upload uses the local file's basename as the asset name, so
-            # copy to the desired name before uploading.
-            mv "/tmp/rel/$OLD" "/tmp/rel/$NEW"
-            gh release upload "$TAG" "/tmp/rel/$NEW" --clobber
-            # Patch latest.json: replace the old installer URL with the new name.
-            if [ -f /tmp/rel/latest.json ]; then
-              sed -i "s|$OLD|$NEW|g" /tmp/rel/latest.json
-              gh release upload "$TAG" "/tmp/rel/latest.json" --clobber || true
-            fi
-          fi
