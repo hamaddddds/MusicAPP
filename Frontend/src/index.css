@@ -363,13 +363,6 @@ button { font-family: inherit; }
   display: block; box-shadow: 0 10px 26px rgba(0,0,0,0.45);
   background: var(--surface);
 }
-.top-result-play {
-  position: absolute; right: -8px; bottom: -8px;
-  width: 44px; height: 44px; border-radius: 50%;
-  background: var(--accent); color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
-}
 .top-result-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .top-result-info .section-badge { align-self: flex-start; }
 .top-result-info h2 {
@@ -380,9 +373,21 @@ button { font-family: inherit; }
   font-size: 16px; font-weight: 500; color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Play + more buttons sit at the right, play directly under the 3-dot. */
+.top-result-actions {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  align-self: flex-end; margin-top: 2px;
+}
+.top-result-play {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: #fff; color: #000;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+  transition: transform 0.15s;
+}
+.top-result-play:hover { transform: scale(1.08); }
 /* More (⋯) button on the top-result card to open the context menu */
 .top-result-more {
-  align-self: flex-start; margin-left: auto; margin-top: 6px;
   width: 34px; height: 34px; border-radius: 50%;
   background: rgba(255,255,255,0.08);
   backdrop-filter: blur(12px) saturate(1.4); -webkit-backdrop-filter: blur(12px) saturate(1.4);
