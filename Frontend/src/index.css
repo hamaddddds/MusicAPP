@@ -384,7 +384,7 @@ button { font-family: inherit; }
 /* ── Track list ──────────────────────────────────── */
 .track-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 6px 36px; padding: 0 26px;
+  gap: 12px 36px; padding: 0 26px;
 }
 .track-grid.wide { padding: 0 26px; }
 .track-row {
