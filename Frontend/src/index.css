@@ -337,6 +337,7 @@ button { font-family: inherit; }
 
 /* ── Top Result card ─────────────────────────────── */
 .top-result-card {
+  position: relative;
   display: flex; align-items: center; gap: 28px;
   margin: 4px 32px 18px; padding: 22px 26px;
   max-width: 760px; width: fit-content; min-width: 480px;
@@ -345,9 +346,18 @@ button { font-family: inherit; }
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: 18px;
   box-shadow: 0 16px 44px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
-  cursor: pointer; transition: background 0.2s, transform 0.2s;
+  cursor: pointer; transition: transform 0.2s ease, border-color 0.2s ease;
+  will-change: transform; backface-visibility: hidden;
+  isolation: isolate;
 }
-.top-result-card:hover { background: rgba(255,255,255,0.09); transform: translateY(-2px); }
+.top-result-card::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: rgba(255,255,255,0.09);
+  opacity: 0; transition: opacity 0.2s ease;
+  z-index: -1; pointer-events: none;
+}
+.top-result-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.18); }
+.top-result-card:hover::before { opacity: 1; }
 .top-result-media { position: relative; flex-shrink: 0; }
 .top-result-img {
   width: 132px; height: 132px; border-radius: 14px;
@@ -380,14 +390,25 @@ button { font-family: inherit; }
 }
 .track-grid.wide { padding: 0 26px; }
 .track-row {
+  position: relative;
   display: flex; align-items: center; gap: 12px;
   padding: 10px 12px; border-radius: 10px; cursor: default;
-  transition: background 0.15s;
   background: rgba(255,255,255,0.04);
   backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
   border: 1px solid rgba(255,255,255,0.07);
+  will-change: transform; backface-visibility: hidden;
+  isolation: isolate;
 }
-.track-row:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); }
+/* Hover highlight uses an overlay so backdrop-filter isn't re-rasterized
+   (prevents the flicker). The element's own background stays put. */
+.track-row::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: rgba(255,255,255,0.09);
+  opacity: 0; transition: opacity 0.15s ease;
+  z-index: -1; pointer-events: none;
+}
+.track-row:hover { border-color: rgba(255,255,255,0.14); }
+.track-row:hover::before { opacity: 1; }
 .track-row.playing .track-row-title { color: var(--accent); }
 .track-row-index {
   width: 22px; text-align: center; flex-shrink: 0; position: relative;
@@ -498,8 +519,11 @@ button { font-family: inherit; }
   border: 1px solid rgba(255,255,255,0.14);
   box-shadow: 0 4px 18px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.12);
 }
-.player-bar .btn-icon.sm { border-radius: 50%; width: 34px; height: 34px; color: #fff; }
-.player-bar .btn-icon.sm:hover { background: rgba(255,255,255,0.18); color: #fff; opacity: 1; }
+.player-bar .btn-icon.sm {
+  border-radius: 50%; width: 34px; height: 34px; color: #fff;
+  will-change: transform; backface-visibility: hidden;
+}
+.player-bar .btn-icon.sm:hover { color: #fff; opacity: 1; transform: scale(1.12); }
 .player-bar .btn-icon.sm.on { color: var(--accent); }
 
 /* (glow pulse removed) */
@@ -507,6 +531,7 @@ button { font-family: inherit; }
   width: 38px; height: 38px; border-radius: 50%;
   background: var(--btn-play-bg); color: var(--btn-play-fg); padding: 0;
   border: none;
+  will-change: transform; backface-visibility: hidden;
 }
 .btn-play:hover { transform: scale(1.06); opacity: 1; }
 .btn-play:active { transform: scale(0.95); }
@@ -540,8 +565,9 @@ button { font-family: inherit; }
   backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
   border: 1px solid rgba(255,255,255,0.16);
   box-shadow: 0 6px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
+  will-change: transform; backface-visibility: hidden;
 }
-.np-close:hover { background: rgba(255,255,255,0.24); }
+.np-close:hover { transform: translateX(-50%) scale(1.08); }
 .np-body {
   position: relative; z-index: 1; flex: 1; display: flex; gap: 56px;
   padding: 70px 64px 56px; align-items: center; overflow: hidden;
@@ -565,8 +591,9 @@ button { font-family: inherit; }
   border: 1px solid rgba(255,255,255,0.16);
   box-shadow: 0 6px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
   color: #fff;
+  will-change: transform; backface-visibility: hidden;
 }
-.np-controls .btn-icon:hover { opacity: 0.9; background: rgba(255,255,255,0.18); }
+.np-controls .btn-icon:hover { opacity: 0.9; transform: scale(1.08); }
 .np-controls .btn-play.big {
   width: 60px; height: 60px; background: rgba(255,255,255,0.92); color: #111;
   box-shadow: 0 10px 30px rgba(0,0,0,0.35);
@@ -595,9 +622,10 @@ button { font-family: inherit; }
   backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
   border: 1px solid rgba(255,255,255,0.12);
   color: rgba(255,255,255,0.6); cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, transform 0.18s ease;
+  will-change: transform; backface-visibility: hidden;
 }
-.lyric-sync-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.lyric-sync-btn:hover { color: #fff; transform: scale(1.05); }
 .lyric-sync-btn.on { color: var(--accent); border-color: rgba(250,36,60,0.4); }
 
 /* ── Karaoke lyrics (technique ported from better-lyrics, GPL-3.0) ── */
@@ -699,13 +727,23 @@ button { font-family: inherit; }
 .queue-now .track-row-artist { color: var(--accent); }
 .queue-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-bottom: 92px; }
 .queue-item {
+  position: relative;
   display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px;
-  cursor: pointer; transition: background 0.15s;
+  cursor: pointer;
   background: rgba(255,255,255,0.04);
   backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
   border: 1px solid rgba(255,255,255,0.07);
+  will-change: transform; backface-visibility: hidden;
+  isolation: isolate;
 }
-.queue-item:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); }
+.queue-item::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: rgba(255,255,255,0.09);
+  opacity: 0; transition: opacity 0.15s ease;
+  z-index: -1; pointer-events: none;
+}
+.queue-item:hover { border-color: rgba(255,255,255,0.14); }
+.queue-item:hover::before { opacity: 1; }
 .queue-item img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background:var(--surface); }
 
 /* ── Search sections (Popular / Other) — each is one big glass card ── */
@@ -1030,22 +1068,31 @@ button { font-family: inherit; }
 
 /* Glassmorphism for Album Cards */
 .glass-card {
+  position: relative;
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.9rem;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
   padding: 0.8rem; /* more breathing room so artwork/text isn't cramped */
   box-sizing: border-box;
+  will-change: transform; backface-visibility: hidden;
+  isolation: isolate;
 }
-
+/* Hover highlight via overlay so the backdrop-filter isn't re-rasterized. */
+.glass-card::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: rgba(255,255,255,0.06);
+  opacity: 0; transition: opacity 0.3s ease;
+  z-index: -1; pointer-events: none;
+}
 .glass-card:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.2);
   box-shadow: 0 12px 30px rgba(0,0,0,0.35);
   transform: translateY(-4px);
 }
+.glass-card:hover::before { opacity: 1; }
 
 .glass-card .album-art-wrap {
   border-radius: 0.6rem;
