@@ -78,30 +78,37 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           projectPath: ./Frontend
-      - name: Clean up release assets (keep only the installer exe)
+      - name: Clean up release assets (keep installer exe + latest.json, drop sigs)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VER: ${{ steps.version.outputs.VER }}
         run: |
           TAG="app-v${VER}"
-          # Delete msi, sig, and updater json so only the installer exe remains.
+          # Keep latest.json (the updater reads the embedded signature from it)
+          # and the installer .exe. Delete msi, standalone .sig files, and the
+          # separate latest.json.sig — the signature is already inside latest.json.
           gh release view "$TAG" --json assets -q '.assets[].name' | while read -r f; do
             case "$f" in
-              *.msi|*.msi.sig|*.exe.sig|latest.json|latest.json.sig)
+              *.msi|*.msi.sig|*.exe.sig|latest.json.sig)
                 echo "deleting asset: $f"
                 gh release delete-asset "$TAG" "$f" --yes || true
                 ;;
             esac
           done
-          # Rename the NSIS installer to "Music Venue (version).exe"
+          # Rename the NSIS installer to "Music Venue (version).exe" and patch
+          # latest.json so the updater still points at the new file name.
           NEW="Music Venue (${VER}).exe"
-          if ! gh release view "$TAG" --json assets -q '.assets[].name' | grep -q "^${NEW}$"; then
-            OLD=$(gh release view "$TAG" --json assets -q '.assets[].name' | grep -i "setup\.exe$" | head -n1)
-            if [ -n "$OLD" ]; then
-              gh release download "$TAG" -p "$OLD" -R "$GITHUB_REPOSITORY" --dir /tmp/rel
-              gh release delete-asset "$TAG" "$OLD" --yes || true
-              gh release upload "$TAG" "/tmp/rel/$OLD" --clobber --target "$GITHUB_REPOSITORY" --repo "$GITHUB_REPOSITORY" --rename "$NEW" 2>/dev/null || \
-              gh release upload "$TAG" "/tmp/rel/$OLD" --clobber --repo "$GITHUB_REPOSITORY" --rename "$NEW"
+          OLD=$(gh release view "$TAG" --json assets -q '.assets[].name' | grep -i "setup\.exe$" | head -n1)
+          if [ -n "$OLD" ] && [ "$OLD" != "$NEW" ]; then
+            gh release download "$TAG" -p "$OLD" -R "$GITHUB_REPOSITORY" --dir /tmp/rel
+            gh release download "$TAG" -p "latest.json" -R "$GITHUB_REPOSITORY" --dir /tmp/rel || true
+            gh release delete-asset "$TAG" "$OLD" --yes || true
+            gh release upload "$TAG" "/tmp/rel/$OLD" --clobber --target "$GITHUB_REPOSITORY" --repo "$GITHUB_REPOSITORY" --rename "$NEW" 2>/dev/null || \
+            gh release upload "$TAG" "/tmp/rel/$OLD" --clobber --repo "$GITHUB_REPOSITORY" --rename "$NEW"
+            # Patch latest.json: replace the old installer URL with the new name.
+            if [ -f /tmp/rel/latest.json ]; then
+              sed -i "s|$OLD|$NEW|g" /tmp/rel/latest.json
+              gh release upload "$TAG" "/tmp/rel/latest.json" --clobber --repo "$GITHUB_REPOSITORY" --rename "latest.json" || true
             fi
           fi
