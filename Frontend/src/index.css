@@ -199,16 +199,13 @@ button { font-family: inherit; }
   padding: 0 32px; height: 64px; display: flex;
   justify-content: space-between; align-items: center;
   position: sticky; top: 0; z-index: var(--z-header);
-  background: linear-gradient(to bottom, var(--bg) 30%, transparent);
+  background: rgba(16,16,19,0.55);
+  backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .header-drag { flex: 1; -webkit-app-region: drag; app-region: drag; padding: 16px 0; }
 .header h1 {
   font-size: 28px; font-weight: 700; letter-spacing: -0.5px; text-wrap: balance;
-  display: inline-block; padding: 6px 18px; border-radius: 14px;
-  background: rgba(255,255,255,0.06);
-  backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 .header-center {
   position: absolute; left: 50%; transform: translateX(-50%); z-index: 10;
