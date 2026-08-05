@@ -351,7 +351,8 @@ export default function App() {
   const [region, setRegion] = useState<Region | null>(() => load("mv:region", null));
 
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
-  const [customCss, setCustomCss] = useState<string>(() => load("mv:customcss", ""));
+  const [bgImage, setBgImage] = useState<string | null>(() => load("mv:bgimage", null));
+  const [bgOpacity, setBgOpacity] = useState<number>(() => load("mv:bgopacity", 55));
   const [profileTab, setProfileTab] = useState("appearance");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null }[]>(() => load("mv:accounts", []));
@@ -451,12 +452,17 @@ export default function App() {
   }, [handleAuthPayload]);
 
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("mv:theme", JSON.stringify(theme)); }, [theme]);
+  // Custom background image + blur/opacity applied to the ambient layer.
   useEffect(() => {
-    let el = document.getElementById("mv-custom-css") as HTMLStyleElement | null;
-    if (!el) { el = document.createElement("style"); el.id = "mv-custom-css"; document.head.appendChild(el); }
-    el.textContent = customCss;
-    localStorage.setItem("mv:customcss", JSON.stringify(customCss));
-  }, [customCss]);
+    const art = document.querySelector<HTMLElement>(".app-bg-art");
+    if (art) {
+      art.style.backgroundImage = bgImage ? `url(${bgImage})` : "";
+    }
+    const shade = document.querySelector<HTMLElement>(".app-bg-shade");
+    if (shade) shade.style.opacity = String(bgOpacity / 100);
+    localStorage.setItem("mv:bgimage", JSON.stringify(bgImage));
+    localStorage.setItem("mv:bgopacity", JSON.stringify(bgOpacity));
+  }, [bgImage, bgOpacity]);
 
   useEffect(() => { localStorage.setItem("mv:rpc-clientid", JSON.stringify(rpcClientId)); }, [rpcClientId]);
   useEffect(() => { localStorage.setItem("mv:rpc-enabled", JSON.stringify(rpcEnabled)); }, [rpcEnabled]);
@@ -756,10 +762,10 @@ export default function App() {
     reader.readAsText(file);
   }, [flashToast]);
 
-  const uploadCss = useCallback((file: File) => {
+  const uploadBgImage = useCallback((file: File) => {
     const reader = new FileReader();
-    reader.onload = () => { setCustomCss(String(reader.result)); flashToast("Custom CSS applied"); };
-    reader.readAsText(file);
+    reader.onload = () => { setBgImage(String(reader.result)); flashToast("Background applied"); };
+    reader.readAsDataURL(file);
   }, [flashToast]);
 
   const toggleAccount = useCallback(async (p: { id: string; label: string }) => {
@@ -1484,11 +1490,18 @@ export default function App() {
                       </div>
                     </div>
                     <div className="setting-block">
-                      <h3>Custom CSS</h3><p className="setting-desc">Paste CSS or upload a .css file for your custom theme.</p>
-                      <textarea className="css-editor" value={customCss} spellCheck={false} onChange={(e) => setCustomCss(e.target.value)} />
+                      <h3>Background</h3><p className="setting-desc">Upload a horizontal image to replace the ambient background.</p>
                       <div className="setting-actions">
-                        <label className="btn-ghost file-btn"><Upload size={15} /> Upload .css<input type="file" accept=".css,text/css" hidden onChange={(e) => e.target.files?.[0] && uploadCss(e.target.files[0])} /></label>
-                        <Button variant="ghost" onClick={() => { setCustomCss(""); flashToast("Custom CSS removed"); }}>Reset</Button>
+                        <label className="btn-primary file-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                          <Upload size={15} /> Change background
+                          <input type="file" accept="image/png, image/jpeg, image/webp" hidden onChange={(e) => e.target.files?.[0] && uploadBgImage(e.target.files[0])} />
+                        </label>
+                        {bgImage && <Button variant="ghost" onClick={() => { setBgImage(null); flashToast("Background reset"); }}>Reset</Button>}
+                      </div>
+                      <div className="field-row" style={{ marginTop: 12 }}>
+                        <label htmlFor="bg-opacity">Blur / Opacity</label>
+                        <Slider id="bg-opacity" value={[bgOpacity]} max={100} step={1} onValueChange={(v) => setBgOpacity(v[0])} />
+                        <span className="setting-hint" style={{ minWidth: 34, textAlign: 'right' }}>{bgOpacity}%</span>
                       </div>
                     </div>
                   </>
