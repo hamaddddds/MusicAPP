@@ -10,22 +10,22 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --primary: 351 96% 56%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 351 96% 56%;
+    --accent-foreground: 210 40% 98%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: 351 96% 56%;
     --radius: 0.6rem;
   }
- 
+
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
@@ -33,19 +33,19 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 351 96% 56%;
+    --primary-foreground: 210 40% 98%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 351 96% 56%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --ring: 351 96% 56%;
   }
 }
 
@@ -382,13 +382,48 @@ button { font-family: inherit; }
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   padding: 4px; transition: opacity 0.15s, transform 0.12s, color 0.15s;
 }
-.btn-icon:hover { opacity: 0.72; }
+.btn-icon:hover { opacity: 1; }
 .btn-icon:active { transform: scale(0.9); }
 .btn-icon.sm { color: var(--text-secondary); }
 .btn-icon.sm:hover { color: #fff; opacity: 1; }
 .btn-icon.on { color: var(--accent); opacity: 1; }
-.btn-icon.on:hover { color: var(--accent); opacity: 0.8; }
+.btn-icon.on:hover { color: var(--accent); opacity: 1; }
+
+/* Icon buttons turn plain white on hover (never black), regardless of the
+   shadcn ghost accent override. No shine/glow. */
+.btn-icon:hover,
+.btn-icon:focus-visible {
+  color: #fff !important;
+}
+.btn-icon.on:hover { color: var(--accent) !important; }
 .mode-dot { position: absolute; bottom: -1px; right: 0; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+
+/* Animated control button (motion.dev) + glass label tooltip.
+   .ctrl-wrap is a span wrapping the icon button + its label (outside the button). */
+.ctrl-wrap { position: relative; display: inline-flex; flex-direction: column; align-items: center; }
+.ctrl-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+
+/* Default (not in lyrics tab): glass label floats ABOVE the button on hover. */
+.ctrl-tooltip {
+  position: absolute; bottom: calc(100% + 10px); left: 50%;
+  padding: 4px 11px; border-radius: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.2px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff; white-space: nowrap; pointer-events: none; z-index: 60;
+  opacity: 0; visibility: hidden; transform: translateX(-50%) translateY(6px);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+.ctrl-wrap:hover .ctrl-tooltip { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+
+/* In the Now Playing (lyrics) tab: label sits UNDER the icon button, outside it. */
+.np-controls .ctrl-wrap { gap: 6px; }
+.np-controls .ctrl-tooltip {
+  position: static; transform: none; opacity: 1; visibility: visible;
+  background: none; border: none; backdrop-filter: none; padding: 0;
+  font-size: 10.5px; color: rgba(255,255,255,0.6); font-weight: 500; letter-spacing: 0.3px;
+}
+.np-controls .ctrl-wrap:hover .ctrl-tooltip { color: #fff; transform: none; }
 /* Glass control buttons in the mini player bar (macOS-style frosted controls). */
 .player-bar .btn-icon.sm,
 .player-bar .btn-play {
@@ -400,6 +435,8 @@ button { font-family: inherit; }
 .player-bar .btn-icon.sm { border-radius: 50%; width: 34px; height: 34px; color: #fff; }
 .player-bar .btn-icon.sm:hover { background: rgba(255,255,255,0.18); color: #fff; opacity: 1; }
 .player-bar .btn-icon.sm.on { color: var(--accent); }
+
+/* (glow pulse removed) */
 .btn-play {
   width: 38px; height: 38px; border-radius: 50%;
   background: var(--btn-play-bg); color: var(--btn-play-fg); padding: 0;
@@ -478,13 +515,24 @@ button { font-family: inherit; }
 .lyric-lines {
   display: flex; flex-direction: column; gap: 8px;
   width: min(640px, 100%); margin: 0 auto;
-  padding: 18px 26px; border-radius: 22px;
-  background: rgba(255,255,255,0.06);
-  backdrop-filter: blur(40px) saturate(1.5);
-  -webkit-backdrop-filter: blur(40px) saturate(1.5);
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow: 0 18px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+  padding: 18px 26px;
 }
+
+/* Auto-scroll sync toggle at the top of the lyrics panel */
+.lyric-sync-bar {
+  display: flex; justify-content: center; padding-bottom: 6px;
+}
+.lyric-sync-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; letter-spacing: 0.2px;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.6); cursor: pointer;
+  transition: all 0.18s ease;
+}
+.lyric-sync-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.lyric-sync-btn.on { color: var(--accent); border-color: rgba(250,36,60,0.4); }
 
 /* ── Karaoke lyrics (technique ported from better-lyrics, GPL-3.0) ── */
 /* inherits: true so the ::after overlay reads the animated values set on the
@@ -512,10 +560,19 @@ button { font-family: inherit; }
 }
 .blyrics--line.blyrics--past { color: rgba(255,255,255,0.20); filter: blur(1.2px); }
 .blyrics--line:hover { color: rgba(255,255,255,0.55); filter: blur(0); }
+/* Only the currently-playing line gets a glass card behind it. */
 .blyrics--line.blyrics--active {
   color: var(--blyrics-lyric-active-color); filter: blur(0);
   transform: scale(var(--blyrics-active-scale));
   text-shadow: 0 0 26px rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 10px 34px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+  padding: 7px 20px;
+  margin: 0 -20px;
 }
 .blyrics-line-main { display: block; max-width: 100%; white-space: normal; }
 /* Each word + its trailing space sits in a group so words keep normal spacing. */
@@ -652,25 +709,27 @@ button { font-family: inherit; }
 
 /* ── Context menu ────────────────────────────────── */
 .ctx-menu {
-  position: fixed; z-index: var(--z-nowplaying); width: 232px;
-  background: var(--panel-bg); backdrop-filter: blur(24px);
-  border: 1px solid var(--border); border-radius: 12px;
-  padding: 6px; display: flex; flex-direction: column;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  position: fixed; z-index: var(--z-nowplaying); width: 236px;
+  background: rgba(28, 28, 32, 0.72);
+  backdrop-filter: blur(28px) saturate(1.5); -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 7px; display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08);
   animation: ctx-in 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 @keyframes ctx-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 .ctx-item {
-  display: flex; align-items: center; gap: 12px; width: 100%;
+  display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%;
   padding: 9px 12px; border-radius: 8px; background: none; border: none;
   color: var(--text-primary); font-size: 13.5px; font-weight: 500;
   cursor: pointer; text-align: left; transition: background 0.12s;
 }
 .ctx-item svg { color: var(--text-secondary); flex-shrink: 0; }
-.ctx-item:hover { background: var(--hover); }
+.ctx-item:hover { background: rgba(255,255,255,0.09); }
 .ctx-item.danger { color: #ff5a6a; }
 .ctx-item.danger svg { color: #ff5a6a; }
-.ctx-sep { height: 1px; background: var(--border); margin: 5px 8px; }
+.ctx-sep { height: 1px; background: rgba(255,255,255,0.10); margin: 5px 8px; }
 
 
 .btn-ghost, .btn-primary {
@@ -783,6 +842,7 @@ button { font-family: inherit; }
 .theme-card {
   position: relative; display: flex; flex-direction: column; align-items: stretch;
   justify-content: center; text-align: center; gap: 10px;
+  height: auto !important; /* override shadcn Button's fixed h-9 */
   padding: 12px; border-radius: 12px; border: 2px solid var(--border);
   background: var(--input-bg); cursor: pointer; transition: border-color 0.15s; font-family: inherit;
 }
@@ -893,39 +953,43 @@ button { font-family: inherit; }
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.75rem; /* a bit more rounded for glass effect */
+  border-radius: 0.9rem;
   transition: all 0.3s ease;
-  padding: 0.5rem; /* add some inner padding */
+  padding: 0.8rem; /* more breathing room so artwork/text isn't cramped */
   box-sizing: border-box;
 }
 
 .glass-card:hover {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.4), inset 0 0 10px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
   transform: translateY(-4px);
 }
 
 .glass-card .album-art-wrap {
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   overflow: hidden;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.7rem;
 }
 
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(5px);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
 }
 .modal-content {
-  background: #1e1e1e;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  background: rgba(30, 30, 32, 0.55);
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.10);
   animation: modalIn 0.3s ease;
 }
 @keyframes modalIn {

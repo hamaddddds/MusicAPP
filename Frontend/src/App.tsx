@@ -172,6 +172,7 @@ function useLyricAnimation(
   currentTime: number,
   isPlaying: boolean,
   containerRef: React.RefObject<HTMLDivElement | null>,
+  syncEnabled = true,
 ) {
   // Latest currentTime, read by the RAF loop without re-running the effect.
   const timeRef = useRef(currentTime);
@@ -240,12 +241,12 @@ function useLyricAnimation(
   // Auto-scroll the container so the active line sits ~37% from the top.
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || activeIndex < 0) return;
+    if (!el || activeIndex < 0 || !syncEnabled) return;
     const lineEl = el.querySelector<HTMLElement>(".blyrics--line.blyrics--active") || el.children[activeIndex] as HTMLElement | undefined;
     if (!lineEl) return;
     const target = lineEl.offsetTop + lineEl.offsetHeight / 2 - el.clientHeight * 0.37;
     el.scrollTo({ top: Math.max(0, target), behavior: prefersReduced ? "auto" : "smooth" });
-  }, [activeIndex, containerRef]);
+  }, [activeIndex, containerRef, syncEnabled]);
 }
 
 function formatTime(seconds: number) {
@@ -264,6 +265,32 @@ function artistScores(history: Record<string, HistEntry>): [string, number][] {
     scores[h.artist] = (scores[h.artist] || 0) + h.count * (0.4 + 0.6 * recency);
   }
   return Object.entries(scores).sort((a, b) => b[1] - a[1]);
+}
+
+/* Animated control button (motion.dev API). Wraps the icon button with a hover
+   spring + tap pulse. The label renders OUTSIDE the button (a sibling below),
+   shown as a floating glass tooltip on hover — or persistently under the icon
+   when inside the Now Playing (lyrics) tab. */
+function CtrlButton({
+  label,
+  className = "",
+  children,
+  ...rest
+}: Omit<React.ComponentPropsWithoutRef<typeof motion.button>, "children"> & { label: string; children?: React.ReactNode }) {
+  return (
+    <span className="ctrl-wrap">
+      <motion.button
+        className={`ctrl-btn ${className}`}
+        whileHover={{ scale: 1.12, y: -2 }}
+        whileTap={{ scale: 0.9 }}
+        transition={{ type: "spring", stiffness: 420, damping: 18 }}
+        {...rest}
+      >
+        {children}
+      </motion.button>
+      <span className="ctrl-tooltip">{label}</span>
+    </span>
+  );
 }
 
 export default function App() {
@@ -341,6 +368,7 @@ export default function App() {
   const triedDownloadRef = useRef(false);
   const playRequestRef = useRef(0);
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
+  const [lyricSync, setLyricSync] = useState(true);
   const toastTimer = useRef<number | undefined>(undefined);
   const suggestTimer = useRef<number | undefined>(undefined);
   const searchBoxRef = useRef<HTMLDivElement>(null);
@@ -1039,6 +1067,7 @@ export default function App() {
     currentTime,
     isPlaying,
     lyricsContainerRef,
+    lyricSync,
   );
 
   useEffect(() => {
@@ -1226,7 +1255,7 @@ export default function App() {
               )}
             </div>
             {isAuth ? (
-              <Button className="win-btn" onClick={handleLogout} title="Logout"><User size={16} style={{ color: '#3b82f6' }} /></Button>
+              <Button className="win-btn" onClick={handleLogout} title="Logout"><User size={16} style={{ color: 'var(--accent)' }} /></Button>
             ) : (
               <Button className="win-btn" onClick={handleLoginClick} title="Login with YouTube"><User size={16} /></Button>
             )}
@@ -1579,15 +1608,26 @@ export default function App() {
                   <span>{formatTime(duration)}</span>
                 </div>
                 <div className="np-controls">
-                  <Button className={`btn-icon ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={20} />{shuffleMode === "smart" && <span className="mode-dot" />}</Button>
-                  <Button variant="ghost" size="icon" className="" onClick={playPrev}><SkipBack size={26} fill="currentColor" /></Button>
-                  <Button variant="ghost" size="icon" className="btn-play big" onClick={togglePlay}>{streamLoading ? <RefreshCw size={26} className="spin" /> : isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}</Button>
-                  <Button variant="ghost" size="icon" className="" onClick={() => advance(true)}><SkipForward size={26} fill="currentColor" /></Button>
-                  <Button className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</Button>
+                  <CtrlButton label="Shuffle" className={`btn-icon ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={20} />{shuffleMode === "smart" && <span className="mode-dot" />}</CtrlButton>
+                  <CtrlButton label="Previous" className="btn-icon" onClick={playPrev}><SkipBack size={26} fill="currentColor" /></CtrlButton>
+                  <CtrlButton label={streamLoading ? "Loading" : isPlaying ? "Pause" : "Play"} className="btn-icon btn-play big" onClick={togglePlay}>{streamLoading ? <RefreshCw size={26} className="spin" /> : isPlaying ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}</CtrlButton>
+                  <CtrlButton label="Next" className="btn-icon" onClick={() => advance(true)}><SkipForward size={26} fill="currentColor" /></CtrlButton>
+                  <CtrlButton label="Repeat" className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</CtrlButton>
                 </div>
               </div>
               <div className="np-lyrics" ref={lyricsContainerRef}>
                 {lyricsLoading ? <p className="lyric-status">Memuat lirik...</p> : lyrics?.synced.length ? (
+                  <>
+                  <div className="lyric-sync-bar">
+                    <button
+                      className={`lyric-sync-btn ${lyricSync ? "on" : ""}`}
+                      onClick={() => setLyricSync((s) => !s)}
+                      title={lyricSync ? "Auto-scroll: ON — click to disable" : "Auto-scroll: OFF — click to enable"}
+                    >
+                      <RefreshCw size={13} className={lyricSync ? "spin" : ""} />
+                      {lyricSync ? "Auto-scroll on" : "Auto-scroll off"}
+                    </button>
+                  </div>
                   <div className="lyric-lines">
                     {lyrics.synced.map((line, i) => {
                       const active = i === activeLyric;
@@ -1615,6 +1655,7 @@ export default function App() {
                       );
                     })}
                   </div>
+                  </>
                 ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div> : <p className="lyric-status">Lyrics are not available for this song.</p>}
               </div>
             </div>
@@ -1646,11 +1687,11 @@ export default function App() {
 
         <div className="player-controls">
           <div className="control-buttons">
-            <Button className={`btn-icon sm ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={17} />{shuffleMode === "smart" && <span className="mode-dot" />}</Button>
-            <Button variant="ghost" size="icon" className="" onClick={playPrev}><SkipBack size={19} fill="currentColor" /></Button>
-            <Button variant="ghost" size="icon" className="btn-play" onClick={togglePlay}>{isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: 2 }} />}</Button>
-            <Button variant="ghost" size="icon" className="" onClick={() => advance(true)}><SkipForward size={19} fill="currentColor" /></Button>
-            <Button className={`btn-icon sm ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}</Button>
+            <CtrlButton label="Shuffle" className={`btn-icon sm ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={17} />{shuffleMode === "smart" && <span className="mode-dot" />}</CtrlButton>
+            <CtrlButton label="Previous" className="btn-icon sm" onClick={playPrev}><SkipBack size={19} fill="currentColor" /></CtrlButton>
+            <CtrlButton label={isPlaying ? "Pause" : "Play"} className="btn-icon sm btn-play" onClick={togglePlay}>{isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: 2 }} />}</CtrlButton>
+            <CtrlButton label="Next" className="btn-icon sm" onClick={() => advance(true)}><SkipForward size={19} fill="currentColor" /></CtrlButton>
+            <CtrlButton label="Repeat" className={`btn-icon sm ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}</CtrlButton>
           </div>
           <div className="progress-container">
             <span>{formatTime(currentTime)}</span>
@@ -1660,9 +1701,9 @@ export default function App() {
         </div>
 
         <div className="player-extras">
-          <Button className={`btn-icon sm ${nowPlayingOpen ? "on" : ""}`} onClick={() => currentTrack && setNowPlayingOpen(true)} title="Lyrics"><Mic2 size={18} /></Button>
-          <Button variant="ghost" size="icon" className="sm" onClick={() => setShowQueue(true)} title="Queue"><ListMusic size={18} /></Button>
-          <Button variant="ghost" size="icon" className="sm" onClick={() => setIsMuted((m) => !m)} title="Mute"><VolIcon size={18} /></Button>
+          <CtrlButton label="Lyrics" className={`btn-icon sm ${nowPlayingOpen ? "on" : ""}`} onClick={() => currentTrack && setNowPlayingOpen(true)} title="Lyrics"><Mic2 size={18} /></CtrlButton>
+          <CtrlButton label="Queue" className="btn-icon sm" onClick={() => setShowQueue(true)} title="Queue"><ListMusic size={18} /></CtrlButton>
+          <CtrlButton label="Mute" className="btn-icon sm" onClick={() => setIsMuted((m) => !m)} title="Mute"><VolIcon size={18} /></CtrlButton>
           <Slider value={[isMuted ? 0 : volume * 100]} max={100} step={1} onValueChange={(val) => { setVolume(val[0] / 100); setIsMuted(false); }} className="w-24 cursor-pointer" />
         </div>
       </footer>
@@ -1677,7 +1718,7 @@ export default function App() {
             {loginData ? (
               <div>
                 <p style={{ marginBottom: 10 }}>Please go to:</p>
-                <a href={loginData.verification_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginBottom: 20, color: '#3b82f6', fontSize: '1.1rem', textDecoration: 'none' }}>
+                <a href={loginData.verification_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginBottom: 20, color: 'var(--accent)', fontSize: '1.1rem', textDecoration: 'none' }}>
                   {loginData.verification_url}
                 </a>
                 <p style={{ marginBottom: 10 }}>And enter the code:</p>
@@ -1685,7 +1726,7 @@ export default function App() {
                   {loginData.user_code}
                 </div>
                 {!isPolling ? (
-                  <button onClick={startPolling} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '20px', cursor: 'pointer', fontSize: '1rem' }}>
+                  <button onClick={startPolling} style={{ background: 'var(--accent)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '20px', cursor: 'pointer', fontSize: '1rem' }}>
                     I have entered the code
                   </button>
                 ) : (
