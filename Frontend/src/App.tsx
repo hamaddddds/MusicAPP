@@ -457,9 +457,13 @@ export default function App() {
     const art = document.querySelector<HTMLElement>(".app-bg-art");
     if (art) {
       art.style.backgroundImage = bgImage ? `url(${bgImage})` : "";
+      // Blur follows the slider: 0% = sharp/visible, 100% = heavy frost.
+      art.style.filter = bgImage
+        ? `blur(${(1 - bgOpacity / 100) * 90}px) saturate(1.4) brightness(0.5)`
+        : "blur(90px) saturate(1.4) brightness(0.5)";
     }
     const shade = document.querySelector<HTMLElement>(".app-bg-shade");
-    if (shade) shade.style.opacity = String(bgOpacity / 100);
+    if (shade) shade.style.opacity = String((bgOpacity / 100) * 0.45);
     localStorage.setItem("mv:bgimage", JSON.stringify(bgImage));
     localStorage.setItem("mv:bgopacity", JSON.stringify(bgOpacity));
   }, [bgImage, bgOpacity]);
