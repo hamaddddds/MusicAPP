@@ -24,7 +24,6 @@ export function VolumeSlider({ value, onChange, onMuteToggle, muted }: VolumeSli
   const [region, setRegion] = useState("middle");
   const clientX = useMotionValue(0);
   const overflow = useMotionValue(0);
-  const scale = useMotionValue(1);
   const ref = useRef<ElementRef<typeof RadixSlider.Root>>(null);
 
   useMotionValueEvent(clientX, "change", (latest) => {
@@ -52,11 +51,6 @@ export function VolumeSlider({ value, onChange, onMuteToggle, muted }: VolumeSli
 
   return (
     <motion.div
-      onHoverStart={() => animate(scale, 1.15)}
-      onHoverEnd={() => animate(scale, 1)}
-      onTouchStart={() => animate(scale, 1.15)}
-      onTouchEnd={() => animate(scale, 1)}
-      style={{ scale, opacity: useTransform(scale, [1, 1.15], [0.75, 1]) }}
       className="flex w-full touch-none select-none items-center justify-center gap-2"
     >
       <motion.button
@@ -69,7 +63,7 @@ export function VolumeSlider({ value, onChange, onMuteToggle, muted }: VolumeSli
         }}
         style={{
           x: useTransform(() =>
-            region === "left" ? -overflow.get() / scale.get() : 0
+            region === "left" ? -overflow.get() : 0
           ),
         }}
         className="vol-toggle"
@@ -98,18 +92,15 @@ export function VolumeSlider({ value, onChange, onMuteToggle, muted }: VolumeSli
                 return 1 + overflow.get() / width;
               }
             }),
-            scaleY: useTransform(overflow, [0, MAX_OVERFLOW], [1, 0.8]),
+            scaleY: useTransform(overflow, [0, MAX_OVERFLOW], [1, 0.85]),
             transformOrigin: useTransform(() => {
               if (ref.current) {
                 const { left, width } = ref.current.getBoundingClientRect();
                 return clientX.get() < left + width / 2 ? "right" : "left";
               }
             }),
-            height: useTransform(scale, [1, 1.15], [5, 10]),
-            marginTop: useTransform(scale, [1, 1.15], [0, -2.5]),
-            marginBottom: useTransform(scale, [1, 1.15], [0, -2.5]),
           }}
-          className="flex grow"
+          className="vol-track-wrap flex grow"
         >
           <RadixSlider.Track className="vol-track relative isolate h-full grow overflow-hidden rounded-full">
             <RadixSlider.Range className="vol-range absolute h-full" />
@@ -125,7 +116,7 @@ export function VolumeSlider({ value, onChange, onMuteToggle, muted }: VolumeSli
         }}
         style={{
           x: useTransform(() =>
-            region === "right" ? overflow.get() / scale.get() : 0
+            region === "right" ? overflow.get() : 0
           ),
         }}
         className="vol-pct"
