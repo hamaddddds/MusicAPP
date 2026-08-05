@@ -380,6 +380,18 @@ button { font-family: inherit; }
   font-size: 16px; font-weight: 500; color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* More (⋯) button on the top-result card to open the context menu */
+.top-result-more {
+  align-self: flex-start; margin-left: auto; margin-top: 6px;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px) saturate(1.4); -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: var(--text-secondary); cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.top-result-more:hover { background: rgba(255,255,255,0.16); color: #fff; }
 
 /* ── Track list ──────────────────────────────────── */
 .track-grid {

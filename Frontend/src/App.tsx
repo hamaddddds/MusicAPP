@@ -1189,6 +1189,16 @@ export default function App() {
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
   const VolIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   const upNext = orderRef.current.slice(posRef.current + 1);
+  // Build a Track from the current top result (if it's a song) so the context
+  // menu / play actions can reuse it.
+  const topResultTrack: Track | null = searchTopResult && searchTopResult.videoId
+    ? {
+        videoId: searchTopResult.videoId,
+        title: searchTopResult.title || searchTopResult.name || "Unknown",
+        artist: searchTopResult.artists?.[0]?.name || searchTopResult.artist || "Unknown",
+        artwork: hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)
+      }
+    : null;
 
   const renderAlbumCard = (track: Track, context: Track[]) => (
     <div key={track.videoId} className="album-card glass-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
@@ -1239,7 +1249,14 @@ export default function App() {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container" onContextMenu={(e) => {
+      // Suppress the native browser right-click menu on the main window
+      // (track/album cards handle their own custom menu via openCtx).
+      const target = e.target as HTMLElement;
+      if (!target.closest('.track-row, .album-card, .queue-item, .top-result-card, .ctx-menu, .track-row-more, .top-result-more')) {
+        e.preventDefault();
+      }
+    }}>
       {playerUrl && <audio key={playerUrl} ref={audioRef} src={playerUrl} onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />}
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
@@ -1353,15 +1370,11 @@ export default function App() {
                   <div className={`top-result-card ${searchTopResult.resultType === 'artist' ? 'is-artist' : ''}`} onClick={() => {
                     if (searchTopResult.resultType === 'artist') {
                       openArtist({ artistId: searchTopResult.browseId || searchTopResult.artists?.[0]?.id, name: searchTopResult.artist });
-                    } else if (searchTopResult.videoId) {
-                      const t = {
-                        videoId: searchTopResult.videoId,
-                        title: searchTopResult.title || searchTopResult.name || "Unknown",
-                        artist: searchTopResult.artists?.[0]?.name || searchTopResult.artist || "Unknown",
-                        artwork: hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)
-                      };
-                      playTrack(t, [t]);
+                    } else if (topResultTrack) {
+                      playTrack(topResultTrack, [topResultTrack]);
                     }
+                  }} onContextMenu={(e) => {
+                    if (topResultTrack) openCtx(e, topResultTrack, [topResultTrack]);
                   }}>
                     <div className="top-result-media">
                       <img src={hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)} alt="Top Result" className="top-result-img" />
@@ -1372,6 +1385,7 @@ export default function App() {
                       <h2>{searchTopResult.title || searchTopResult.artist || searchTopResult.name || "Top Result"}</h2>
                       <p className="top-result-artist">{searchTopResult.artists?.[0]?.name || searchTopResult.artist || searchTopResult.resultType || "Result"}</p>
                     </div>
+                    <Button className="top-result-more" onClick={(e) => { e.stopPropagation(); if (topResultTrack) openCtx(e, topResultTrack, [topResultTrack]); }}><MoreHorizontal size={18} /></Button>
                   </div>
                 )}
                 
