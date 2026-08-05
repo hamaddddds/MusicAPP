@@ -351,8 +351,6 @@ export default function App() {
   const [region, setRegion] = useState<Region | null>(() => load("mv:region", null));
 
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
-  const [bgImage, setBgImage] = useState<string | null>(() => load("mv:bgimage", null));
-  const [bgOpacity, setBgOpacity] = useState<number>(() => load("mv:bgopacity", 55));
   const [profileTab, setProfileTab] = useState("appearance");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null }[]>(() => load("mv:accounts", []));
@@ -451,22 +449,21 @@ export default function App() {
     return () => window.removeEventListener("message", handleMessage);
   }, [handleAuthPayload]);
 
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("mv:theme", JSON.stringify(theme)); }, [theme]);
-  // Custom background image + opacity applied to the ambient layer.
   useEffect(() => {
-    const art = document.querySelector<HTMLElement>(".app-bg-art");
-    if (art) {
-      art.style.backgroundImage = bgImage ? `url(${bgImage})` : "";
-      // No blur — the uploaded image stays sharp. Only brightness is applied.
-      art.style.filter = bgImage
-        ? "saturate(1.3) brightness(0.8)"
-        : "saturate(1.3) brightness(0.7)";
-    }
-    const shade = document.querySelector<HTMLElement>(".app-bg-shade");
-    if (shade) shade.style.opacity = String((bgOpacity / 100) * 0.5);
-    localStorage.setItem("mv:bgimage", JSON.stringify(bgImage));
-    localStorage.setItem("mv:bgopacity", JSON.stringify(bgOpacity));
-  }, [bgImage, bgOpacity]);
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("mv:theme", JSON.stringify(theme));
+  }, [theme]);
+
+  // "System" theme follows the OS color scheme.
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      if (theme === "system") document.documentElement.dataset.theme = mq.matches ? "dark" : "light";
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [theme]);
 
   useEffect(() => { localStorage.setItem("mv:rpc-clientid", JSON.stringify(rpcClientId)); }, [rpcClientId]);
   useEffect(() => { localStorage.setItem("mv:rpc-enabled", JSON.stringify(rpcEnabled)); }, [rpcEnabled]);
@@ -764,12 +761,6 @@ export default function App() {
       } catch { flashToast("Invalid configuration file."); }
     };
     reader.readAsText(file);
-  }, [flashToast]);
-
-  const uploadBgImage = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => { setBgImage(String(reader.result)); flashToast("Background applied"); };
-    reader.readAsDataURL(file);
   }, [flashToast]);
 
   const toggleAccount = useCallback(async (p: { id: string; label: string }) => {
@@ -1276,12 +1267,6 @@ export default function App() {
       }
     }}>
       {playerUrl && <audio key={playerUrl} ref={audioRef} src={playerUrl} onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />}
-      {/* Ambient backdrop: current track's artwork blurred + gradient aurora. */}
-      <div className="app-bg" aria-hidden="true">
-        <div className="app-bg-art" style={{ backgroundImage: currentTrack?.artwork ? `url(${currentTrack.artwork})` : "none" }} />
-        <div className="app-bg-aurora" />
-        <div className="app-bg-shade" />
-      </div>
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
@@ -1484,28 +1469,13 @@ export default function App() {
                     <div className="setting-block">
                       <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
                       <div className="theme-grid">
-                        {[{ id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }, { id: "amoled", label: "Amoled", Icon: Monitor }].map((tOpt) => (
+                        {[{ id: "system", label: "System", Icon: Monitor }, { id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }].map((tOpt) => (
                           <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
                             <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
                             <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
                             {theme === tOpt.id && <Check size={16} className="theme-check" />}
                           </Button>
                         ))}
-                      </div>
-                    </div>
-                    <div className="setting-block">
-                      <h3>Background</h3><p className="setting-desc">Upload a horizontal image to replace the ambient background.</p>
-                      <div className="setting-actions">
-                        <label className="btn-primary file-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                          <Upload size={15} /> Change background
-                          <input type="file" accept="image/png, image/jpeg, image/webp" hidden onChange={(e) => e.target.files?.[0] && uploadBgImage(e.target.files[0])} />
-                        </label>
-                        {bgImage && <Button variant="ghost" onClick={() => { setBgImage(null); flashToast("Background reset"); }}>Reset</Button>}
-                      </div>
-                      <div className="field-row" style={{ marginTop: 12 }}>
-                        <label htmlFor="bg-opacity">Darkness</label>
-                        <Slider id="bg-opacity" value={[bgOpacity]} max={100} step={1} onValueChange={(v) => setBgOpacity(v[0])} />
-                        <span className="setting-hint" style={{ minWidth: 34, textAlign: 'right' }}>{bgOpacity}%</span>
                       </div>
                     </div>
                   </>
