@@ -1380,9 +1380,11 @@ export default function App() {
                       <img src={hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)} alt="Top Result" className="top-result-img" />
                     </div>
                     <div className="top-result-info">
-                      <span className="section-badge">Top Result</span>
-                      <h2>{searchTopResult.title || searchTopResult.artist || searchTopResult.name || "Top Result"}</h2>
-                      <p className="top-result-artist">{searchTopResult.artists?.[0]?.name || searchTopResult.artist || searchTopResult.resultType || "Result"}</p>
+                      <div className="top-result-text">
+                        <span className="section-badge">Top Result</span>
+                        <h2>{searchTopResult.title || searchTopResult.artist || searchTopResult.name || "Top Result"}</h2>
+                        <p className="top-result-artist">{searchTopResult.artists?.[0]?.name || searchTopResult.artist || searchTopResult.resultType || "Result"}</p>
+                      </div>
                       <div className="top-result-actions">
                         <Button className="top-result-more" onClick={(e) => { e.stopPropagation(); if (topResultTrack) openCtx(e, topResultTrack, [topResultTrack]); }}><MoreHorizontal size={18} /></Button>
                         <div className="top-result-play" onClick={(e) => { e.stopPropagation(); if (topResultTrack) playTrack(topResultTrack, [topResultTrack]); }}><Play size={18} fill="currentColor" /></div>

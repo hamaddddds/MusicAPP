@@ -363,9 +363,14 @@ button { font-family: inherit; }
   display: block; box-shadow: 0 10px 26px rgba(0,0,0,0.45);
   background: var(--surface);
 }
-.top-result-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.top-result-info .section-badge { align-self: flex-start; }
-.top-result-info h2 {
+/* Text on the left, actions on the right of the title/artist. */
+.top-result-info {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  flex: 1; min-width: 0;
+}
+.top-result-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.top-result-text .section-badge { align-self: flex-start; }
+.top-result-text h2 {
   font-size: 30px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1;
   color: var(--text-primary); text-wrap: balance;
 }
@@ -373,10 +378,9 @@ button { font-family: inherit; }
   font-size: 16px; font-weight: 500; color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Play + more buttons sit at the right, play directly under the 3-dot. */
+/* Play + more buttons sit to the right of the title/artist, side by side. */
 .top-result-actions {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  align-self: flex-end; margin-top: 2px;
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
 }
 .top-result-play {
   width: 38px; height: 38px; border-radius: 50%;
