@@ -376,12 +376,12 @@ button { font-family: inherit; }
 /* ── Track list ──────────────────────────────────── */
 .track-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 2px 36px; padding: 0 26px;
+  gap: 6px 36px; padding: 0 26px;
 }
 .track-grid.wide { padding: 0 26px; }
 .track-row {
   display: flex; align-items: center; gap: 12px;
-  padding: 8px 10px; border-radius: 10px; cursor: default;
+  padding: 10px 12px; border-radius: 10px; cursor: default;
   transition: background 0.15s;
   background: rgba(255,255,255,0.04);
   backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
