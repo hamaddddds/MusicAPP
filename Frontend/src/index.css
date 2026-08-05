@@ -247,12 +247,21 @@ button { font-family: inherit; }
 .shelf-scroll {
   display: flex; gap: 18px; overflow-x: auto; overflow-y: hidden;
   scroll-snap-type: x proximity; scroll-behavior: smooth;
-  padding: 4px 32px 6px; scroll-padding-left: 32px;
-  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.22) transparent;
+  padding: 4px 32px 10px; scroll-padding-left: 32px;
+  /* Custom slider look: a slim track that reveals a bright thumb on hover. */
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.16) transparent;
 }
-.shelf-scroll::-webkit-scrollbar { height: 6px; }
-.shelf-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 3px; }
+.shelf-scroll::-webkit-scrollbar { height: 8px; }
 .shelf-scroll::-webkit-scrollbar-track { background: transparent; }
+.shelf-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.16);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background 0.2s ease;
+}
+.shelf-scroll:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.4); }
+.shelf-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.6); }
 .shelf-scroll .album-card { width: 168px; min-width: 168px; scroll-snap-align: start; }
 
 /* ── Album card ──────────────────────────────────── */
@@ -490,8 +499,37 @@ button { font-family: inherit; }
 .progress-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--text-primary); border-radius: 3px; }
 .progress-bar:hover .progress-fill { background: var(--text-primary); }
 
-.player-extras { width: 30%; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.player-extras { width: 30%; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
 .volume-bar { width: 92px; flex: none; }
+
+/* ── Custom volume slider (motion.dev) ───────────── */
+.vol-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(255,255,255,0.10);
+  backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #fff; cursor: pointer; flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.12);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.vol-toggle:hover { background: rgba(255,255,255,0.2); }
+.vol-toggle svg { pointer-events: none; }
+.vol-track { background: rgba(255,255,255,0.18); }
+.vol-range { background: var(--accent); border-radius: inherit; }
+.vol-thumb {
+  display: block; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; border: 2px solid rgba(255,255,255,0.4);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.45);
+  outline: none; cursor: grab;
+}
+.vol-thumb:active { cursor: grabbing; }
+.vol-pct {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; min-width: 34px; text-align: right;
+  white-space: nowrap; flex-shrink: 0;
+}
+.vol-pct:hover { color: #fff; }
 
 /* ── Now Playing overlay ─────────────────────────── */
 .now-playing {

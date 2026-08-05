@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, Pause, SkipForward, SkipBack,
-  Volume2, Volume1, VolumeX, Search, Home, Heart, Radio, Clock,
+  Search, Home, Heart, Radio, Clock,
   X, Minus, Square, Maximize, Repeat, Repeat1, Shuffle,
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
@@ -17,6 +17,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
+import { VolumeSlider } from "@/components/ui/volume-slider";
 
 // ... Types ...
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
@@ -1187,7 +1188,6 @@ export default function App() {
   };
 
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const VolIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   const upNext = orderRef.current.slice(posRef.current + 1);
 
   const renderAlbumCard = (track: Track, context: Track[]) => (
@@ -1714,8 +1714,12 @@ export default function App() {
         <div className="player-extras">
           <CtrlButton label="Lyrics" className={`btn-icon sm ${nowPlayingOpen ? "on" : ""}`} onClick={() => currentTrack && setNowPlayingOpen(true)} title="Lyrics"><Mic2 size={18} /></CtrlButton>
           <CtrlButton label="Queue" className="btn-icon sm" onClick={() => setShowQueue(true)} title="Queue"><ListMusic size={18} /></CtrlButton>
-          <CtrlButton label="Mute" className="btn-icon sm" onClick={() => setIsMuted((m) => !m)} title="Mute"><VolIcon size={18} /></CtrlButton>
-          <Slider value={[isMuted ? 0 : volume * 100]} max={100} step={1} onValueChange={(val) => { setVolume(val[0] / 100); setIsMuted(false); }} className="w-24 cursor-pointer" />
+          <VolumeSlider
+            value={volume * 100}
+            muted={isMuted}
+            onChange={(v) => { setVolume(v / 100); setIsMuted(false); }}
+            onMuteToggle={() => setIsMuted((m) => !m)}
+          />
         </div>
       </footer>
 
