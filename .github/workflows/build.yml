@@ -74,7 +74,7 @@ jobs:
           releaseName: "Music Venue v__VERSION__ (beta)"
           releaseBody: ${{ env.CHANGELOG }}
           releaseDraft: false
-          prerelease: true
+          prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           projectPath: ./Frontend
@@ -85,6 +85,16 @@ jobs:
           VER: ${{ steps.version.outputs.VER }}
         run: |
           TAG="app-v${VER}"
+          # Delete old v0.2.x releases so they no longer appear on the release
+          # page / don't shadow the new 1.5.x as "Latest".
+          gh release list -R "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease,draft -q '.[] | select(.draft == false) | .tagName' | while read -r t; do
+            case "$t" in
+              app-v0.2.*)
+                echo "deleting old release: $t"
+                gh release delete "$t" --yes --cleanup-tag || true
+                ;;
+            esac
+          done
           # Keep latest.json (the updater reads the embedded signature from it)
           # and the installer .exe. Delete msi, standalone .sig files, and the
           # separate latest.json.sig — the signature is already inside latest.json.
