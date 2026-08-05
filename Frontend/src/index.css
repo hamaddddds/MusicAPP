@@ -202,7 +202,14 @@ button { font-family: inherit; }
   background: linear-gradient(to bottom, var(--bg) 30%, transparent);
 }
 .header-drag { flex: 1; -webkit-app-region: drag; app-region: drag; padding: 16px 0; }
-.header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; text-wrap: balance; }
+.header h1 {
+  font-size: 28px; font-weight: 700; letter-spacing: -0.5px; text-wrap: balance;
+  display: inline-block; padding: 6px 18px; border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.08);
+}
 .header-center {
   position: absolute; left: 50%; transform: translateX(-50%); z-index: 10;
   -webkit-app-region: no-drag; app-region: no-drag;
