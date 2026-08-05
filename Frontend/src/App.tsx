@@ -184,6 +184,7 @@ function useLyricAnimation(
   currentTime: number,
   isPlaying: boolean,
   containerRef: React.RefObject<HTMLDivElement | null>,
+  audioRef: React.RefObject<HTMLAudioElement | null>,
   syncEnabled = true,
 ) {
   // Latest currentTime, read by the RAF loop without re-running the effect.
@@ -232,7 +233,13 @@ function useLyricAnimation(
 
     let raf = 0;
     const tick = () => {
-      const now = timeRef.current;
+      // Read the audio element's live currentTime directly every frame for
+      // frame-accurate sync (the React state only updates ~4x/sec, which is
+      // what caused the perceived delay). Fall back to the state value.
+      const audio = audioRef.current;
+      const now = audio && !Number.isNaN(audio.currentTime)
+        ? audio.currentTime
+        : timeRef.current;
 
       // "Passing light" karaoke: only the word currently being sung is lit
       // bright; past words fade back to dim, upcoming words stay dim. A small
@@ -1094,6 +1101,7 @@ export default function App() {
     currentTime,
     isPlaying,
     lyricsContainerRef,
+    audioRef,
     lyricSync,
   );
 
