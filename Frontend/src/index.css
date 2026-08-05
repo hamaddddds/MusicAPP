@@ -138,13 +138,53 @@ button { font-family: inherit; }
 
 /* ── Layout ─────────────────────────────────────── */
 .app-container {
+  position: relative;
   display: flex;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Ambient animated backdrop (album art + aurora + shade) ── */
+.app-bg {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  overflow: hidden;
+}
+.app-bg-art {
+  position: absolute; inset: -80px;
+  background-size: cover; background-position: center;
+  filter: blur(90px) saturate(1.4) brightness(0.5);
+  transform: scale(1.15);
+  transition: background-image 0.8s ease, opacity 1.6s ease;
+  animation: appBgDrift 40s ease-in-out infinite alternate;
+}
+@keyframes appBgDrift {
+  from { transform: scale(1.1) translate(0, 0); }
+  to   { transform: scale(1.2) translate(-18px, 14px); }
+}
+.app-bg-aurora {
+  position: absolute; inset: 0;
   background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(250, 36, 60, 0.10), transparent 60%),
-    var(--bg);
+    radial-gradient(42% 42% at 18% 28%, rgba(250,36,60,0.16), transparent 70%),
+    radial-gradient(50% 50% at 82% 16%, rgba(120,70,255,0.14), transparent 70%),
+    radial-gradient(42% 42% at 62% 82%, rgba(0,170,255,0.10), transparent 70%),
+    radial-gradient(32% 32% at 30% 70%, rgba(250,150,60,0.08), transparent 70%);
+  animation: appBgAurora 26s ease-in-out infinite alternate;
+}
+@keyframes appBgAurora {
+  from { opacity: 0.6; transform: scale(1); }
+  to   { opacity: 1; transform: scale(1.08); }
+}
+.app-bg-shade {
+  position: absolute; inset: 0;
+  background: rgba(8, 8, 10, 0.45);
+}
+
+/* Content sits above the ambient layer */
+.app-container > .sidebar,
+.app-container > .main-content {
+  position: relative; z-index: 1;
 }
 
 /* ── Sidebar ─────────────────────────────────────── */

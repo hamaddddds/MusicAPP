@@ -1266,6 +1266,12 @@ export default function App() {
       }
     }}>
       {playerUrl && <audio key={playerUrl} ref={audioRef} src={playerUrl} onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />}
+      {/* Ambient backdrop: current track's artwork blurred + gradient aurora. */}
+      <div className="app-bg" aria-hidden="true">
+        <div className="app-bg-art" style={{ backgroundImage: currentTrack?.artwork ? `url(${currentTrack.artwork})` : "none" }} />
+        <div className="app-bg-aurora" />
+        <div className="app-bg-shade" />
+      </div>
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
