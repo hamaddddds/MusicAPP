@@ -1263,7 +1263,7 @@ export default function App() {
       <main className="main-content">
         <header className="header">
           <div className="header-drag" onMouseDown={handleDrag}><h1>{getPageTitle()}</h1></div>
-          <div className="header-right">
+          <div className="header-center">
             <div className="search-box-wrap" ref={searchBoxRef}>
               <form onSubmit={handleSearch} className="search-box">
                 <Search size={16} />
@@ -1281,6 +1281,8 @@ export default function App() {
                 </div>
               )}
             </div>
+          </div>
+          <div className="header-right">
             {isAuth ? (
               <Button className="win-btn" onClick={handleLogout} title="Logout"><User size={16} style={{ color: 'var(--accent)' }} /></Button>
             ) : (
