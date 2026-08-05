@@ -154,7 +154,9 @@ button { font-family: inherit; }
 .app-bg-art {
   position: absolute; inset: -80px;
   background-size: cover; background-position: center;
-  filter: blur(90px) saturate(1.4) brightness(0.5);
+  /* No fixed blur — the uploaded background stays sharp. The effect sets a
+     blur only for custom images (0% = sharp, 100% = frosted). */
+  filter: saturate(1.3) brightness(0.7);
   transform: scale(1.15);
   transition: background-image 0.8s ease, opacity 1.6s ease;
   animation: appBgDrift 40s ease-in-out infinite alternate;

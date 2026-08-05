@@ -452,18 +452,18 @@ export default function App() {
   }, [handleAuthPayload]);
 
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("mv:theme", JSON.stringify(theme)); }, [theme]);
-  // Custom background image + blur/opacity applied to the ambient layer.
+  // Custom background image + opacity applied to the ambient layer.
   useEffect(() => {
     const art = document.querySelector<HTMLElement>(".app-bg-art");
     if (art) {
       art.style.backgroundImage = bgImage ? `url(${bgImage})` : "";
-      // Blur follows the slider: 0% = sharp/visible, 100% = heavy frost.
+      // No blur — the uploaded image stays sharp. Only brightness is applied.
       art.style.filter = bgImage
-        ? `blur(${(1 - bgOpacity / 100) * 90}px) saturate(1.4) brightness(0.5)`
-        : "blur(90px) saturate(1.4) brightness(0.5)";
+        ? "saturate(1.3) brightness(0.8)"
+        : "saturate(1.3) brightness(0.7)";
     }
     const shade = document.querySelector<HTMLElement>(".app-bg-shade");
-    if (shade) shade.style.opacity = String((bgOpacity / 100) * 0.45);
+    if (shade) shade.style.opacity = String((bgOpacity / 100) * 0.5);
     localStorage.setItem("mv:bgimage", JSON.stringify(bgImage));
     localStorage.setItem("mv:bgopacity", JSON.stringify(bgOpacity));
   }, [bgImage, bgOpacity]);
@@ -1503,7 +1503,7 @@ export default function App() {
                         {bgImage && <Button variant="ghost" onClick={() => { setBgImage(null); flashToast("Background reset"); }}>Reset</Button>}
                       </div>
                       <div className="field-row" style={{ marginTop: 12 }}>
-                        <label htmlFor="bg-opacity">Blur / Opacity</label>
+                        <label htmlFor="bg-opacity">Darkness</label>
                         <Slider id="bg-opacity" value={[bgOpacity]} max={100} step={1} onValueChange={(v) => setBgOpacity(v[0])} />
                         <span className="setting-hint" style={{ minWidth: 34, textAlign: 'right' }}>{bgOpacity}%</span>
                       </div>
