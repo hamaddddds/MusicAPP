@@ -1194,9 +1194,11 @@ export default function App() {
     <div key={track.videoId} className="album-card glass-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
       <div className="album-art-wrap">
         <img src={track.artwork} alt={track.title} className="album-artwork" loading="lazy" />
-        <div className="album-play-overlay"><div className="mini-play"><Play size={18} fill="currentColor" /></div></div>
       </div>
-      <div className="album-info"><h3>{track.title}</h3><p>{track.artist}</p></div>
+      <div className="album-info">
+        <div className="album-info-text"><h3>{track.title}</h3><p>{track.artist}</p></div>
+        <div className="mini-play"><Play size={18} fill="currentColor" /></div>
+      </div>
     </div>
   );
 
