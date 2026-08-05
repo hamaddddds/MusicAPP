@@ -387,6 +387,7 @@ export default function App() {
   const shuffleRef = useRef<ShuffleMode>("off");
   const triedDownloadRef = useRef(false);
   const playRequestRef = useRef(0);
+  const freshTrackRef = useRef(false); // true while a brand-new track is loading
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
   const [lyricSync, setLyricSync] = useState(true);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -900,11 +901,18 @@ export default function App() {
       console.error("Failed to resolve stream", e);
       if (playRequestRef.current === requestId) { setIsPlaying(false); flashToast("Failed to load audio."); }
     } finally {
-      if (playRequestRef.current === requestId) setStreamLoading(false);
+      if (playRequestRef.current === requestId) {
+        setStreamLoading(false);
+        freshTrackRef.current = false; // stream is ready — no longer a fresh load
+      }
     }
   }, [flashToast]);
 
   useEffect(() => {
+    // Resume the current track's saved position only when this is NOT a fresh
+    // track switch. A fresh load already started at 0, so resuming here would
+    // stomp it with the previous track's timestamp.
+    if (freshTrackRef.current) return;
     if (isPlaying && !playerUrl && currentTrackRef.current) {
       startStream(currentTrackRef.current, parseFloat(localStorage.getItem("mv:last-time") || "0"));
     }
@@ -919,6 +927,7 @@ export default function App() {
 
   const loadAndPlay = useCallback((track: Track) => {
     triedDownloadRef.current = false;
+    freshTrackRef.current = true; // brand-new track → start from 0, not resume
     setCurrentTrack(track);
     currentTrackRef.current = track;
     recordPlay(track);
