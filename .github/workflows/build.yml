@@ -30,6 +30,14 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: install frontend dependencies
         run: cd Frontend && npm install
+      - name: Write Supabase .env for Vite build
+        shell: bash
+        run: |
+          cat > Frontend/.env << EOF
+          VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON=${{ secrets.VITE_SUPABASE_ANON }}
+          EOF
+          echo "Wrote Frontend/.env with Supabase keys"
       - name: Generate Changelog
         shell: bash
         run: |
