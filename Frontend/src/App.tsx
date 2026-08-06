@@ -558,6 +558,7 @@ export default function App() {
 
   const loadHome = useCallback(async () => {
     setLoading(true);
+    const blockedSet = new Set(blocked);
     
     // Check if authenticated
     if (isAuth) {
@@ -572,16 +573,32 @@ export default function App() {
                     dynamicShelves.push({ id, title: shelf.title, subtitle: shelf.subtitle || "" });
                     
                     // transform contents to Track[]
-                    const tracks: Track[] = shelf.contents.map((c: any) => ({
-                        videoId: c.videoId,
-                        title: c.title,
-                        artists: c.artists,
-                        album: c.album,
-                        thumbnails: c.thumbnails,
-                        duration_seconds: null,
-                    })).filter((c: any) => c.videoId);
+                    const tracks: Track[] = shelf.contents.map((c: any) => {
+                        let artistStr = "";
+                        if (c.artists && Array.isArray(c.artists)) artistStr = c.artists.map((a: any) => a.name).join(", ");
+                        else if (c.artist) artistStr = c.artist;
+                        return {
+                            videoId: c.videoId,
+                            title: c.title,
+                            artist: artistStr,
+                            artists: c.artists,
+                            album: c.album,
+                            thumbnails: c.thumbnails,
+                            artwork: c.thumbnails?.[c.thumbnails.length - 1]?.url || "",
+                            duration_seconds: null,
+                        };
+                    }).filter((c: any) => {
+                        if (!c.videoId) return false;
+                        if (c.artists && Array.isArray(c.artists)) {
+                           for (const a of c.artists) {
+                              if (blockedSet.has(a.name)) return false;
+                           }
+                        }
+                        if (c.artist && blockedSet.has(c.artist)) return false;
+                        return true;
+                    });
                     
-                    map[id] = tracks;
+                    if (tracks.length > 0) map[id] = tracks;
                 }
             });
             
@@ -602,34 +619,45 @@ export default function App() {
     
     let similarArtist = "The Weeknd";
     if (historyList.length > 0) {
-      const randomIdx = Math.floor(Math.random() * Math.min(historyList.length, 10));
-      if (historyList[randomIdx] && historyList[randomIdx].artist) similarArtist = historyList[randomIdx].artist;
+      const validHistory = historyList.filter(h => !blockedSet.has(h.artist));
+      if (validHistory.length > 0) {
+        const randomIdx = Math.floor(Math.random() * Math.min(validHistory.length, 10));
+        similarArtist = validHistory[randomIdx].artist;
+      }
     }
     
     const similarTracks = await searchTracks(similarArtist).catch(() => [] as Track[]);
+    const filteredSimilar = similarTracks.filter(t => !blockedSet.has(t.artist));
+    
     const dynamicShelves = [];
     const map: Record<string, Track[]> = {};
     
-    if (recentHistory.length > 0) {
+    const filteredRecent = recentHistory.filter(t => !blockedSet.has(t.artist));
+    if (filteredRecent.length > 0) {
        dynamicShelves.push({ id: "keep_listening", title: "Keep listening", subtitle: "Pick up where you left off" });
-       map["keep_listening"] = recentHistory;
+       map["keep_listening"] = filteredRecent;
     }
     
-    dynamicShelves.push({ id: "similar", title: `Similar to ${similarArtist}`, subtitle: "Based on your taste" });
-    map["similar"] = similarTracks;
+    if (filteredSimilar.length > 0) {
+       dynamicShelves.push({ id: "similar", title: `Similar to ${similarArtist}`, subtitle: "Based on your taste" });
+       map["similar"] = filteredSimilar;
+    }
     
-    if (olderHistory.length > 0) {
+    const filteredOlder = olderHistory.filter(t => !blockedSet.has(t.artist));
+    const fallbackListen = [...historyList].filter(t => !blockedSet.has(t.artist)).sort(() => Math.random() - 0.5).slice(0, 10);
+    
+    if (filteredOlder.length > 0) {
        dynamicShelves.push({ id: "listen_again", title: "Listen again", subtitle: "Your past favorites" });
-       map["listen_again"] = olderHistory;
-    } else if (recentHistory.length > 0 && historyList.length > 5) {
+       map["listen_again"] = filteredOlder;
+    } else if (filteredRecent.length > 0 && historyList.length > 5 && fallbackListen.length > 0) {
        dynamicShelves.push({ id: "listen_again", title: "Listen again", subtitle: "Your past favorites" });
-       map["listen_again"] = [...historyList].sort(() => Math.random() - 0.5).slice(0, 10);
+       map["listen_again"] = fallbackListen;
     }
     
     setHomeShelvesState(dynamicShelves);
     setShelves(map);
     setLoading(false);
-  }, [searchTracks, history, isAuth]);
+  }, [searchTracks, history, isAuth, blocked]);
 
   const runSearch = useCallback(async (query: string) => {
     setLoading(true);
@@ -1079,7 +1107,19 @@ export default function App() {
   }, [flashToast]);
 
   const notInterested = useCallback((track: Track) => {
-    setBlocked((prev) => (prev.includes(track.artist) ? prev : [...prev, track.artist]));
+    setBlocked((prev) => {
+      const newBlocked = prev.includes(track.artist) ? prev : [...prev, track.artist];
+      const blockedSet = new Set(newBlocked);
+      
+      setShelves((shelvesPrev) => {
+        const newShelves: Record<string, Track[]> = {};
+        for (const k in shelvesPrev) {
+          newShelves[k] = shelvesPrev[k].filter(t => !blockedSet.has(t.artist));
+        }
+        return newShelves;
+      });
+      return newBlocked;
+    });
     setQuickPicks((prev) => prev.filter((t) => t.artist !== track.artist));
     localStorage.removeItem("mv:quickpicks");
     flashToast(`Not recommending ${track.artist}`);
