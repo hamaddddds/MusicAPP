@@ -30,7 +30,7 @@ interface HistEntry extends Track { count: number; last: number; }
 interface Region { country: string | null; countryCode: string | null; city: string | null; }
 interface CtxMenu { x: number; y: number; track: Track; context: Track[]; }
 interface UpdateInfo { version: string; obj: any; }
-interface ArtistHead { artistId: string; name: string; thumbnails: any[]; subscribers?: string | null; }
+interface ArtistHead { artistId?: string; channelId?: string; name: string; thumbnails: any[]; subscribers?: string | null; }
 interface ArtistPage { artist: ArtistHead | null; songs: Track[]; albums: any[]; singles: any[]; }
 
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -1048,6 +1048,22 @@ export default function App() {
   }, [playTrack, searchSongs, flashToast]);
 
   const goToArtist = useCallback((artist: string) => { openArtist({ name: artist }); }, [openArtist]);
+  const subscribeFromCtx = useCallback(async (track: Track) => {
+    try {
+      const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(track.artist)}&filter=artists`);
+      const hits = await res.json();
+      const firstArtist = hits.find((h: any) => h.resultType === "artist");
+      if (firstArtist && firstArtist.browseId) {
+        toggleSubscribe(firstArtist.browseId, firstArtist.artist, firstArtist.thumbnails);
+        flashToast(`Subscribed to ${firstArtist.artist}`);
+      } else {
+        flashToast("Artist not found");
+      }
+    } catch (e) {
+      console.error(e);
+      flashToast("Error subscribing");
+    }
+  }, [toggleSubscribe, flashToast]);
   const shareTrack = useCallback(async (track: Track) => {
     const link = `https://music.youtube.com/watch?v=${track.videoId}`;
     try { await navigator.clipboard.writeText(link); flashToast("Link copied to clipboard"); }
@@ -1391,10 +1407,10 @@ export default function App() {
                     <h1>{artistView.artist.name}</h1>
                     {artistView.artist.subscribers && <p>{artistView.artist.subscribers} subscribers</p>}
                     <div className="artist-page-actions">
-                      <Button variant="default" onClick={() => artistView.songs.length && playTrack(artistView.songs[0], artistView.songs)}><Play size={17} fill="currentColor" /> Play</Button>
-                      <Button variant="ghost" onClick={() => { if (artistView.songs.length) { setShuffleMode("random"); playTrack(artistView.songs[0], artistView.songs); } }}><Shuffle size={17} /> Shuffle</Button>
-                      <Button variant="outline" onClick={() => artistView.artist && toggleSubscribe(artistView.artist.artistId, artistView.artist.name, artistView.artist.thumbnails)} style={{ gap: 8 }}>
-                        {artistView.artist && subscribedArtists.some(s => s.artistId === artistView.artist?.artistId) ? <><UserMinus size={16} /> Unsubscribe</> : <><UserPlus size={16} /> Subscribe</>}
+                      <Button variant="outline" className="glass-btn" onClick={() => artistView.songs.length && playTrack(artistView.songs[0], artistView.songs)}><Play size={17} fill="currentColor" /> Play</Button>
+                      <Button variant="outline" className="glass-btn" onClick={() => { if (artistView.songs.length) { setShuffleMode("random"); playTrack(artistView.songs[0], artistView.songs); } }}><Shuffle size={17} /> Shuffle</Button>
+                      <Button variant="outline" className="glass-btn" onClick={() => artistView.artist && toggleSubscribe(artistView.artist.channelId || artistView.artist.artistId || "", artistView.artist.name, artistView.artist.thumbnails)} style={{ gap: 8 }}>
+                        {artistView.artist && subscribedArtists.some(s => s.artistId === (artistView.artist?.channelId || artistView.artist?.artistId)) ? <><UserMinus size={16} /> Unsubscribe</> : <><UserPlus size={16} /> Subscribe</>}
                       </Button>
                     </div>
                   </div>
@@ -1604,6 +1620,7 @@ export default function App() {
           <Button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}><Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} /> {isFavorite(ctxMenu.track.videoId) ? "Remove from liked music" : "Add to liked music"}</Button>
           <Button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</Button>
           <Button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Open artist page</Button>
+          <Button className="ctx-item" onClick={() => { subscribeFromCtx(ctxMenu.track); setCtxMenu(null); }}><UserPlus size={17} /> Subscribe to artist</Button>
           <Button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Share</Button>
           <div className="ctx-sep" />
           <Button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</Button>

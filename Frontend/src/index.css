@@ -844,7 +844,13 @@ button { font-family: inherit; }
 .btn-primary.sm { align-self: flex-start; padding: 7px 14px; font-size: 12.5px; margin-top: 2px; }
 
 .artist-page-head {
-  display: flex; align-items: flex-end; gap: 26px; padding: 12px 32px 28px;
+  display: flex; align-items: center; gap: 32px; padding: 32px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  margin: 32px;
 }
 .artist-avatar { width: 168px; height: 168px; border-radius: 50%; object-fit: cover; box-shadow: 0 16px 40px rgba(0,0,0,0.6); flex-shrink: 0; }
 .artist-page-meta { display: flex; flex-direction: column; gap: 10px; padding-bottom: 6px; }
@@ -1166,4 +1172,13 @@ button { font-family: inherit; }
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
+}
+
+.glass-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+}
+.glass-btn:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
 }
