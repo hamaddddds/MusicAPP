@@ -18,6 +18,30 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+
+const CustomSelect = ({ value, onChange, options }: { value: string | number, onChange: (v: string) => void, options: { label: string, value: string | number }[] }) => {
+  const selectedLabel = options.find(o => o.value == value)?.label || "Select...";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex w-full items-center justify-between rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-white/20">
+          {selectedLabel}
+          <ChevronDown className="h-4 w-4 opacity-50" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-full min-w-[200px] bg-black/90 text-white border-white/10" align="start">
+        {options.map(opt => (
+          <DropdownMenuItem key={opt.value} onClick={() => onChange(String(opt.value))} className="text-left cursor-pointer focus:bg-white/10">
+            {opt.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
 
 // ... Types ...
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
@@ -32,6 +56,29 @@ interface CtxMenu { x: number; y: number; track: Track; context: Track[]; }
 interface UpdateInfo { version: string; obj: any; }
 interface ArtistHead { artistId?: string; channelId?: string; name: string; thumbnails: any[]; subscribers?: string | null; }
 interface ArtistPage { artist: ArtistHead | null; songs: Track[]; albums: any[]; singles: any[]; }
+
+export interface RpcSettings {
+  enableCustom: boolean;
+  activityName: "artist" | "album" | "song" | "custom";
+  activityNameCustom: string;
+  detail: "artist" | "album" | "song" | "custom";
+  detailCustom: string;
+  stateStr: "artist" | "album" | "song" | "custom";
+  stateCustom: string;
+  type: number;
+  largeImage: "album" | "artist" | "app" | "none" | "custom";
+  largeImageCustom: string;
+  smallImage: "album" | "artist" | "app" | "none" | "custom";
+  smallImageCustom: string;
+  enableButton1: boolean;
+  button1Label: string;
+  button1Source: "song" | "artist" | "album" | "custom";
+  button1CustomUrl: string;
+  enableButton2: boolean;
+  button2Label: string;
+  button2Source: "song" | "artist" | "album" | "custom";
+  button2CustomUrl: string;
+}
 
 const isTauri = "__TAURI_INTERNALS__" in window;
 const API_URL = "http://127.0.0.1:8000";
@@ -322,6 +369,29 @@ function CtrlButton({
   );
 }
 
+const defaultRpcSettings: RpcSettings = {
+  enableCustom: false,
+  activityName: "custom",
+  activityNameCustom: "Music Venue",
+  detail: "song",
+  detailCustom: "",
+  stateStr: "artist",
+  stateCustom: "",
+  type: 2,
+  largeImage: "album",
+  largeImageCustom: "",
+  smallImage: "none",
+  smallImageCustom: "",
+  enableButton1: false,
+  button1Label: "",
+  button1Source: "song",
+  button1CustomUrl: "",
+  enableButton2: false,
+  button2Label: "",
+  button2Source: "custom",
+  button2CustomUrl: ""
+};
+
 export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(() => load("mv:last-track", null));
@@ -343,6 +413,7 @@ export default function App() {
   const [searchAlbums, setSearchAlbums] = useState<any[]>([]);
   const [artistView, setArtistView] = useState<ArtistPage | null>(null);
   const [artistLoading, setArtistLoading] = useState(false);
+  const [rpcSettings, setRpcSettings] = useState<RpcSettings>(() => load("mv:rpc_settings", defaultRpcSettings));
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggest, setShowSuggest] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>(() => load("mv:searches", []));
@@ -423,6 +494,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:profile", JSON.stringify(profile)); }, [profile]);
   useEffect(() => { localStorage.setItem("mv:accounts", JSON.stringify(accounts)); }, [accounts]);
   useEffect(() => { localStorage.setItem("mv:subscribedArtists", JSON.stringify(subscribedArtists)); }, [subscribedArtists]);
+  useEffect(() => { localStorage.setItem("mv:rpc_settings", JSON.stringify(rpcSettings)); }, [rpcSettings]);
   useEffect(() => { rpcStatusRef.current = rpcStatus; }, [rpcStatus]);
 
   useEffect(() => {
@@ -767,9 +839,54 @@ export default function App() {
       let startTime: number | null = null;
       let endTime: number | null = null;
       if (audio && !audio.paused && audio.duration) { startTime = now - Math.floor(audio.currentTime); endTime = startTime + Math.floor(audio.duration); }
-      await invoke("set_rpc_activity", { details: track.title, state: track.artist, largeImage: track.artwork || "https://musicvenue.vercel.app/icon.png", largeText: "Playing on Music Venue", startTime, endTime });
+      
+      const set = rpcSettings;
+      const t = track as any;
+      const getVal = (source: string, custom: string) => {
+        if (source === "song") return track.title;
+        if (source === "artist") return track.artist;
+        if (source === "album") return t.album?.name || track.title;
+        if (source === "custom") return custom;
+        return "";
+      };
+      const getUrl = (source: string, custom: string) => {
+        if (source === "song") return `https://music.youtube.com/watch?v=${track.videoId}`;
+        if (source === "artist") return `https://music.youtube.com/search?q=${encodeURIComponent(track.artist)}`;
+        if (source === "album") return `https://music.youtube.com/watch?v=${track.videoId}`;
+        if (source === "custom") return custom;
+        return "";
+      };
+      const getImg = (source: string, custom: string) => {
+        if (source === "album" || source === "artist") return track.artwork || "https://musicvenue.vercel.app/icon.png";
+        if (source === "app") return "https://musicvenue.vercel.app/icon.png";
+        if (source === "none") return undefined;
+        if (source === "custom") return custom;
+        return undefined;
+      };
+
+      let activityName = set.enableCustom ? getVal(set.activityName, set.activityNameCustom) : "Music Venue";
+      let details = set.enableCustom ? getVal(set.detail, set.detailCustom) : track.title;
+      let state = set.enableCustom ? getVal(set.stateStr, set.stateCustom) : track.artist;
+      let activityType = set.enableCustom ? set.type : 2;
+      let largeImage = set.enableCustom ? getImg(set.largeImage, set.largeImageCustom) : (track.artwork || "https://musicvenue.vercel.app/icon.png");
+      let largeText = set.enableCustom ? getVal(set.detail, set.detailCustom) : "Playing on Music Venue";
+      let smallImage = set.enableCustom ? getImg(set.smallImage, set.smallImageCustom) : undefined;
+      let smallText = set.enableCustom ? getVal(set.stateStr, set.stateCustom) : undefined;
+      
+      let button1Label = (set.enableCustom && set.enableButton1 && set.button1Label) ? set.button1Label : undefined;
+      let button1Url = (set.enableCustom && set.enableButton1 && set.button1Label) ? getUrl(set.button1Source, set.button1CustomUrl) : undefined;
+      let button2Label = (set.enableCustom && set.enableButton2 && set.button2Label) ? set.button2Label : undefined;
+      let button2Url = (set.enableCustom && set.enableButton2 && set.button2Label) ? getUrl(set.button2Source, set.button2CustomUrl) : undefined;
+
+      await invoke("set_rpc_activity", { 
+        activityName, activityType, details, state, 
+        largeImage, largeText, smallImage, smallText, 
+        button1Label, button1Url, 
+        button2Label, button2Url, 
+        startTime, endTime 
+      });
     } catch (e) { console.error("Gagal push RPC", e); }
-  }, []);
+  }, [rpcSettings]);
 
   const DiscordIcon = ({ size = 24 }: { size?: number }) => (
     <svg width={size} height={size} viewBox="0 0 127.14 96.36" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -1601,39 +1718,137 @@ export default function App() {
                   </>
                 )}
                 {profileTab === "discord" && (
-                    <div className="setting-block">
-                      <h3>Discord Rich Presence</h3>
-                      <p className="setting-desc">Show the currently playing song on your Discord status.{!isTauri && " (only on desktop app)"}</p>
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                      <div>
+                        <h3 style={{ fontSize: 20, marginBottom: 8 }}>Discord Rich Presence</h3>
+                        <p style={{ color: 'var(--text-secondary)' }}>Show the currently playing song on your Discord status.{!isTauri && " (only on desktop app)"}</p>
+                      </div>
 
-                      {(() => {
-                        const dc = accounts.find(a => a.provider === "discord");
-                        if (dc) {
-                          return (
-                            <div className="discord-profile-card" style={{ marginTop: 16, background: '#111', borderRadius: 12, overflow: 'hidden', border: '1px solid #222' }}>
-                              <div style={{ height: 120, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
-                                <div style={{ position: 'absolute', bottom: -40, left: 24 }}>
-                                  <img src={dc.avatar || ''} alt="" style={{ width: 80, height: 80, borderRadius: '50%', border: '6px solid #111', objectFit: 'cover' }} />
+                      <div>
+                        {(() => {
+                          const dc = accounts.find(a => a.provider === "discord");
+                          if (dc) {
+                            return (
+                              <div className="discord-profile-card" style={{ marginBottom: 16, background: 'rgba(0,0,0,0.4)', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div style={{ height: 100, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
+                                  <div style={{ position: 'absolute', bottom: -30, left: 16 }}>
+                                    <img src={dc.avatar || ''} alt="" style={{ width: 64, height: 64, borderRadius: '50%', border: '4px solid #111', objectFit: 'cover' }} />
+                                  </div>
+                                </div>
+                                <div style={{ padding: '36px 16px 16px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
+                                  </div>
+                                  <span style={{ fontSize: 13, color: '#aaa' }}>@{dc.username}</span>
                                 </div>
                               </div>
-                              <div style={{ padding: '46px 24px 20px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
-                                </div>
-                                <span style={{ fontSize: 14, color: '#888' }}>@{dc.username} ... {dc.id}</span>
-                                {dc.bio && <p style={{ fontSize: 13, color: '#aaa', marginTop: 12, lineHeight: 1.5 }}>{dc.bio}</p>}
-                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+
+                        <div className="setting-actions" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                          {accounts.some(a => a.provider === "discord") ? (
+                            <>
+                              {rpcStatus === "on" ? 
+                                <Button variant="ghost" onClick={disconnectDiscord} style={{ background: 'rgba(88,101,242,0.2)', color: '#5865F2', border: '1px solid rgba(88,101,242,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Disconnect RPC</Button> 
+                                : 
+                                <Button variant="default" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Connect RPC</Button>
+                              }
+                              <Button variant="ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>Disconnect Account</Button>
+                            </>
+                          ) : (
+                            <Button variant="default" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ flex: '1 1 400px', background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)', borderRadius: 16, padding: 24, border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Activity Content</h4>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>Enable Custom RPC</span>
+                          <Switch checked={rpcSettings.enableCustom} onCheckedChange={c => setRpcSettings({...rpcSettings, enableCustom: c})} />
+                        </div>
+
+                        {rpcSettings.enableCustom && (
+                          <>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <label style={{ fontSize: 13 }}>Activity name</label>
+                              <CustomSelect value={rpcSettings.activityName} onChange={v => setRpcSettings({...rpcSettings, activityName: v as any})} options={[{label: "Artist name", value: "artist"}, {label: "Album name", value: "album"}, {label: "Song title", value: "song"}, {label: "Custom", value: "custom"}]} />
+                              {rpcSettings.activityName === "custom" && <input type="text" value={rpcSettings.activityNameCustom} onChange={e => setRpcSettings({...rpcSettings, activityNameCustom: e.target.value})} placeholder="Custom Activity Name" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
                             </div>
-                          );
-                        }
-                        return null;
-                      })()}
-                    <div className="setting-actions" style={{ marginTop: 16 }}>
-                      {accounts.some(a => a.provider === "discord") ? (
-                        <>
-                          {rpcStatus === "on" ? <Button variant="ghost" onClick={disconnectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Disconnect RPC</Button> : <Button variant="default" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Connect RPC</Button>}
-                          <Button variant="ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>Disconnect Account</Button>
-                        </>
-                      ) : <Button variant="default" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</Button>}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <label style={{ fontSize: 13 }}>Detail</label>
+                              <CustomSelect value={rpcSettings.detail} onChange={v => setRpcSettings({...rpcSettings, detail: v as any})} options={[{label: "Artist name", value: "artist"}, {label: "Album name", value: "album"}, {label: "Song title", value: "song"}, {label: "Custom", value: "custom"}]} />
+                              {rpcSettings.detail === "custom" && <input type="text" value={rpcSettings.detailCustom} onChange={e => setRpcSettings({...rpcSettings, detailCustom: e.target.value})} placeholder="Custom Detail" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <label style={{ fontSize: 13 }}>State</label>
+                              <CustomSelect value={rpcSettings.stateStr} onChange={v => setRpcSettings({...rpcSettings, stateStr: v as any})} options={[{label: "Artist name", value: "artist"}, {label: "Album name", value: "album"}, {label: "Song title", value: "song"}, {label: "Custom", value: "custom"}]} />
+                              {rpcSettings.stateStr === "custom" && <input type="text" value={rpcSettings.stateCustom} onChange={e => setRpcSettings({...rpcSettings, stateCustom: e.target.value})} placeholder="Custom State" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <label style={{ fontSize: 13 }}>Activity type</label>
+                              <CustomSelect value={rpcSettings.type} onChange={v => setRpcSettings({...rpcSettings, type: parseInt(v)})} options={[{label: "Playing", value: 0}, {label: "Streaming", value: 1}, {label: "Listening", value: 2}, {label: "Watching", value: 3}, {label: "Competing", value: 5}]} />
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {rpcSettings.enableCustom && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Image Option</h4>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <label style={{ fontSize: 13 }}>Large image</label>
+                            <CustomSelect value={rpcSettings.largeImage} onChange={v => setRpcSettings({...rpcSettings, largeImage: v as any})} options={[{label: "Album Artwork", value: "album"}, {label: "Artist Artwork", value: "artist"}, {label: "App icon", value: "app"}, {label: "Dont show", value: "none"}, {label: "Custom URL", value: "custom"}]} />
+                            {rpcSettings.largeImage === "custom" && <input type="text" value={rpcSettings.largeImageCustom} onChange={e => setRpcSettings({...rpcSettings, largeImageCustom: e.target.value})} placeholder="Image URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <label style={{ fontSize: 13 }}>Small image</label>
+                            <CustomSelect value={rpcSettings.smallImage} onChange={v => setRpcSettings({...rpcSettings, smallImage: v as any})} options={[{label: "Album Artwork", value: "album"}, {label: "Artist Artwork", value: "artist"}, {label: "App icon", value: "app"}, {label: "Dont show", value: "none"}, {label: "Custom URL", value: "custom"}]} />
+                            {rpcSettings.smallImage === "custom" && <input type="text" value={rpcSettings.smallImageCustom} onChange={e => setRpcSettings({...rpcSettings, smallImageCustom: e.target.value})} placeholder="Image URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                          </div>
+                        </div>
+                      )}
+
+                      {rpcSettings.enableCustom && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Other</h4>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span>Enable Button 1</span>
+                            <Switch checked={rpcSettings.enableButton1} onCheckedChange={c => setRpcSettings({...rpcSettings, enableButton1: c})} />
+                          </div>
+                          {rpcSettings.enableButton1 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                              <input type="text" value={rpcSettings.button1Label} onChange={e => setRpcSettings({...rpcSettings, button1Label: e.target.value})} placeholder="Button 1 Label (e.g. Listen on Music Venue)" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />
+                              <CustomSelect value={rpcSettings.button1Source} onChange={v => setRpcSettings({...rpcSettings, button1Source: v as any})} options={[{label: "Song URL", value: "song"}, {label: "Artist URL", value: "artist"}, {label: "Album URL", value: "album"}, {label: "Custom URL", value: "custom"}]} />
+                              {rpcSettings.button1Source === "custom" && <input type="text" value={rpcSettings.button1CustomUrl} onChange={e => setRpcSettings({...rpcSettings, button1CustomUrl: e.target.value})} placeholder="Custom URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span>Enable Button 2</span>
+                            <Switch checked={rpcSettings.enableButton2} onCheckedChange={c => setRpcSettings({...rpcSettings, enableButton2: c})} />
+                          </div>
+                          {rpcSettings.enableButton2 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                              <input type="text" value={rpcSettings.button2Label} onChange={e => setRpcSettings({...rpcSettings, button2Label: e.target.value})} placeholder="Button 2 Label" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />
+                              <CustomSelect value={rpcSettings.button2Source} onChange={v => setRpcSettings({...rpcSettings, button2Source: v as any})} options={[{label: "Song URL", value: "song"}, {label: "Artist URL", value: "artist"}, {label: "Album URL", value: "album"}, {label: "Custom URL", value: "custom"}]} />
+                              {rpcSettings.button2Source === "custom" && <input type="text" value={rpcSettings.button2CustomUrl} onChange={e => setRpcSettings({...rpcSettings, button2CustomUrl: e.target.value})} placeholder="Custom URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

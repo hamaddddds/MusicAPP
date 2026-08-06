@@ -991,7 +991,7 @@ button { font-family: inherit; }
 }
 .ptab:hover { color: var(--text-primary); background: var(--hover); }
 .ptab:active { transform: scale(0.95); }
-.ptab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ptab.active { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); color: var(--text-primary); }
 
 .profile-content { padding: 0 32px; display: flex; flex-direction: column; gap: 18px; max-width: 720px; }
 .setting-block {

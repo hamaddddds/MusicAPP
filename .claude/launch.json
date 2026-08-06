@@ -5,7 +5,8 @@
       "name": "music-venue-dev",
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "cd Frontend && npm run dev"],
-      "port": 1420
+      "port": 1420,
+      "autoPort": false
     }
   ]
 }

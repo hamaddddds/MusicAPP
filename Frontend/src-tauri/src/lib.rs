@@ -132,33 +132,57 @@ fn disconnect_rpc() -> Result<(), String> {
 
 #[tauri::command]
 fn set_rpc_activity(
-    details: String, 
-    state: String, 
-    large_image: String, 
-    large_text: String,
+    activity_name: Option<String>,
+    activity_type: Option<u8>,
+    details: Option<String>, 
+    state: Option<String>, 
+    large_image: Option<String>, 
+    large_text: Option<String>,
+    small_image: Option<String>,
+    small_text: Option<String>,
+    button1_label: Option<String>,
+    button1_url: Option<String>,
+    button2_label: Option<String>,
+    button2_url: Option<String>,
     start_time: Option<i64>,
     end_time: Option<i64>
 ) -> Result<(), String> {
     let mut guard = DISCORD_IPC.lock().unwrap();
     if let Some(client) = guard.as_mut() {
+        let mut assets = serde_json::json!({});
+        if let Some(l_i) = large_image { assets["large_image"] = serde_json::json!(l_i); }
+        if let Some(l_t) = large_text { assets["large_text"] = serde_json::json!(l_t); }
+        if let Some(s_i) = small_image { assets["small_image"] = serde_json::json!(s_i); }
+        if let Some(s_t) = small_text { assets["small_text"] = serde_json::json!(s_t); }
+
         let mut activity = serde_json::json!({
-            "type": 2,
-            "details": details,
-            "state": state,
-            "assets": {
-                "large_image": large_image,
-                "large_text": large_text
-            }
+            "type": activity_type.unwrap_or(2)
         });
+        
+        if let Some(n) = activity_name { activity["name"] = serde_json::json!(n); }
+        if let Some(d) = details { activity["details"] = serde_json::json!(d); }
+        if let Some(s) = state { activity["state"] = serde_json::json!(s); }
+        
+        let assets_obj = assets.as_object().unwrap();
+        if !assets_obj.is_empty() {
+            activity["assets"] = assets;
+        }
+
+        let mut buttons = Vec::new();
+        if let (Some(l1), Some(u1)) = (button1_label, button1_url) {
+            buttons.push(serde_json::json!({"label": l1, "url": u1}));
+        }
+        if let (Some(l2), Some(u2)) = (button2_label, button2_url) {
+            buttons.push(serde_json::json!({"label": l2, "url": u2}));
+        }
+        if !buttons.is_empty() {
+            activity["buttons"] = serde_json::json!(buttons);
+        }
 
         if start_time.is_some() || end_time.is_some() {
             let mut timestamps = serde_json::json!({});
-            if let Some(s) = start_time {
-                timestamps["start"] = serde_json::json!(s * 1000);
-            }
-            if let Some(e) = end_time {
-                timestamps["end"] = serde_json::json!(e * 1000);
-            }
+            if let Some(s) = start_time { timestamps["start"] = serde_json::json!(s * 1000); }
+            if let Some(e) = end_time { timestamps["end"] = serde_json::json!(e * 1000); }
             activity["timestamps"] = timestamps;
         }
 
