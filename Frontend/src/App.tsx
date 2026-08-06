@@ -355,7 +355,8 @@ export default function App() {
   useEffect(() => { setIsAuth(isSupaAuth); }, [isSupaAuth]);
   const supaLogin = useCallback(async () => {
     if (!supabase) { flashToast("Supabase not configured"); return; }
-    await supabase.auth.signInWithOAuth({ provider: "github", options: { redirectTo: window.location.origin } });
+    // Use the deep-link scheme so the browser can return to the Tauri app.
+    await supabase.auth.signInWithOAuth({ provider: "github", options: { redirectTo: "musicvenue://" } });
   }, []);
   const supaLogout = useCallback(async () => {
     if (!supabase) return;
@@ -805,14 +806,25 @@ export default function App() {
     const initApp = async () => {
       if (isTauri) {
         try {
-          onOpenUrl((urls) => {
+          onOpenUrl(async (urls) => {
             if (urls.length > 0) {
-              const url = new URL(urls[0]);
-              if (url.protocol === "musicvenue:") {
+              const raw = urls[0];
+              if (raw.startsWith("musicvenue://")) {
+                const url = new URL(raw);
+                const code = url.searchParams.get("code");
                 const payload = url.searchParams.get("payload");
                 const error = url.searchParams.get("error");
-                if (payload) handleAuthPayload(payload);
-                else if (error) flashToast(`Failed to login: ${error}`);
+
+                // Supabase PKCE OAuth: exchange the code for a session.
+                if (supabase && code) {
+                  const { error: e2 } = await supabase.auth.exchangeCodeForSession(raw);
+                  if (e2) flashToast(`Login failed: ${e2.message}`);
+                  else { flashToast("Signed in!"); loadHome(); }
+                } else if (payload) {
+                  handleAuthPayload(payload); // legacy backend OAuth
+                } else if (error) {
+                  flashToast(`Failed to login: ${error}`);
+                }
               }
             }
           }).catch(console.error);
