@@ -843,28 +843,34 @@ export default function App() {
       const set = rpcSettings;
       const t = track as any;
       const getVal = (source: string, custom: string) => {
-        if (source === "song") return track.title;
-        if (source === "artist") return track.artist;
-        if (source === "album") return t.album?.name || track.title;
-        if (source === "custom") return custom;
-        return "";
+        let val = "";
+        if (source === "song") val = track.title;
+        else if (source === "artist") val = track.artist;
+        else if (source === "album") val = t.album?.name || track.title;
+        else if (source === "custom") val = custom;
+        return val ? val : undefined;
       };
       const getUrl = (source: string, custom: string) => {
-        if (source === "song") return `https://music.youtube.com/watch?v=${track.videoId}`;
-        if (source === "artist") return `https://music.youtube.com/search?q=${encodeURIComponent(track.artist)}`;
-        if (source === "album") return `https://music.youtube.com/watch?v=${track.videoId}`;
-        if (source === "custom") return custom;
-        return "";
+        let url = "";
+        if (source === "song") url = `https://music.youtube.com/watch?v=${track.videoId}`;
+        else if (source === "artist") url = `https://music.youtube.com/search?q=${encodeURIComponent(track.artist)}`;
+        else if (source === "album") url = `https://music.youtube.com/watch?v=${track.videoId}`;
+        else if (source === "custom") url = custom;
+        // Validate URL
+        if (url && !url.startsWith("http")) url = "https://" + url;
+        return url || undefined;
       };
       const getImg = (source: string, custom: string) => {
-        if (source === "album" || source === "artist") return track.artwork || "https://musicvenue.vercel.app/icon.png";
-        if (source === "app") return "https://musicvenue.vercel.app/icon.png";
-        if (source === "none") return undefined;
-        if (source === "custom") return custom;
-        return undefined;
+        let img = "";
+        if (source === "album" || source === "artist") img = track.artwork || "https://musicvenue.vercel.app/icon.png";
+        else if (source === "app") img = "https://musicvenue.vercel.app/icon.png";
+        else if (source === "custom") img = custom;
+        
+        if (img && !img.startsWith("http")) img = "https://" + img;
+        return img || undefined;
       };
 
-      let activityName = set.enableCustom ? getVal(set.activityName, set.activityNameCustom) : "Music Venue";
+      let activityName = set.enableCustom ? (getVal(set.activityName, set.activityNameCustom) || "Music Venue") : "Music Venue";
       let details = set.enableCustom ? getVal(set.detail, set.detailCustom) : track.title;
       let state = set.enableCustom ? getVal(set.stateStr, set.stateCustom) : track.artist;
       let activityType = set.enableCustom ? set.type : 2;
