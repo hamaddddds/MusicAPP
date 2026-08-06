@@ -10,8 +10,9 @@ import {
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
   Settings, Palette, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
-  UserCircle, Gamepad2, ChevronLeft
+  UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus
 } from "lucide-react";
+import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist } from "./lib/github";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
@@ -353,7 +354,8 @@ export default function App() {
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [profileTab, setProfileTab] = useState("appearance");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
-  const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null }[]>(() => load("mv:accounts", []));
+  const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null; access_token?: string }[]>(() => load("mv:accounts", []));
+  const [subscribedArtists, setSubscribedArtists] = useState<SubscribedArtist[]>(() => load("mv:subscribedArtists", []));
   const rpcClientId = "1527667258552352848";
   const [rpcEnabled, setRpcEnabled] = useState<boolean>(() => load("mv:rpc-enabled", false));
   const [rpcStatus, setRpcStatus] = useState<"off" | "connecting" | "on" | "error">("off");
@@ -420,7 +422,29 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:searches", JSON.stringify(searchHistory)); }, [searchHistory]);
   useEffect(() => { localStorage.setItem("mv:profile", JSON.stringify(profile)); }, [profile]);
   useEffect(() => { localStorage.setItem("mv:accounts", JSON.stringify(accounts)); }, [accounts]);
+  useEffect(() => { localStorage.setItem("mv:subscribedArtists", JSON.stringify(subscribedArtists)); }, [subscribedArtists]);
   useEffect(() => { rpcStatusRef.current = rpcStatus; }, [rpcStatus]);
+
+  useEffect(() => {
+    const githubAccount = accounts.find(a => a.provider === "github");
+    if (githubAccount && githubAccount.access_token) {
+      fetchSubscriptionsFromGist(githubAccount.access_token).then(subs => {
+        setSubscribedArtists(subs);
+      });
+    }
+  }, [accounts]);
+
+  const toggleSubscribe = useCallback((artistId: string, name: string, thumbnails: any[]) => {
+    setSubscribedArtists(prev => {
+      const isSubbed = prev.some(a => a.artistId === artistId);
+      const newSubs = isSubbed ? prev.filter(a => a.artistId !== artistId) : [...prev, { artistId, name, thumbnails }];
+      const githubAccount = accounts.find(a => a.provider === "github");
+      if (githubAccount && githubAccount.access_token) {
+        syncSubscriptionsToGist(githubAccount.access_token, newSubs);
+      }
+      return newSubs;
+    });
+  }, [accounts]);
 
   const handleAuthPayload = useCallback((base64Payload: string) => {
     try {
@@ -429,7 +453,7 @@ export default function App() {
       setProfile((p) => ({ ...p, name: data.name || p.name, avatar: data.avatar || p.avatar || null, banner: data.banner || p.banner || null, username: data.username || p.username || null, bio: data.bio || p.bio || null, accent_color: data.accent_color || p.accent_color || null }));
       setAccounts((prev) => {
         const filtered = prev.filter(a => a.provider !== data.provider);
-        return [...filtered, { provider: data.provider, label: data.name, id: String(data.id), avatar: data.avatar || null, username: data.username || null, bio: data.bio || null, banner: data.banner || null }];
+        return [...filtered, { provider: data.provider, label: data.name, id: String(data.id), avatar: data.avatar || null, username: data.username || null, bio: data.bio || null, banner: data.banner || null, access_token: data.access_token }];
       });
       flashToast(`Successfully logged in with ${data.provider}`);
     } catch (e) {
@@ -1280,6 +1304,17 @@ export default function App() {
           <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}><Heart size={20} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}</div>
           <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={20} /> Queue</div>
         </div>
+        {subscribedArtists.length > 0 && (
+          <div className="sidebar-section">
+            <div className="sidebar-title">Subscriptions</div>
+            {subscribedArtists.map(a => (
+              <div key={a.artistId} className={`nav-item ${activeTab === "artist" && artistView?.artist?.artistId === a.artistId ? "active" : ""}`} onClick={() => openArtist({ artistId: a.artistId, name: a.name })}>
+                <img src={a.thumbnails?.[0]?.url || ""} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="sidebar-bottom">
           <Button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
             {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" /> : <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
@@ -1358,6 +1393,9 @@ export default function App() {
                     <div className="artist-page-actions">
                       <Button variant="default" onClick={() => artistView.songs.length && playTrack(artistView.songs[0], artistView.songs)}><Play size={17} fill="currentColor" /> Play</Button>
                       <Button variant="ghost" onClick={() => { if (artistView.songs.length) { setShuffleMode("random"); playTrack(artistView.songs[0], artistView.songs); } }}><Shuffle size={17} /> Shuffle</Button>
+                      <Button variant="outline" onClick={() => artistView.artist && toggleSubscribe(artistView.artist.artistId, artistView.artist.name, artistView.artist.thumbnails)} style={{ gap: 8 }}>
+                        {artistView.artist && subscribedArtists.some(s => s.artistId === artistView.artist?.artistId) ? <><UserMinus size={16} /> Unsubscribe</> : <><UserPlus size={16} /> Subscribe</>}
+                      </Button>
                     </div>
                   </div>
                 </div>

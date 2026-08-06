@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     if (provider === 'discord') {
       authUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify&state=${stateParam}`;
     } else if (provider === 'github') {
-      authUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=read:user&state=${stateParam}`;
+      authUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=read:user,gist&state=${stateParam}`;
     } else if (provider === 'google') {
       authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=profile+email&state=${stateParam}`;
     } else {
@@ -138,6 +138,7 @@ export default async function handler(req, res) {
             avatar: userData.avatar_url,
             banner: null,
             bio: userData.bio || null,
+            access_token: tokenData.access_token,
           };
         }
       } else if (actualProvider === 'google') {
