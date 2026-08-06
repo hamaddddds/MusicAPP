@@ -17,8 +17,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { supabase } from "./lib/supabase";
-import { useFollows } from "./hooks/useFollows";
 
 // ... Types ...
 interface Track { videoId: string; title: string; artist: string; artwork: string; }
@@ -331,6 +329,8 @@ export default function App() {
   const [homeShelvesState, setHomeShelvesState] = useState<{id: string, title: string, subtitle: string, query?: string}[]>([]);
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [loginData, setLoginData] = useState<{user_code: string, verification_url: string, device_code: string} | null>(null);
+  const [isPolling, setIsPolling] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -349,20 +349,10 @@ export default function App() {
   const [history, setHistory] = useState<Record<string, HistEntry>>(() => load("mv:history", {}));
   const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
   const [region, setRegion] = useState<Region | null>(() => load("mv:region", null));
-
-  /* ── Supabase follows (GitHub-auth) ──────────────── */
-  const { following, isFollowing, follow, unfollow, isLoggedIn: isSupaAuth } = useFollows();
-  useEffect(() => { setIsAuth(isSupaAuth); }, [isSupaAuth]);
-  const supaLogin = useCallback(async () => {
-    if (!supabase) { flashToast("Supabase not configured"); return; }
-    // Use the deep-link scheme so the browser can return to the Tauri app.
-    await supabase.auth.signInWithOAuth({ provider: "github", options: { redirectTo: "musicvenue://" } });
-  }, []);
-  const supaLogout = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    loadHome();
-  }, []);
+  const [following, setFollowing] = useState<{artistId: string; name: string; thumb?: string}[]>(() => load("mv:following", []));
+  const isFollowing = useCallback((artistId: string) => following.some((f) => f.artistId === artistId), [following]);
+  const follow = useCallback((a: { artistId: string; name: string; thumb?: string }) => { setFollowing(prev => [...prev, a]); }, []);
+  const unfollow = useCallback((artistId: string) => { setFollowing(prev => prev.filter(f => f.artistId !== artistId)); }, []);
 
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [profileTab, setProfileTab] = useState("appearance");
@@ -501,17 +491,49 @@ export default function App() {
 
   const handleLoginClick = async () => {
     try {
-      await supaLogin();
+      setShowLoginModal(true);
+      setLoginData(null);
+      const res = await fetch(`${API_URL}/auth/login`);
+      const data = await res.json();
+      setLoginData(data);
     } catch (err) {
       console.error(err);
-      flashToast("Login failed");
+      setShowLoginModal(false);
     }
   };
 
   const handleLogout = async () => {
-    await supaLogout();
-    setIsAuth(false);
-    loadHome();
+    try {
+      await fetch(`${API_URL}/auth/logout`, { method: "POST" });
+      setIsAuth(false);
+      loadHome();
+    } catch(err) {
+      console.error(err);
+    }
+  };
+
+  const startPolling = async () => {
+    if (!loginData || isPolling) return;
+    setIsPolling(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_code: loginData.device_code })
+      });
+      if (res.ok) {
+        setIsAuth(true);
+        setShowLoginModal(false);
+        setLoginData(null);
+        loadHome();
+      } else {
+        console.error("Token polling failed");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsPolling(false);
+    }
   };
 
   const loadHome = useCallback(async () => {
@@ -806,25 +828,14 @@ export default function App() {
     const initApp = async () => {
       if (isTauri) {
         try {
-          onOpenUrl(async (urls) => {
+          onOpenUrl((urls) => {
             if (urls.length > 0) {
-              const raw = urls[0];
-              if (raw.startsWith("musicvenue://")) {
-                const url = new URL(raw);
-                const code = url.searchParams.get("code");
+              const url = new URL(urls[0]);
+              if (url.protocol === "musicvenue:") {
                 const payload = url.searchParams.get("payload");
                 const error = url.searchParams.get("error");
-
-                // Supabase PKCE OAuth: exchange the code for a session.
-                if (supabase && code) {
-                  const { error: e2 } = await supabase.auth.exchangeCodeForSession(raw);
-                  if (e2) flashToast(`Login failed: ${e2.message}`);
-                  else { flashToast("Signed in!"); loadHome(); }
-                } else if (payload) {
-                  handleAuthPayload(payload); // legacy backend OAuth
-                } else if (error) {
-                  flashToast(`Failed to login: ${error}`);
-                }
+                if (payload) handleAuthPayload(payload);
+                else if (error) flashToast(`Failed to login: ${error}`);
               }
             }
           }).catch(console.error);
@@ -1326,11 +1337,11 @@ export default function App() {
                 <div className="shelf-head"><div><h2>From artists you follow <ChevronRight size={20} /></h2><p>Your saved artists</p></div></div>
                 <div className="shelf-scroll">
                   {following.map((f) => (
-                    <div key={f.artist_id} className="album-card glass-card" onClick={() => openArtist({ artistId: f.artist_id, name: f.artist_name })}>
+                    <div key={f.artistId} className="album-card glass-card" onClick={() => openArtist({ artistId: f.artistId, name: f.name })}>
                       <div className="album-art-wrap">
-                        {f.artist_thumb ? <img src={f.artist_thumb} alt={f.artist_name} className="album-artwork" /> : <div className="album-art-wrap sk" />}
+                        {f.thumb ? <img src={f.thumb} alt={f.name} className="album-artwork" /> : <div className="album-art-wrap sk" />}
                       </div>
-                      <div className="album-info"><div className="album-info-text"><h3>{f.artist_name}</h3><p>Artist</p></div></div>
+                      <div className="album-info"><div className="album-info-text"><h3>{f.name}</h3><p>Artist</p></div></div>
                     </div>
                   ))}
                 </div>
@@ -1361,13 +1372,13 @@ export default function App() {
             ) : following.length ? (
               <div className="grid-container">
                 {following.map((f) => (
-                  <div key={f.artist_id} className="album-card glass-card" onClick={() => openArtist({ artistId: f.artist_id, name: f.artist_name })} onContextMenu={(e) => { e.preventDefault(); setArtistView({ artist: { artistId: f.artist_id, name: f.artist_name, thumbnails: f.artist_thumb ? [{ url: f.artist_thumb }] : [] }, songs: [] } as any); setActiveTab("profile"); }}>
+                  <div key={f.artistId} className="album-card glass-card" onClick={() => openArtist({ artistId: f.artistId, name: f.name })} onContextMenu={(e) => { e.preventDefault(); setArtistView({ artist: { artistId: f.artistId, name: f.name, thumbnails: f.thumb ? [{ url: f.thumb }] : [] }, songs: [] } as any); setActiveTab("profile"); }}>
                     <div className="album-art-wrap">
-                      {f.artist_thumb ? <img src={f.artist_thumb} alt={f.artist_name} style={{ borderRadius: '50%' }} /> : <div className="album-art-wrap sk" />}
+                      {f.thumb ? <img src={f.thumb} alt={f.name} style={{ borderRadius: '50%' }} /> : <div className="album-art-wrap sk" />}
                     </div>
                     <div className="album-info">
-                      <div className="album-info-text"><h3>{f.artist_name}</h3><p>Artist</p></div>
-                      <div className="mini-play" onClick={(e) => { e.stopPropagation(); unfollow(f.artist_id); }}><User size={16} /></div>
+                      <div className="album-info-text"><h3>{f.name}</h3><p>Artist</p></div>
+                      <div className="mini-play" onClick={(e) => { e.stopPropagation(); unfollow(f.artistId); }}><User size={16} /></div>
                     </div>
                   </div>
                 ))}
@@ -1782,17 +1793,38 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Login Modal — Supabase GitHub OAuth */}
+      {/* Login Modal — YouTube OAuth device flow */}
       {showLoginModal && (
         <div className="modal-overlay" onClick={() => setShowLoginModal(false)}>
-          <div className="modal-content glass-card" onClick={e => e.stopPropagation()} style={{ width: 380, textAlign: 'center', padding: '2rem' }}>
-            <h2 style={{ marginBottom: 10 }}>Welcome to Music Venue</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: 14 }}>Sign in with GitHub to save favorites, follows, and history across devices.</p>
-            <Button onClick={() => supaLogin()} style={{ background: '#24292e', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.95rem', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.155.675-3.885-.825-4.14-1.575-.135-.375-.72-1.575-1.23-1.89-.42-.225-.015-.375-.015-.375 1.38-.27 2.13 1.38 2.13 1.38 0 1.965-1.56 3.375-3.87 3.375-1.08 0-1.995-.72-2.52-1.38-.18.72-.66 1.38-1.23 1.38C5.52 16.785 4 15.09 4 12c0-3.75 2.4-6.96 5.775-8.625C8.85 10.08 8.7 9.675 8.7 8.91c0-1.53-.915-2.73-2.445-2.73C4.755 6.18 2.4 7.92 2.4 11.1c0 2.625 1.125 4.98 3 6.42v3.78c0 .315-.225.675-.825.57C4.56 21.795 8 17.31 8 12c0-6.63-5.37-12-12-12z"/></svg>
-              Sign in with GitHub
-            </Button>
-            <button onClick={() => setShowLoginModal(false)} style={{ display: 'block', margin: '18px auto 0', background: 'transparent', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+          <div className="modal-content glass-card" onClick={e => e.stopPropagation()} style={{ width: 400, textAlign: 'center', padding: '2rem' }}>
+            <h2 style={{ marginBottom: 10 }}>Login with YouTube</h2>
+            <p style={{ color: '#aaa', marginBottom: 20 }}>Connect your YouTube Music account to get personalized recommendations.</p>
+
+            {loginData ? (
+              <div>
+                <p style={{ marginBottom: 10 }}>Please go to:</p>
+                <a href={loginData.verification_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginBottom: 20, color: 'var(--accent)', fontSize: '1.1rem', textDecoration: 'none' }}>
+                  {loginData.verification_url}
+                </a>
+                <p style={{ marginBottom: 10 }}>And enter the code:</p>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', letterSpacing: '4px', background: 'rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', marginBottom: 20 }}>
+                  {loginData.user_code}
+                </div>
+                {!isPolling ? (
+                  <button onClick={startPolling} style={{ background: 'var(--accent)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '20px', cursor: 'pointer', fontSize: '1rem' }}>
+                    I have entered the code
+                  </button>
+                ) : (
+                  <button disabled style={{ background: '#555', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '20px', cursor: 'wait', fontSize: '1rem' }}>
+                    Waiting for authorization...
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div>Loading code...</div>
+            )}
+
+            <button onClick={() => setShowLoginModal(false)} style={{ display: 'block', margin: '20px auto 0', background: 'transparent', color: '#aaa', border: 'none', cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
