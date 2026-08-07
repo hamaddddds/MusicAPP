@@ -13,7 +13,6 @@ import {
   UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus
 } from "lucide-react";
 import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, Playlist, fetchPlaylistsFromGist, syncPlaylistsToGist } from "./lib/github";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
@@ -1466,6 +1465,17 @@ export default function App() {
     setEditingPlaylistId(null);
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setNewPlaylistImg(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
   // const volumeBarRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); } };
@@ -1684,10 +1694,10 @@ export default function App() {
                       <h1 style={{ fontSize: 48, margin: 0, lineHeight: 1.2 }}>{pl.name}</h1>
                       <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{pl.description || "No description provided."}</p>
                       <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-                        <Button className="rounded-full bg-white text-black hover:bg-white/90" onClick={() => { if (pl.tracks.length) playTrack(pl.tracks[0], pl.tracks); }}>
-                          <Play size={20} fill="currentColor" /> Play All
+                        <Button variant="outline" className="glass-btn" onClick={() => { if (pl.tracks.length) playTrack(pl.tracks[0], pl.tracks); }}>
+                          <Play size={17} fill="currentColor" /> Play All
                         </Button>
-                        <Button variant="outline" className="rounded-full border-white/20 hover:bg-white/10" onClick={() => {
+                        <Button variant="outline" className="glass-btn" onClick={() => {
                           setNewPlaylistName(pl.name);
                           setNewPlaylistDesc(pl.description);
                           setNewPlaylistImg(pl.image);
@@ -1699,17 +1709,20 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  {pl.tracks.length ? (
-                    <div className="track-grid wide">
-                      {pl.tracks.map((t, i) => renderTrackRow(t, pl.tracks, i))}
-                    </div>
-                  ) : (
-                    <div className="empty-state big">
-                      <ListMusic size={44} />
-                      <p>This playlist is empty</p>
-                      <span>Add songs using the context menu on any track.</span>
-                    </div>
-                  )}
+                  <section className="search-section">
+                    <div className="section-head"><h2>Songs</h2><span className="section-badge">{pl.tracks.length} lagu</span></div>
+                    {pl.tracks.length ? (
+                      <div className="track-grid wide">
+                        {pl.tracks.map((t, i) => renderTrackRow(t, pl.tracks, i))}
+                      </div>
+                    ) : (
+                      <div className="empty-state big" style={{ padding: '40px 0' }}>
+                        <ListMusic size={44} />
+                        <p>This playlist is empty</p>
+                        <span>Add songs using the context menu on any track.</span>
+                      </div>
+                    )}
+                  </section>
                 </div>
               );
             })()}
@@ -2215,54 +2228,70 @@ export default function App() {
         </div>
       </footer>
 
-      <Dialog open={isPlaylistDialogOpen} onOpenChange={setIsPlaylistDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-black/95 text-white border-white/10 glass-card">
-          <DialogHeader>
-            <DialogTitle>Add to Playlist</DialogTitle>
-            <DialogDescription>
-              {playlists.length > 0 ? "Select a playlist to add this song to, or create a new one." : "Create a new playlist to add this song to."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            {playlists.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {playlists.map(pl => (
-                  <Button key={pl.id} variant="secondary" onClick={() => handleAddToPlaylist(pl.id)} className="w-full justify-start bg-white/5 hover:bg-white/10 text-white border-0">
-                    <ListMusic className="mr-2 h-4 w-4" /> {pl.name}
-                  </Button>
-                ))}
-                <div className="text-center my-2 text-xs text-white/50">OR</div>
+      {isPlaylistDialogOpen && (
+        <div className="modal-overlay" onClick={() => setIsPlaylistDialogOpen(false)}>
+          <motion.div className="modal-content glass-card" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={e => e.stopPropagation()} style={{ width: 425, padding: '24px' }}>
+            <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+              <h2 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: 600 }}>Add to Playlist</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                {playlists.length > 0 ? "Select a playlist to add this song to, or create a new one." : "Create a new playlist to add this song to."}
+              </p>
+            </div>
+            <div className="grid gap-4">
+              {playlists.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {playlists.map(pl => (
+                    <Button key={pl.id} variant="secondary" onClick={() => handleAddToPlaylist(pl.id)} className="w-full justify-start bg-white/5 hover:bg-white/10 text-white border-0">
+                      <ListMusic className="mr-2 h-4 w-4" /> {pl.name}
+                    </Button>
+                  ))}
+                  <div className="text-center my-2 text-xs text-white/50">OR</div>
+                </div>
+              )}
+              <div className="grid gap-2">
+                <Input id="name" placeholder="Playlist Name" value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+                <Input id="desc" placeholder="Description (Optional)" value={newPlaylistDesc} onChange={(e) => setNewPlaylistDesc(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Input id="img" placeholder="Custom Image URL (Optional)" value={newPlaylistImg} onChange={(e) => setNewPlaylistImg(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" style={{ flex: 1 }} />
+                  <label title="Upload custom image" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+                    <Upload size={18} />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+                  </label>
+                </div>
+                <Button onClick={handleCreateAndAddToPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
+                  + Create New Playlist
+                </Button>
               </div>
-            )}
-            <div className="grid gap-2">
-              <Input id="name" placeholder="Playlist Name" value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
-              <Input id="desc" placeholder="Description (Optional)" value={newPlaylistDesc} onChange={(e) => setNewPlaylistDesc(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
-              <Input id="img" placeholder="Custom Image URL (Optional)" value={newPlaylistImg} onChange={(e) => setNewPlaylistImg(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
-              <Button onClick={handleCreateAndAddToPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
-                + Create New Playlist
-              </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </motion.div>
+        </div>
+      )}
 
-      <Dialog open={isEditPlaylistOpen} onOpenChange={setIsEditPlaylistOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-black/95 text-white border-white/10 glass-card">
-          <DialogHeader>
-            <DialogTitle>Edit Playlist</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Input placeholder="Playlist Name" value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
-              <Input placeholder="Description (Optional)" value={newPlaylistDesc} onChange={(e) => setNewPlaylistDesc(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
-              <Input placeholder="Custom Image URL (Optional)" value={newPlaylistImg} onChange={(e) => setNewPlaylistImg(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
-              <Button onClick={handleEditPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
-                Save Changes
-              </Button>
+      {isEditPlaylistOpen && (
+        <div className="modal-overlay" onClick={() => setIsEditPlaylistOpen(false)}>
+          <motion.div className="modal-content glass-card" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={e => e.stopPropagation()} style={{ width: 425, padding: '24px' }}>
+            <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Edit Playlist</h2>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Input placeholder="Playlist Name" value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+                <Input placeholder="Description (Optional)" value={newPlaylistDesc} onChange={(e) => setNewPlaylistDesc(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Input placeholder="Custom Image URL (Optional)" value={newPlaylistImg} onChange={(e) => setNewPlaylistImg(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" style={{ flex: 1 }} />
+                  <label title="Upload custom image" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+                    <Upload size={18} />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+                  </label>
+                </div>
+                <Button onClick={handleEditPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Login Modal */}
       {showLoginModal && (
