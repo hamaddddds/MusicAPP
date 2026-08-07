@@ -82,8 +82,9 @@ const PLAYLIST_GIST_DESCRIPTION = "Music Venue Playlists (Do not delete)";
 export interface Playlist {
   id: string;
   name: string;
-  description: string;
-  image: string;
+  description?: string;
+  image?: string;
+  banner?: string;
   tracks: any[];
 }
 

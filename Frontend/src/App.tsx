@@ -405,6 +405,7 @@ export default function App() {
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [newPlaylistDesc, setNewPlaylistDesc] = useState("");
   const [newPlaylistImg, setNewPlaylistImg] = useState("");
+  const [newPlaylistBanner, setNewPlaylistBanner] = useState("");
   const [isEditPlaylistOpen, setIsEditPlaylistOpen] = useState(false);
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
 
@@ -1431,6 +1432,7 @@ export default function App() {
       name: newPlaylistName.trim(),
       description: newPlaylistDesc.trim(),
       image: newPlaylistImg.trim(),
+      banner: newPlaylistBanner.trim(),
       tracks: [playlistDialogTrack]
     };
     setPlaylists(prev => {
@@ -1451,7 +1453,7 @@ export default function App() {
   const handleEditPlaylist = () => {
     if (!editingPlaylistId || !newPlaylistName.trim()) return;
     setPlaylists(prev => {
-      const newPlaylists = prev.map(p => p.id === editingPlaylistId ? { ...p, name: newPlaylistName.trim(), description: newPlaylistDesc.trim(), image: newPlaylistImg.trim() } : p);
+      const newPlaylists = prev.map(p => p.id === editingPlaylistId ? { ...p, name: newPlaylistName.trim(), description: newPlaylistDesc.trim(), image: newPlaylistImg.trim(), banner: newPlaylistBanner.trim() } : p);
       const githubAccount = accounts.find(a => a.provider === "github");
       if (githubAccount && githubAccount.access_token) {
         syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
@@ -1461,6 +1463,7 @@ export default function App() {
     setNewPlaylistName("");
     setNewPlaylistDesc("");
     setNewPlaylistImg("");
+    setNewPlaylistBanner("");
     setIsEditPlaylistOpen(false);
     setEditingPlaylistId(null);
   };
@@ -1472,6 +1475,17 @@ export default function App() {
     reader.onload = (event) => {
       const result = event.target?.result as string;
       setNewPlaylistImg(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setNewPlaylistBanner(result);
     };
     reader.readAsDataURL(file);
   };
@@ -1681,7 +1695,7 @@ export default function App() {
               if (!pl) return <div className="empty-state big"><p>Playlist not found</p></div>;
               return (
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <div className="artist-page-head">
+                  <div className="artist-page-head" style={pl.banner ? { background: `linear-gradient(to right, rgba(0,0,0,0.85), rgba(0,0,0,0.4)), url(${pl.banner}) center/cover no-repeat`, border: 'none' } : {}}>
                     {pl.image ? (
                       <img src={pl.image} alt={pl.name} style={{ width: 168, height: 168, borderRadius: 16, objectFit: 'cover', boxShadow: '0 16px 40px rgba(0,0,0,0.6)', flexShrink: 0 }} />
                     ) : (
@@ -1691,16 +1705,17 @@ export default function App() {
                     )}
                     <div className="artist-page-meta">
                       <span className="artist-hero-label"><ListMusic size={13} /> Playlist</span>
-                      <h1 style={{ fontSize: 48, margin: 0, lineHeight: 1.2 }}>{pl.name}</h1>
-                      <p style={{ color: 'var(--text-secondary)' }}>{pl.description || "No description provided."}</p>
+                      <h1 style={{ fontSize: 36, margin: 0, lineHeight: 1.2 }}>{pl.name}</h1>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: 16 }}>{pl.description || "No description provided."}</p>
                       <div className="artist-page-actions">
                         <Button variant="outline" className="glass-btn" onClick={() => { if (pl.tracks.length) playTrack(pl.tracks[0], pl.tracks); }}>
                           <Play size={17} fill="currentColor" /> Play All
                         </Button>
                         <Button variant="outline" className="glass-btn" onClick={() => {
                           setNewPlaylistName(pl.name);
-                          setNewPlaylistDesc(pl.description);
-                          setNewPlaylistImg(pl.image);
+                          setNewPlaylistDesc(pl.description || "");
+                          setNewPlaylistImg(pl.image || "");
+                          setNewPlaylistBanner(pl.banner || "");
                           setEditingPlaylistId(pl.id);
                           setIsEditPlaylistOpen(true);
                         }}>
@@ -2258,6 +2273,13 @@ export default function App() {
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
                   </label>
                 </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Input id="banner" placeholder="Custom Banner URL (Optional)" value={newPlaylistBanner} onChange={(e) => setNewPlaylistBanner(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" style={{ flex: 1 }} />
+                  <label title="Upload custom banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+                    <Upload size={18} />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
+                  </label>
+                </div>
                 <Button onClick={handleCreateAndAddToPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
                   + Create New Playlist
                 </Button>
@@ -2282,6 +2304,13 @@ export default function App() {
                   <label title="Upload custom image" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
                     <Upload size={18} />
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Input placeholder="Custom Banner URL (Optional)" value={newPlaylistBanner} onChange={(e) => setNewPlaylistBanner(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" style={{ flex: 1 }} />
+                  <label title="Upload custom banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+                    <Upload size={18} />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
                   </label>
                 </div>
                 <Button onClick={handleEditPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
