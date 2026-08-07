@@ -850,40 +850,51 @@ export default function App() {
         else if (source === "artist") val = track.artist;
         else if (source === "album") val = t.album?.name || track.title;
         else if (source === "custom") val = custom;
-        return val ? val : undefined;
+        return val ? val.trim() : undefined;
       };
       const getUrl = (source: string, custom: string) => {
         let url = "";
         if (source === "song") url = `https://music.youtube.com/watch?v=${track.videoId}`;
         else if (source === "artist") url = `https://music.youtube.com/search?q=${encodeURIComponent(track.artist)}`;
         else if (source === "album") url = `https://music.youtube.com/watch?v=${track.videoId}`;
-        else if (source === "custom") url = custom;
-        // Validate URL
+        else if (source === "custom") url = custom.trim();
+        
         if (url && !url.startsWith("http")) url = "https://" + url;
-        return url || undefined;
+        return url && url.length <= 512 ? url : undefined;
       };
       const getImg = (source: string, custom: string) => {
         let img = "";
         if (source === "album" || source === "artist") img = track.artwork || "https://musicvenue.vercel.app/icon.png";
         else if (source === "app") img = "https://musicvenue.vercel.app/icon.png";
-        else if (source === "custom") img = custom;
+        else if (source === "custom") img = custom.trim();
         
         if (img && !img.startsWith("http")) img = "https://" + img;
-        return img || undefined;
+        return img && img.length <= 256 ? img : undefined;
       };
 
+      const padStr = (s: string) => (s && s.length === 1) ? s + " " : s;
+      const trunc = (s: string, max: number) => s.length > max ? s.substring(0, max - 3) + "..." : s;
+
       let activityName = set.enableCustom ? (getVal(set.activityName, set.activityNameCustom) || "Music Venue") : "Music Venue";
-      let details = set.enableCustom ? getVal(set.detail, set.detailCustom) : track.title;
-      let state = set.enableCustom ? getVal(set.stateStr, set.stateCustom) : track.artist;
-      let activityType = set.enableCustom ? set.type : 2;
-      let largeImage = set.enableCustom ? getImg(set.largeImage, set.largeImageCustom) : (track.artwork || "https://musicvenue.vercel.app/icon.png");
-      let largeText = set.enableCustom ? getVal(set.detail, set.detailCustom) : "Playing on Music Venue";
-      let smallImage = set.enableCustom ? getImg(set.smallImage, set.smallImageCustom) : undefined;
-      let smallText = set.enableCustom ? getVal(set.stateStr, set.stateCustom) : undefined;
       
-      let button1Label = (set.enableCustom && set.enableButton1 && set.button1Label) ? set.button1Label : undefined;
+      let detailsRaw = set.enableCustom ? getVal(set.detail, set.detailCustom) : track.title;
+      if (!detailsRaw) detailsRaw = track.title || "Unknown";
+      let details = trunc(padStr(detailsRaw), 128);
+
+      let stateRaw = set.enableCustom ? getVal(set.stateStr, set.stateCustom) : track.artist;
+      if (!stateRaw) stateRaw = track.artist || "Unknown";
+      let state = trunc(padStr(stateRaw), 128);
+
+      let activityType = set.enableCustom ? set.type : 0; // Default to Playing (0)
+      
+      let largeImage = set.enableCustom ? getImg(set.largeImage, set.largeImageCustom) : (track.artwork || "https://musicvenue.vercel.app/icon.png");
+      let largeText = trunc(set.enableCustom ? (getVal(set.detail, set.detailCustom) || detailsRaw) : "Playing on Music Venue", 128);
+      let smallImage = set.enableCustom ? getImg(set.smallImage, set.smallImageCustom) : undefined;
+      let smallText = trunc(set.enableCustom ? (getVal(set.stateStr, set.stateCustom) || stateRaw) : track.artist, 128);
+      
+      let button1Label = (set.enableCustom && set.enableButton1 && set.button1Label) ? trunc(set.button1Label, 32) : undefined;
       let button1Url = (set.enableCustom && set.enableButton1 && set.button1Label) ? getUrl(set.button1Source, set.button1CustomUrl) : undefined;
-      let button2Label = (set.enableCustom && set.enableButton2 && set.button2Label) ? set.button2Label : undefined;
+      let button2Label = (set.enableCustom && set.enableButton2 && set.button2Label) ? trunc(set.button2Label, 32) : undefined;
       let button2Url = (set.enableCustom && set.enableButton2 && set.button2Label) ? getUrl(set.button2Source, set.button2CustomUrl) : undefined;
 
       await invoke("set_rpc_activity", { 
