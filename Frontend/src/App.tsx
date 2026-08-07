@@ -452,6 +452,8 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [justUpdatedChangelog, setJustUpdatedChangelog] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(true);
+  const [followingOpen, setFollowingOpen] = useState(true);
 
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -1479,19 +1481,34 @@ export default function App() {
           <div className={`nav-item ${activeTab === "radio" ? "active" : ""}`} onClick={() => handleTabClick("radio")}><Radio size={20} /> Radio</div>
         </div>
         <div className="sidebar-section">
-          <div className="sidebar-title">Library</div>
-          <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}><Heart size={20} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}</div>
-          <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={20} /> Queue</div>
+          <div className="nav-item" onClick={() => setLibraryOpen(!libraryOpen)} style={{ fontWeight: 600 }}>
+            <ListMusic size={20} /> Library
+            <ChevronDown size={16} style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: libraryOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+          </div>
+          {libraryOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 8 }}>
+              <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}><Heart size={18} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}</div>
+              <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={18} /> Queue</div>
+            </div>
+          )}
         </div>
         {subscribedArtists.length > 0 && (
           <div className="sidebar-section">
-            <div className="sidebar-title">Subscriptions</div>
-            {subscribedArtists.map(a => (
-              <div key={a.artistId} className={`nav-item ${activeTab === "artist" && artistView?.artist?.artistId === a.artistId ? "active" : ""}`} onClick={() => openArtist({ artistId: a.artistId, name: a.name })}>
-                <img src={a.thumbnails?.[0]?.url || ""} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
+            <div className="nav-item" onClick={() => setFollowingOpen(!followingOpen)} style={{ fontWeight: 600 }}>
+              <UserPlus size={20} /> Following
+              <span className="nav-count" style={{ marginLeft: 'auto', marginRight: 8 }}>{subscribedArtists.length}</span>
+              <ChevronDown size={16} style={{ transition: 'transform 0.2s', transform: followingOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+            </div>
+            {followingOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 8 }}>
+                {subscribedArtists.map(a => (
+                  <div key={a.artistId} className={`nav-item ${activeTab === "artist" && artistView?.artist?.artistId === a.artistId ? "active" : ""}`} onClick={() => openArtist({ artistId: a.artistId, name: a.name })}>
+                    <img src={a.thumbnails?.[0]?.url || ""} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         )}
         <div className="sidebar-bottom">
@@ -1724,7 +1741,7 @@ export default function App() {
                   </>
                 )}
                 {profileTab === "discord" && (
-                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
                     <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 24 }}>
                       <div>
                         <h3 style={{ fontSize: 20, marginBottom: 8 }}>Discord Rich Presence</h3>
