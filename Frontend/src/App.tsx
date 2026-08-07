@@ -10,7 +10,7 @@ import {
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
   Settings, Palette, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
-  UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus
+  UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2
 } from "lucide-react";
 import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, Playlist, fetchPlaylistsFromGist, syncPlaylistsToGist } from "./lib/github";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
@@ -52,7 +52,7 @@ interface SyncedLine { t: number; end?: number; text: string; parts: WordPart[] 
 interface Lyrics { synced: SyncedLine[]; plain: string }
 interface HistEntry extends Track { count: number; last: number; }
 interface Region { country: string | null; countryCode: string | null; city: string | null; }
-interface CtxMenu { x: number; y: number; track: Track; context: Track[]; }
+interface CtxMenu { x: number; y: number; track: Track; context: Track[]; playlistId?: string; }
 interface UpdateInfo { version: string; obj: any; }
 interface ArtistHead { artistId?: string; channelId?: string; name: string; thumbnails: any[]; subscribers?: string | null; }
 interface ArtistPage { artist: ArtistHead | null; songs: Track[]; albums: any[]; singles: any[]; }
@@ -1389,12 +1389,12 @@ export default function App() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [showSuggest]);
 
-  const openCtx = (e: React.MouseEvent, track: Track, context: Track[]) => {
+  const openCtx = (e: React.MouseEvent, track: Track, context: Track[], playlistId?: string) => {
     e.preventDefault();
     const menuW = 232, menuH = 372;
     const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
     const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
-    setCtxMenu({ x: Math.max(8, x), y: Math.max(8, y), track, context });
+    setCtxMenu({ x: Math.max(8, x), y: Math.max(8, y), track, context, playlistId });
   };
 
   const handleMinimize = async () => { if (isTauri) await getCurrentWindow().minimize(); };
@@ -1490,6 +1490,44 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const handleDeletePlaylist = () => {
+    if (!editingPlaylistId) return;
+    setPlaylists(prev => {
+      const newPlaylists = prev.filter(p => p.id !== editingPlaylistId);
+      const githubAccount = accounts.find(a => a.provider === "github");
+      if (githubAccount && githubAccount.access_token) {
+        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
+      }
+      return newPlaylists;
+    });
+    if (activePlaylistId === editingPlaylistId) {
+      setActiveTab("home");
+      setActivePlaylistId(null);
+    }
+    setNewPlaylistName("");
+    setNewPlaylistDesc("");
+    setNewPlaylistImg("");
+    setNewPlaylistBanner("");
+    setIsEditPlaylistOpen(false);
+    setEditingPlaylistId(null);
+  };
+
+  const handleRemoveFromPlaylist = (playlistId: string, videoId: string) => {
+    setPlaylists(prev => {
+      const newPlaylists = prev.map(p => {
+        if (p.id === playlistId) {
+          return { ...p, tracks: p.tracks.filter(t => t.videoId !== videoId) };
+        }
+        return p;
+      });
+      const githubAccount = accounts.find(a => a.provider === "github");
+      if (githubAccount && githubAccount.access_token) {
+        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
+      }
+      return newPlaylists;
+    });
+  };
+
   // const volumeBarRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); } };
@@ -1533,10 +1571,10 @@ export default function App() {
     </div>
   );
 
-  const renderTrackRow = (track: Track, context: Track[], index: number) => {
+  const renderTrackRow = (track: Track, context: Track[], index: number, playlistId?: string) => {
     const playing = currentTrack?.videoId === track.videoId;
     return (
-      <div key={track.videoId} className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
+      <div key={track.videoId} className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context, playlistId)}>
         <div className="track-row-index">
           <span className="track-num">{index + 1}</span>
           <Button className="track-row-play" onClick={() => playTrack(track, context)}>
@@ -1728,7 +1766,7 @@ export default function App() {
                     <div className="section-head"><h2>Songs</h2><span className="section-badge">{pl.tracks.length} lagu</span></div>
                     {pl.tracks.length ? (
                       <div className="track-grid wide">
-                        {pl.tracks.map((t, i) => renderTrackRow(t, pl.tracks, i))}
+                        {pl.tracks.map((t, i) => renderTrackRow(t, pl.tracks, i, pl.id))}
                       </div>
                     ) : (
                       <div className="empty-state big" style={{ padding: '40px 0' }}>
@@ -2058,18 +2096,34 @@ export default function App() {
       </main>
       {ctxMenu && (
         <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={(e) => e.stopPropagation()}>
-          <Button className="ctx-item" onClick={() => { startMix(ctxMenu.track); setCtxMenu(null); }}><Radio size={17} /> Start mix</Button>
-          <Button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Play next</Button>
-          <Button className="ctx-item" onClick={() => { addToQueue(ctxMenu.track); setCtxMenu(null); }}><ListPlus size={17} /> Add to queue</Button>
-          <div className="ctx-sep" />
-          <Button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}><Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} /> {isFavorite(ctxMenu.track.videoId) ? "Remove from liked music" : "Add to liked music"}</Button>
-          <Button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</Button>
-          <Button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Open artist page</Button>
-          <Button className="ctx-item" onClick={() => { subscribeFromCtx(ctxMenu.track); setCtxMenu(null); }}><UserPlus size={17} /> Subscribe to artist</Button>
-          <Button className="ctx-item" onClick={() => { setPlaylistDialogTrack(ctxMenu.track); setIsPlaylistDialogOpen(true); setCtxMenu(null); }}><ListMusic size={17} /> Add to playlist</Button>
-          <Button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Share</Button>
-          <div className="ctx-sep" />
-          <Button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</Button>
+          {ctxMenu.playlistId ? (
+            <>
+              <Button className="ctx-item" onClick={() => { playTrack(ctxMenu.track, ctxMenu.context); setCtxMenu(null); }}><Play size={17} /> Start from here</Button>
+              <Button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Play next</Button>
+              <div className="ctx-sep" />
+              <Button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Open artist page</Button>
+              <Button className="ctx-item" onClick={() => { subscribeFromCtx(ctxMenu.track); setCtxMenu(null); }}><UserPlus size={17} /> Subscribe to artist</Button>
+              <Button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Share</Button>
+              <Button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</Button>
+              <div className="ctx-sep" />
+              <Button className="ctx-item danger" onClick={() => { handleRemoveFromPlaylist(ctxMenu.playlistId!, ctxMenu.track.videoId); setCtxMenu(null); }}><Trash2 size={17} /> Delete from playlist</Button>
+            </>
+          ) : (
+            <>
+              <Button className="ctx-item" onClick={() => { startMix(ctxMenu.track); setCtxMenu(null); }}><Radio size={17} /> Start mix</Button>
+              <Button className="ctx-item" onClick={() => { playNext(ctxMenu.track); setCtxMenu(null); }}><CornerDownRight size={17} /> Play next</Button>
+              <Button className="ctx-item" onClick={() => { addToQueue(ctxMenu.track); setCtxMenu(null); }}><ListPlus size={17} /> Add to queue</Button>
+              <div className="ctx-sep" />
+              <Button className="ctx-item" onClick={() => { toggleFavorite(ctxMenu.track); setCtxMenu(null); }}><Heart size={17} fill={isFavorite(ctxMenu.track.videoId) ? "currentColor" : "none"} /> {isFavorite(ctxMenu.track.videoId) ? "Remove from liked music" : "Add to liked music"}</Button>
+              <Button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</Button>
+              <Button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Open artist page</Button>
+              <Button className="ctx-item" onClick={() => { subscribeFromCtx(ctxMenu.track); setCtxMenu(null); }}><UserPlus size={17} /> Subscribe to artist</Button>
+              <Button className="ctx-item" onClick={() => { setPlaylistDialogTrack(ctxMenu.track); setIsPlaylistDialogOpen(true); setCtxMenu(null); }}><ListMusic size={17} /> Add to playlist</Button>
+              <Button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Share</Button>
+              <div className="ctx-sep" />
+              <Button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</Button>
+            </>
+          )}
         </div>
       )}
       {justUpdatedChangelog && (
@@ -2313,9 +2367,14 @@ export default function App() {
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
                   </label>
                 </div>
-                <Button onClick={handleEditPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
-                  Save Changes
-                </Button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button onClick={handleEditPlaylist} className="mt-2 bg-white text-black hover:bg-white/90" style={{ flex: 1 }}>
+                    Save Changes
+                  </Button>
+                  <Button onClick={handleDeletePlaylist} className="mt-2" variant="destructive" style={{ flex: 'none', padding: '0 16px' }} title="Delete Playlist">
+                    <Trash2 size={18} />
+                  </Button>
+                </div>
               </div>
             </div>
           </motion.div>
