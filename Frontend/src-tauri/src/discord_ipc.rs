@@ -103,7 +103,13 @@ impl CustomIpc {
             "nonce": "1"
         }).to_string();
         Self::send_msg(&mut self.pipe, 1, &payload)?;
-        Self::recv_msg(&mut self.pipe)?;
+        let response = Self::recv_msg(&mut self.pipe)?;
+        
+        if response.contains("\"evt\":\"ERROR\"") {
+            println!("Discord IPC Error: {}", response);
+            return Err(format!("Discord IPC Error: {}", response));
+        }
+        
         Ok(())
     }
 }

@@ -885,7 +885,7 @@ export default function App() {
       if (!stateRaw) stateRaw = track.artist || "Unknown";
       let state = trunc(padStr(stateRaw), 128);
 
-      let activityType = set.enableCustom ? set.type : 0; // Default to Playing (0)
+      let activityType = 0; // Discord IPC only supports 0 (Playing)
       
       let largeImage = set.enableCustom ? getImg(set.largeImage, set.largeImageCustom) : (track.artwork || "https://musicvenue.vercel.app/icon.png");
       let largeText = trunc(set.enableCustom ? (getVal(set.detail, set.detailCustom) || detailsRaw) : "Playing on Music Venue", 128);
@@ -904,7 +904,12 @@ export default function App() {
         button2Label, button2Url, 
         startTime, endTime 
       });
-    } catch (e) { console.error("Gagal push RPC", e); }
+    } catch (e: any) { 
+      console.error("Gagal push RPC", e);
+      if (typeof e === "string" && e.includes("Discord IPC Error")) {
+        setToast("RPC Error: " + e.substring(0, 100));
+      }
+    }
   }, [rpcSettings]);
 
   const DiscordIcon = ({ size = 24 }: { size?: number }) => (
@@ -1828,10 +1833,7 @@ export default function App() {
                               {rpcSettings.stateStr === "custom" && <input type="text" value={rpcSettings.stateCustom} onChange={e => setRpcSettings({...rpcSettings, stateCustom: e.target.value})} placeholder="Custom State" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <label style={{ fontSize: 13 }}>Activity type</label>
-                              <CustomSelect value={rpcSettings.type} onChange={v => setRpcSettings({...rpcSettings, type: parseInt(v)})} options={[{label: "Playing", value: 0}, {label: "Streaming", value: 1}, {label: "Listening", value: 2}, {label: "Watching", value: 3}, {label: "Competing", value: 5}]} />
-                            </div>
+
                           </>
                         )}
                       </div>
