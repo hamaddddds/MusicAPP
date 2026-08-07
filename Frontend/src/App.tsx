@@ -1680,20 +1680,20 @@ export default function App() {
               const pl = playlists.find(p => p.id === activePlaylistId);
               if (!pl) return <div className="empty-state big"><p>Playlist not found</p></div>;
               return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 24, padding: 24 }}>
-                  <div style={{ display: 'flex', gap: 24, alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div className="artist-page-head">
                     {pl.image ? (
-                      <img src={pl.image} alt={pl.name} style={{ width: 180, height: 180, borderRadius: 12, objectFit: 'cover', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }} />
+                      <img src={pl.image} alt={pl.name} style={{ width: 168, height: 168, borderRadius: 16, objectFit: 'cover', boxShadow: '0 16px 40px rgba(0,0,0,0.6)', flexShrink: 0 }} />
                     ) : (
-                      <div style={{ width: 180, height: 180, borderRadius: 12, background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: 168, height: 168, borderRadius: 16, background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 16px 40px rgba(0,0,0,0.6)', flexShrink: 0 }}>
                         <ListMusic size={64} opacity={0.5} />
                       </div>
                     )}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <span style={{ textTransform: 'uppercase', fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>Playlist</span>
+                    <div className="artist-page-meta">
+                      <span className="artist-hero-label"><ListMusic size={13} /> Playlist</span>
                       <h1 style={{ fontSize: 48, margin: 0, lineHeight: 1.2 }}>{pl.name}</h1>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{pl.description || "No description provided."}</p>
-                      <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                      <p style={{ color: 'var(--text-secondary)' }}>{pl.description || "No description provided."}</p>
+                      <div className="artist-page-actions">
                         <Button variant="outline" className="glass-btn" onClick={() => { if (pl.tracks.length) playTrack(pl.tracks[0], pl.tracks); }}>
                           <Play size={17} fill="currentColor" /> Play All
                         </Button>
