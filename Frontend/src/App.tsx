@@ -12,7 +12,8 @@ import {
   Settings, Palette, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
   UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus
 } from "lucide-react";
-import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist } from "./lib/github";
+import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, Playlist, fetchPlaylistsFromGist, syncPlaylistsToGist } from "./lib/github";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
@@ -397,7 +398,17 @@ export default function App() {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(() => load("mv:last-track", null));
   const [activeTab, setActiveTab] = useState("home");
   const [activeShelf, setActiveShelf] = useState<string | null>(null);
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [homeShelvesState, setHomeShelvesState] = useState<{id: string, title: string, subtitle: string, query?: string}[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [isPlaylistDialogOpen, setIsPlaylistDialogOpen] = useState(false);
+  const [playlistDialogTrack, setPlaylistDialogTrack] = useState<Track | null>(null);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [newPlaylistDesc, setNewPlaylistDesc] = useState("");
+  const [newPlaylistImg, setNewPlaylistImg] = useState("");
+  const [isEditPlaylistOpen, setIsEditPlaylistOpen] = useState(false);
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
+
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [loginData, setLoginData] = useState<{user_code: string, verification_url: string, device_code: string} | null>(null);
@@ -504,6 +515,9 @@ export default function App() {
     if (githubAccount && githubAccount.access_token) {
       fetchSubscriptionsFromGist(githubAccount.access_token).then(subs => {
         setSubscribedArtists(subs);
+      });
+      fetchPlaylistsFromGist(githubAccount.access_token).then(pl => {
+        setPlaylists(pl);
       });
     }
   }, [accounts]);
@@ -1394,6 +1408,64 @@ export default function App() {
   const handleDrag = async (e: React.MouseEvent) => { if (isTauri && e.button === 0) await getCurrentWindow().startDragging(); };
 
 
+  const handleAddToPlaylist = (playlistId: string) => {
+    if (!playlistDialogTrack) return;
+    setPlaylists(prev => {
+      const p = prev.find(x => x.id === playlistId);
+      if (!p) return prev;
+      if (p.tracks.some(t => t.videoId === playlistDialogTrack.videoId)) return prev;
+      const newPlaylists = prev.map(x => x.id === playlistId ? { ...x, tracks: [...x.tracks, playlistDialogTrack] } : x);
+      const githubAccount = accounts.find(a => a.provider === "github");
+      if (githubAccount && githubAccount.access_token) {
+        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
+      }
+      return newPlaylists;
+    });
+    setIsPlaylistDialogOpen(false);
+    setPlaylistDialogTrack(null);
+  };
+
+  const handleCreateAndAddToPlaylist = () => {
+    if (!playlistDialogTrack || !newPlaylistName.trim()) return;
+    const newPlaylist: Playlist = {
+      id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+      name: newPlaylistName.trim(),
+      description: newPlaylistDesc.trim(),
+      image: newPlaylistImg.trim(),
+      tracks: [playlistDialogTrack]
+    };
+    setPlaylists(prev => {
+      const newPlaylists = [...prev, newPlaylist];
+      const githubAccount = accounts.find(a => a.provider === "github");
+      if (githubAccount && githubAccount.access_token) {
+        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
+      }
+      return newPlaylists;
+    });
+    setNewPlaylistName("");
+    setNewPlaylistDesc("");
+    setNewPlaylistImg("");
+    setIsPlaylistDialogOpen(false);
+    setPlaylistDialogTrack(null);
+  };
+
+  const handleEditPlaylist = () => {
+    if (!editingPlaylistId || !newPlaylistName.trim()) return;
+    setPlaylists(prev => {
+      const newPlaylists = prev.map(p => p.id === editingPlaylistId ? { ...p, name: newPlaylistName.trim(), description: newPlaylistDesc.trim(), image: newPlaylistImg.trim() } : p);
+      const githubAccount = accounts.find(a => a.provider === "github");
+      if (githubAccount && githubAccount.access_token) {
+        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
+      }
+      return newPlaylists;
+    });
+    setNewPlaylistName("");
+    setNewPlaylistDesc("");
+    setNewPlaylistImg("");
+    setIsEditPlaylistOpen(false);
+    setEditingPlaylistId(null);
+  };
+
   // const volumeBarRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); } };
@@ -1499,6 +1571,11 @@ export default function App() {
           {libraryOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 8 }}>
               <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}><Heart size={18} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}</div>
+              {playlists.map(pl => (
+                <div key={pl.id} className={`nav-item ${activeTab === "playlistDetail" && activePlaylistId === pl.id ? "active" : ""}`} onClick={() => { setActivePlaylistId(pl.id); setActiveTab("playlistDetail"); }}>
+                  <ListMusic size={18} /> {pl.name}
+                </div>
+              ))}
               <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={18} /> Queue</div>
             </div>
           )}
@@ -1585,6 +1662,57 @@ export default function App() {
         {activeTab === "favorites" && (
           <div className="page">
             {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music is empty</p><span>All songs you mark with ♥ will appear here.</span></div>}
+          </div>
+        )}
+        {activeTab === "playlistDetail" && activePlaylistId && (
+          <div className="page">
+            {(() => {
+              const pl = playlists.find(p => p.id === activePlaylistId);
+              if (!pl) return <div className="empty-state big"><p>Playlist not found</p></div>;
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24, padding: 24 }}>
+                  <div style={{ display: 'flex', gap: 24, alignItems: 'flex-end' }}>
+                    {pl.image ? (
+                      <img src={pl.image} alt={pl.name} style={{ width: 180, height: 180, borderRadius: 12, objectFit: 'cover', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }} />
+                    ) : (
+                      <div style={{ width: 180, height: 180, borderRadius: 12, background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <ListMusic size={64} opacity={0.5} />
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <span style={{ textTransform: 'uppercase', fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>Playlist</span>
+                      <h1 style={{ fontSize: 48, margin: 0, lineHeight: 1.2 }}>{pl.name}</h1>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{pl.description || "No description provided."}</p>
+                      <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                        <Button className="rounded-full bg-white text-black hover:bg-white/90" onClick={() => { if (pl.tracks.length) playTrack(pl.tracks[0], pl.tracks); }}>
+                          <Play size={20} fill="currentColor" /> Play All
+                        </Button>
+                        <Button variant="outline" className="rounded-full border-white/20 hover:bg-white/10" onClick={() => {
+                          setNewPlaylistName(pl.name);
+                          setNewPlaylistDesc(pl.description);
+                          setNewPlaylistImg(pl.image);
+                          setEditingPlaylistId(pl.id);
+                          setIsEditPlaylistOpen(true);
+                        }}>
+                          Edit Details
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {pl.tracks.length ? (
+                    <div className="track-grid wide">
+                      {pl.tracks.map((t, i) => renderTrackRow(t, pl.tracks, i))}
+                    </div>
+                  ) : (
+                    <div className="empty-state big">
+                      <ListMusic size={44} />
+                      <p>This playlist is empty</p>
+                      <span>Add songs using the context menu on any track.</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
         {activeTab === "artist" && (
@@ -1910,6 +2038,7 @@ export default function App() {
           <Button className="ctx-item" onClick={() => { downloadTrack(ctxMenu.track); setCtxMenu(null); }}><Download size={17} /> Download</Button>
           <Button className="ctx-item" onClick={() => { goToArtist(ctxMenu.track.artist); setCtxMenu(null); }}><User size={17} /> Open artist page</Button>
           <Button className="ctx-item" onClick={() => { subscribeFromCtx(ctxMenu.track); setCtxMenu(null); }}><UserPlus size={17} /> Subscribe to artist</Button>
+          <Button className="ctx-item" onClick={() => { setPlaylistDialogTrack(ctxMenu.track); setIsPlaylistDialogOpen(true); setCtxMenu(null); }}><ListMusic size={17} /> Add to playlist</Button>
           <Button className="ctx-item" onClick={() => { shareTrack(ctxMenu.track); setCtxMenu(null); }}><Share2 size={17} /> Share</Button>
           <div className="ctx-sep" />
           <Button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</Button>
@@ -2085,6 +2214,55 @@ export default function App() {
           <Slider value={[isMuted ? 0 : volume * 100]} max={100} step={1} onValueChange={(val) => { setVolume(val[0] / 100); setIsMuted(false); }} className="w-24 cursor-pointer" />
         </div>
       </footer>
+
+      <Dialog open={isPlaylistDialogOpen} onOpenChange={setIsPlaylistDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-black/95 text-white border-white/10 glass-card">
+          <DialogHeader>
+            <DialogTitle>Add to Playlist</DialogTitle>
+            <DialogDescription>
+              {playlists.length > 0 ? "Select a playlist to add this song to, or create a new one." : "Create a new playlist to add this song to."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {playlists.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {playlists.map(pl => (
+                  <Button key={pl.id} variant="secondary" onClick={() => handleAddToPlaylist(pl.id)} className="w-full justify-start bg-white/5 hover:bg-white/10 text-white border-0">
+                    <ListMusic className="mr-2 h-4 w-4" /> {pl.name}
+                  </Button>
+                ))}
+                <div className="text-center my-2 text-xs text-white/50">OR</div>
+              </div>
+            )}
+            <div className="grid gap-2">
+              <Input id="name" placeholder="Playlist Name" value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+              <Input id="desc" placeholder="Description (Optional)" value={newPlaylistDesc} onChange={(e) => setNewPlaylistDesc(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+              <Input id="img" placeholder="Custom Image URL (Optional)" value={newPlaylistImg} onChange={(e) => setNewPlaylistImg(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+              <Button onClick={handleCreateAndAddToPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
+                + Create New Playlist
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditPlaylistOpen} onOpenChange={setIsEditPlaylistOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-black/95 text-white border-white/10 glass-card">
+          <DialogHeader>
+            <DialogTitle>Edit Playlist</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Input placeholder="Playlist Name" value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+              <Input placeholder="Description (Optional)" value={newPlaylistDesc} onChange={(e) => setNewPlaylistDesc(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+              <Input placeholder="Custom Image URL (Optional)" value={newPlaylistImg} onChange={(e) => setNewPlaylistImg(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/40" />
+              <Button onClick={handleEditPlaylist} className="mt-2 bg-white text-black hover:bg-white/90">
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Login Modal */}
       {showLoginModal && (
