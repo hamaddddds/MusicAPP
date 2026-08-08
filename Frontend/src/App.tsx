@@ -1138,8 +1138,7 @@ export default function App() {
     else { setCurrentTime(0); setDuration(0); }
     try {
       let url: string;
-      if (isTauri) url = await invoke<string>("resolve_audio_url", { videoId: track.videoId });
-      else url = await resolveStreamUrl(track.videoId);
+      url = await resolveStreamUrl(track.videoId);
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
       setIsPlaying(true);
@@ -2649,6 +2648,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
