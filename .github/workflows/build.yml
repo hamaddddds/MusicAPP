@@ -70,7 +70,7 @@ jobs:
           cd Backend
           pip install pyinstaller
           pip install -r requirements.txt
-          python -m PyInstaller --onefile --noconsole --name backend-x86_64-pc-windows-msvc --hidden-import uvicorn.logging --hidden-import uvicorn.loops --hidden-import uvicorn.loops.auto --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto --hidden-import uvicorn.lifespan.on --hidden-import uvicorn.lifespan.off --hidden-import ytmusicapi --hidden-import yt_dlp --hidden-import fastapi --hidden-import starlette --hidden-import pydantic --hidden-import app run.py
+          python -m PyInstaller --onefile --noconsole --name backend-x86_64-pc-windows-msvc --collect-data ytmusicapi --hidden-import uvicorn.logging --hidden-import uvicorn.loops --hidden-import uvicorn.loops.auto --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto --hidden-import uvicorn.lifespan.on --hidden-import uvicorn.lifespan.off --hidden-import ytmusicapi --hidden-import yt_dlp --hidden-import fastapi --hidden-import starlette --hidden-import pydantic --hidden-import app run.py
           mkdir -p ../Frontend/src-tauri/binaries/
           cp dist/backend-x86_64-pc-windows-msvc.exe ../Frontend/src-tauri/binaries/
       - uses: tauri-apps/tauri-action@v0
