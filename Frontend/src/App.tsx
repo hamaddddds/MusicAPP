@@ -2652,7 +2652,7 @@ export default function App() {
             onClick={() => setNowPlayingOpen(true)}
             style={{
               position: 'fixed',
-              top: isTauri ? '60px' : '24px',
+              top: isTauri ? '90px' : '24px',
               right: '24px',
               zIndex: 9999,
               background: 'rgba(25, 25, 25, 0.45)',
