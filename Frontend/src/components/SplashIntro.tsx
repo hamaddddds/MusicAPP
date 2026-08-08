@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SplashIntroProps {
@@ -7,31 +7,81 @@ interface SplashIntroProps {
 
 export default function SplashIntro({ onComplete }: SplashIntroProps) {
   const [phase, setPhase] = useState(0);
+  const [statusText, setStatusText] = useState('Loading...');
+  const backendReady = useRef(false);
 
   useEffect(() => {
-    // Sequence timing
+    let t1: NodeJS.Timeout, t2: NodeJS.Timeout, statusT1: NodeJS.Timeout, statusT2: NodeJS.Timeout;
+    
     // Phase 0 -> 1: MV appears from bottom (0.5s)
-    const t1 = setTimeout(() => setPhase(1), 500);
+    t1 = setTimeout(() => setPhase(1), 500);
     // Phase 1 -> 2: Progress bar starts, text splits (at 1.0s)
-    const t2 = setTimeout(() => setPhase(2), 1000);
-    // Phase 2 -> 3: Text collapses back (at 2.3s)
-    const t3 = setTimeout(() => setPhase(3), 2300);
-    // Phase 3 -> complete: Intro done (at 2.8s)
-    const t4 = setTimeout(() => {
-      onComplete();
-    }, 2800);
+    t2 = setTimeout(() => {
+      setPhase(2);
+      checkBackend();
+    }, 1000);
+
+    // Status morphing timeouts (if backend hasn't responded yet)
+    statusT1 = setTimeout(() => {
+      if (!backendReady.current) setStatusText('Turn on machine...');
+    }, 2500);
+    statusT2 = setTimeout(() => {
+      if (!backendReady.current) setStatusText('Just lil bit wait...');
+    }, 5000);
+
+    // Backend check function
+    const checkBackend = async () => {
+      let isReady = false;
+      let attempts = 0;
+      
+      while (!isReady && attempts < 20) { // Max 10 seconds (20 * 500ms)
+        try {
+          const res = await fetch('http://127.0.0.1:8000/docs');
+          if (res.ok || res.status === 200 || res.status === 404) {
+            // Any response from port 8000 means uvicorn is alive
+            isReady = true;
+          }
+        } catch (e) {
+          // Connection refused, meaning backend not ready
+        }
+        
+        if (isReady) {
+          backendReady.current = true;
+          setStatusText('Done');
+          // Give it a brief moment to show "Done"
+          setTimeout(() => {
+            setPhase(3); // Collapse text
+            setTimeout(() => onComplete(), 500); // Finish intro
+          }, 600);
+          break;
+        }
+        
+        attempts++;
+        await new Promise(r => setTimeout(r, 500));
+      }
+      
+      // Fallback if backend failed to start after 10s so user isn't stuck forever
+      if (!isReady) {
+        backendReady.current = true;
+        setStatusText('Done');
+        setTimeout(() => {
+          setPhase(3);
+          setTimeout(() => onComplete(), 500);
+        }, 600);
+      }
+    };
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
+      clearTimeout(statusT1);
+      clearTimeout(statusT2);
     };
   }, [onComplete]);
 
   // Phase 0: Hidden
   // Phase 1: MV at center, progress bar appears
-  // Phase 2: Split to Music Venue
+  // Phase 2: Split to Music Venue and Ping Backend
   // Phase 3: Collapse back to MV
 
   const isSplit = phase === 2;
@@ -123,8 +173,8 @@ export default function SplashIntro({ onComplete }: SplashIntroProps) {
           </div>
         </motion.div>
 
-        {/* Progress Bar Container */}
-        <div style={{ height: '20px', marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Progress Bar & Status Text Container */}
+        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', height: '40px' }}>
           <AnimatePresence>
             {showProgress && (
               <motion.div
@@ -137,22 +187,46 @@ export default function SplashIntro({ onComplete }: SplashIntroProps) {
                   height: '2px',
                   background: 'rgba(255,255,255,0.15)',
                   borderRadius: '2px',
-                  overflow: 'hidden'
+                  overflow: 'hidden',
+                  marginBottom: '10px'
                 }}
               >
+                {/* Indeterminate pulsing progress for realism */}
                 <motion.div
-                  initial={{ width: '0%' }}
-                  animate={{ width: '100%' }}
+                  initial={{ x: '-100%' }}
+                  animate={{ x: '100%' }}
                   transition={{ 
-                    duration: 2.2, // spans from phase 1 through phase 3
-                    ease: "easeInOut" 
+                    duration: 1.5, 
+                    ease: "linear",
+                    repeat: Infinity
                   }}
                   style={{
+                    width: '60%',
                     height: '100%',
                     background: '#ffffff',
                     borderRadius: '2px'
                   }}
                 />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="wait">
+            {showProgress && (
+              <motion.div
+                key={statusText}
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 5 }}
+                transition={{ duration: 0.3 }}
+                style={{
+                  color: 'rgba(255,255,255,0.5)',
+                  fontSize: '0.8rem',
+                  fontFamily: 'Inter, sans-serif',
+                  letterSpacing: '0.5px'
+                }}
+              >
+                {statusText}
               </motion.div>
             )}
           </AnimatePresence>
@@ -162,4 +236,3 @@ export default function SplashIntro({ onComplete }: SplashIntroProps) {
     </motion.div>
   );
 }
-
