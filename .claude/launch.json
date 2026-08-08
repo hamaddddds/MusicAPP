@@ -7,6 +7,10 @@
       "runtimeArgs": ["/c", "cd Frontend && npm run dev"],
       "port": 1420,
       "autoPort": false
+    },
+    {
+      "name": "music-venue-attach",
+      "url": "http://localhost:1420"
     }
   ]
 }

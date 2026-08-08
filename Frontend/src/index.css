@@ -1182,3 +1182,124 @@ button { font-family: inherit; }
 .glass-btn:hover {
   background: rgba(255, 255, 255, 0.15) !important;
 }
+/* --- ADVANCED FEATURES --- */
+.visualizer-canvas {
+  width: 80px;
+  height: 24px;
+  margin-right: 12px;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.eq-popover {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 280px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(20, 20, 20, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 100;
+  animation: slideUp 0.2s ease-out;
+}
+
+.eq-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.eq-sliders {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.eq-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+
+.eq-freq {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+}
+
+/* Stats Dashboard */
+.stats-dashboard {
+  display: flex;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.stats-card {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stats-card h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stat-rank {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.4);
+  width: 20px;
+}
+
+.stat-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.stat-count {
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+}
+
+.stat-bar-container {
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.stat-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+}

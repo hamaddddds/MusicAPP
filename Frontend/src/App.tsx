@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -10,7 +10,7 @@ import {
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
   Settings, Palette, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
-  UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2
+  UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
 } from "lucide-react";
 import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, Playlist, fetchPlaylistsFromGist, syncPlaylistsToGist } from "./lib/github";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
@@ -32,7 +32,7 @@ const CustomSelect = ({ value, onChange, options }: { value: string | number, on
           <ChevronDown className="h-4 w-4 opacity-50" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-full min-w-[200px] bg-black/90 text-white border-white/10" align="start">
+      <DropdownMenuContent className="z-[9999] w-full min-w-[200px] bg-[#1a1a1a] text-white border-white/10 shadow-xl" align="start">
         {options.map(opt => (
           <DropdownMenuItem key={opt.value} onClick={() => onChange(String(opt.value))} className="text-left cursor-pointer focus:bg-white/10">
             {opt.label}
@@ -369,6 +369,27 @@ function CtrlButton({
   );
 }
 
+/** Animated % label — replays the eqPop animation on gain change WITHOUT unmounting. */
+const EqPctLabel = memo(({ gain }: { gain: number }) => {
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const prevGain = useRef(gain);
+  useEffect(() => {
+    if (prevGain.current !== gain && spanRef.current) {
+      const el = spanRef.current;
+      el.classList.remove('animate-eqPop');
+      void el.offsetWidth;          // force reflow to restart animation
+      el.classList.add('animate-eqPop');
+    }
+    prevGain.current = gain;
+  }, [gain]);
+  return (
+    <span ref={spanRef} className="eq-pct" style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(255,255,255,0.85)', display: 'inline-block' }}>
+      {Math.round(((gain + 12) / 24) * 100)}%
+    </span>
+  );
+});
+EqPctLabel.displayName = 'EqPctLabel';
+
 const defaultRpcSettings: RpcSettings = {
   enableCustom: false,
   activityName: "custom",
@@ -398,7 +419,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [activeShelf, setActiveShelf] = useState<string | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
-  const [homeShelvesState, setHomeShelvesState] = useState<{id: string, title: string, subtitle: string, query?: string}[]>([]);
+  const [homeShelvesState, setHomeShelvesState] = useState<{ id: string, title: string, subtitle: string, query?: string }[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [isPlaylistDialogOpen, setIsPlaylistDialogOpen] = useState(false);
   const [playlistDialogTrack, setPlaylistDialogTrack] = useState<Track | null>(null);
@@ -411,7 +432,7 @@ export default function App() {
 
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
-  const [loginData, setLoginData] = useState<{user_code: string, verification_url: string, device_code: string} | null>(null);
+  const [loginData, setLoginData] = useState<{ user_code: string, verification_url: string, device_code: string } | null>(null);
   const [isPolling, setIsPolling] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -470,6 +491,22 @@ export default function App() {
   const [lyricsLoading, setLyricsLoading] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const eqBandsRef = useRef<BiquadFilterNode[]>([]);
+  const visualizerCanvasRef = useRef<HTMLCanvasElement>(null);
+  const reqFrameRef = useRef<number>(0);
+
+  const eqPresets: Record<string, number[]> = {
+    "Flat": [0, 0, 0, 0, 0],
+    "Bass Boost": [6, 4, 0, -2, -4],
+    "Acoustic": [2, 1, 3, 2, 1],
+    "Electronic": [4, 2, -2, 3, 4],
+    "Vocal": [-2, -1, 4, 3, 1]
+  };
+  const [showEQ, setShowEQ] = useState(false);
+  const [eqGains, setEqGains] = useState([0, 0, 0, 0, 0]);
+  const [activeEqPreset, setActiveEqPreset] = useState("Flat");
   const orderRef = useRef<Track[]>(load("mv:last-order", []));
   const posRef = useRef(load("mv:last-pos", 0));
   const contextRef = useRef<Track[]>(load("mv:last-context", []));
@@ -491,14 +528,14 @@ export default function App() {
   useEffect(() => { durationRef.current = duration; }, [duration]);
   useEffect(() => { repeatRef.current = repeatMode; }, [repeatMode]);
   useEffect(() => { localStorage.setItem("mv:last-track", JSON.stringify(currentTrack)); }, [currentTrack]);
-  useEffect(() => { 
-    const t = setInterval(() => { 
-      if (audioRef.current && !audioRef.current.paused) localStorage.setItem("mv:last-time", audioRef.current.currentTime.toString()); 
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (audioRef.current && !audioRef.current.paused) localStorage.setItem("mv:last-time", audioRef.current.currentTime.toString());
       localStorage.setItem("mv:last-order", JSON.stringify(orderRef.current));
       localStorage.setItem("mv:last-pos", posRef.current.toString());
       localStorage.setItem("mv:last-context", JSON.stringify(contextRef.current));
-    }, 2000); 
-    return () => clearInterval(t); 
+    }, 2000);
+    return () => clearInterval(t);
   }, []);
   useEffect(() => { localStorage.setItem("mv:favorites", JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem("mv:history", JSON.stringify(history)); }, [history]);
@@ -639,7 +676,7 @@ export default function App() {
       await fetch(`${API_URL}/auth/logout`, { method: "POST" });
       setIsAuth(false);
       loadHome(); // refresh home
-    } catch(err) {
+    } catch (err) {
       console.error(err);
     }
   };
@@ -647,64 +684,64 @@ export default function App() {
   const loadHome = useCallback(async () => {
     setLoading(true);
     const blockedSet = new Set(blocked);
-    
+
     // Check if authenticated
     if (isAuth) {
-        try {
-            const homeData = await fetch(`${API_URL}/home`).then(res => res.json());
-            const dynamicShelves: any[] = [];
-            const map: Record<string, Track[]> = {};
-            
-            homeData.forEach((shelf: any, i: number) => {
-                if (shelf.contents && shelf.contents.length > 0) {
-                    const id = `auth_shelf_${i}`;
-                    dynamicShelves.push({ id, title: shelf.title, subtitle: shelf.subtitle || "" });
-                    
-                    // transform contents to Track[]
-                    const tracks: Track[] = shelf.contents.map((c: any) => {
-                        let artistStr = "";
-                        if (c.artists && Array.isArray(c.artists)) artistStr = c.artists.map((a: any) => a.name).join(", ");
-                        else if (c.artist) artistStr = c.artist;
-                        return {
-                            videoId: c.videoId,
-                            title: c.title,
-                            artist: artistStr,
-                            artists: c.artists,
-                            album: c.album,
-                            thumbnails: c.thumbnails,
-                            artwork: c.thumbnails?.[c.thumbnails.length - 1]?.url || "",
-                            duration_seconds: null,
-                        };
-                    }).filter((c: any) => {
-                        if (!c.videoId) return false;
-                        if (c.artists && Array.isArray(c.artists)) {
-                           for (const a of c.artists) {
-                              if (blockedSet.has(a.name)) return false;
-                           }
-                        }
-                        if (c.artist && blockedSet.has(c.artist)) return false;
-                        return true;
-                    });
-                    
-                    if (tracks.length > 0) map[id] = tracks;
+      try {
+        const homeData = await fetch(`${API_URL}/home`).then(res => res.json());
+        const dynamicShelves: any[] = [];
+        const map: Record<string, Track[]> = {};
+
+        homeData.forEach((shelf: any, i: number) => {
+          if (shelf.contents && shelf.contents.length > 0) {
+            const id = `auth_shelf_${i}`;
+            dynamicShelves.push({ id, title: shelf.title, subtitle: shelf.subtitle || "" });
+
+            // transform contents to Track[]
+            const tracks: Track[] = shelf.contents.map((c: any) => {
+              let artistStr = "";
+              if (c.artists && Array.isArray(c.artists)) artistStr = c.artists.map((a: any) => a.name).join(", ");
+              else if (c.artist) artistStr = c.artist;
+              return {
+                videoId: c.videoId,
+                title: c.title,
+                artist: artistStr,
+                artists: c.artists,
+                album: c.album,
+                thumbnails: c.thumbnails,
+                artwork: c.thumbnails?.[c.thumbnails.length - 1]?.url || "",
+                duration_seconds: null,
+              };
+            }).filter((c: any) => {
+              if (!c.videoId) return false;
+              if (c.artists && Array.isArray(c.artists)) {
+                for (const a of c.artists) {
+                  if (blockedSet.has(a.name)) return false;
                 }
+              }
+              if (c.artist && blockedSet.has(c.artist)) return false;
+              return true;
             });
-            
-            setHomeShelvesState(dynamicShelves);
-            setShelves(map);
-            setLoading(false);
-            return;
-        } catch (e) {
-            console.error("Failed to load authenticated home", e);
-            // fallback to history
-        }
+
+            if (tracks.length > 0) map[id] = tracks;
+          }
+        });
+
+        setHomeShelvesState(dynamicShelves);
+        setShelves(map);
+        setLoading(false);
+        return;
+      } catch (e) {
+        console.error("Failed to load authenticated home", e);
+        // fallback to history
+      }
     }
-    
+
     // history is Record<string, HistEntry>
     const historyList = Object.values(history).sort((a, b) => b.last - a.last);
     const recentHistory = historyList.slice(0, 15);
     const olderHistory = historyList.slice(15, 30);
-    
+
     let similarArtist = "The Weeknd";
     if (historyList.length > 0) {
       const validHistory = historyList.filter(h => !blockedSet.has(h.artist));
@@ -713,35 +750,35 @@ export default function App() {
         similarArtist = validHistory[randomIdx].artist;
       }
     }
-    
+
     const similarTracks = await searchTracks(similarArtist).catch(() => [] as Track[]);
     const filteredSimilar = similarTracks.filter(t => !blockedSet.has(t.artist));
-    
+
     const dynamicShelves = [];
     const map: Record<string, Track[]> = {};
-    
+
     const filteredRecent = recentHistory.filter(t => !blockedSet.has(t.artist));
     if (filteredRecent.length > 0) {
-       dynamicShelves.push({ id: "keep_listening", title: "Keep listening", subtitle: "Pick up where you left off" });
-       map["keep_listening"] = filteredRecent;
+      dynamicShelves.push({ id: "keep_listening", title: "Keep listening", subtitle: "Pick up where you left off" });
+      map["keep_listening"] = filteredRecent;
     }
-    
+
     if (filteredSimilar.length > 0) {
-       dynamicShelves.push({ id: "similar", title: `Similar to ${similarArtist}`, subtitle: "Based on your taste" });
-       map["similar"] = filteredSimilar;
+      dynamicShelves.push({ id: "similar", title: `Similar to ${similarArtist}`, subtitle: "Based on your taste" });
+      map["similar"] = filteredSimilar;
     }
-    
+
     const filteredOlder = olderHistory.filter(t => !blockedSet.has(t.artist));
     const fallbackListen = [...historyList].filter(t => !blockedSet.has(t.artist)).sort(() => Math.random() - 0.5).slice(0, 10);
-    
+
     if (filteredOlder.length > 0) {
-       dynamicShelves.push({ id: "listen_again", title: "Listen again", subtitle: "Your past favorites" });
-       map["listen_again"] = filteredOlder;
+      dynamicShelves.push({ id: "listen_again", title: "Listen again", subtitle: "Your past favorites" });
+      map["listen_again"] = filteredOlder;
     } else if (filteredRecent.length > 0 && historyList.length > 5 && fallbackListen.length > 0) {
-       dynamicShelves.push({ id: "listen_again", title: "Listen again", subtitle: "Your past favorites" });
-       map["listen_again"] = fallbackListen;
+      dynamicShelves.push({ id: "listen_again", title: "Listen again", subtitle: "Your past favorites" });
+      map["listen_again"] = fallbackListen;
     }
-    
+
     setHomeShelvesState(dynamicShelves);
     setShelves(map);
     setLoading(false);
@@ -755,12 +792,12 @@ export default function App() {
       const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
       const d = await res.json();
       if (!Array.isArray(d)) throw new Error();
-      
+
       let topResult = null;
       if (d.length > 0 && d[0].category === "Top result") {
         topResult = d[0];
       }
-      
+
       const songs = d.filter((x: any) => x.resultType === "song" && x !== topResult);
       const videos = d.filter((x: any) => x.resultType === "video" && x !== topResult);
       const albums = d.filter((x: any) => x.resultType === "album" && x !== topResult);
@@ -855,7 +892,7 @@ export default function App() {
       let startTime: number | null = null;
       let endTime: number | null = null;
       if (audio && !audio.paused && audio.duration) { startTime = now - Math.floor(audio.currentTime); endTime = startTime + Math.floor(audio.duration); }
-      
+
       const set = rpcSettings;
       const t = track as any;
       const getVal = (source: string, custom: string) => {
@@ -872,7 +909,7 @@ export default function App() {
         else if (source === "artist") url = `https://music.youtube.com/search?q=${encodeURIComponent(track.artist)}`;
         else if (source === "album") url = `https://music.youtube.com/watch?v=${track.videoId}`;
         else if (source === "custom") url = custom.trim();
-        
+
         if (url && !url.startsWith("http")) url = "https://" + url;
         return url && url.length <= 512 ? url : undefined;
       };
@@ -881,7 +918,7 @@ export default function App() {
         if (source === "album" || source === "artist") img = track.artwork || "https://musicvenue.vercel.app/icon.png";
         else if (source === "app") img = "https://musicvenue.vercel.app/icon.png";
         else if (source === "custom") img = custom.trim();
-        
+
         if (img && !img.startsWith("http")) img = "https://" + img;
         return img && img.length <= 256 ? img : undefined;
       };
@@ -890,7 +927,7 @@ export default function App() {
       const trunc = (s: string, max: number) => s.length > max ? s.substring(0, max - 3) + "..." : s;
 
       let activityName = set.enableCustom ? (getVal(set.activityName, set.activityNameCustom) || "Music Venue") : "Music Venue";
-      
+
       let detailsRaw = set.enableCustom ? getVal(set.detail, set.detailCustom) : track.title;
       if (!detailsRaw) detailsRaw = track.title || "Unknown";
       let details = trunc(padStr(detailsRaw), 128);
@@ -900,23 +937,23 @@ export default function App() {
       let state = trunc(padStr(stateRaw), 128);
 
       let activityType = set.enableCustom ? set.type : 0; // Default to Playing (0)
-      
+
       let largeImage = set.enableCustom ? getImg(set.largeImage, set.largeImageCustom) : (track.artwork || "https://musicvenue.vercel.app/icon.png");
       let largeText = trunc(set.enableCustom ? (getVal(set.detail, set.detailCustom) || detailsRaw) : "Playing on Music Venue", 128);
       let smallImage = set.enableCustom ? getImg(set.smallImage, set.smallImageCustom) : undefined;
       let smallText = trunc(set.enableCustom ? (getVal(set.stateStr, set.stateCustom) || stateRaw) : track.artist, 128);
-      
+
       let button1Label = (set.enableCustom && set.enableButton1 && set.button1Label) ? trunc(set.button1Label, 32) : undefined;
       let button1Url = (set.enableCustom && set.enableButton1 && set.button1Label) ? getUrl(set.button1Source, set.button1CustomUrl) : undefined;
       let button2Label = (set.enableCustom && set.enableButton2 && set.button2Label) ? trunc(set.button2Label, 32) : undefined;
       let button2Url = (set.enableCustom && set.enableButton2 && set.button2Label) ? getUrl(set.button2Source, set.button2CustomUrl) : undefined;
 
-      await invoke("set_rpc_activity", { 
-        activityName, activityType, details, state, 
-        largeImage, largeText, smallImage, smallText, 
-        button1Label, button1Url, 
-        button2Label, button2Url, 
-        startTime, endTime 
+      await invoke("set_rpc_activity", {
+        activityName, activityType, details, state,
+        largeImage, largeText, smallImage, smallText,
+        button1Label, button1Url,
+        button2Label, button2Url,
+        startTime, endTime
       });
     } catch (e) { console.error("Gagal push RPC", e); }
   }, [rpcSettings]);
@@ -1014,14 +1051,14 @@ export default function App() {
       setTimeout(() => invoke("show_main_window").catch(console.error), 150);
     }
   }, []);
-  
+
   useEffect(() => {
     const interval = setInterval(() => {
       if (isTauri) checkForUpdate();
     }, 120000);
     return () => clearInterval(interval);
   }, [checkForUpdate]);
-  
+
   useEffect(() => {
     const initApp = async () => {
       if (isTauri) {
@@ -1192,6 +1229,107 @@ export default function App() {
     advance(false);
   }, [advance]);
 
+  const startVisualizer = useCallback(() => {
+    if (!analyserRef.current) return;
+
+    const analyser = analyserRef.current;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+      reqFrameRef.current = requestAnimationFrame(draw);
+
+      const canvas = visualizerCanvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      analyser.getByteFrequencyData(dataArray);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const barWidth = 3;
+      const barGap = 2;
+      const numBars = Math.floor(canvas.width / (barWidth + barGap));
+
+      // Focus on the lower/mid frequencies for better visual movement
+      const step = Math.floor((bufferLength * 0.5) / numBars);
+
+      let x = 0;
+      for (let i = 0; i < numBars; i++) {
+        let sum = 0;
+        for (let j = 0; j < step; j++) {
+          sum += dataArray[i * step + j];
+        }
+        const avg = sum / step;
+
+        // Scale height smoothly
+        const barHeight = Math.max(2, (avg / 255) * canvas.height);
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+
+        // Center the bars vertically
+        const y = (canvas.height - barHeight) / 2;
+
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(x, y, barWidth, barHeight, 2);
+        } else {
+          ctx.rect(x, y, barWidth, barHeight);
+        }
+        ctx.fill();
+
+        x += barWidth + barGap;
+      }
+    };
+    draw();
+  }, []);
+
+  const initAudioContext = useCallback(() => {
+    if (!audioRef.current || audioContextRef.current) return;
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const source = ctx.createMediaElementSource(audioRef.current);
+
+      const frequencies = [60, 230, 910, 3600, 14000];
+      const bands = frequencies.map((freq, i) => {
+        const filter = ctx.createBiquadFilter();
+        if (i === 0) filter.type = "lowshelf";
+        else if (i === frequencies.length - 1) filter.type = "highshelf";
+        else filter.type = "peaking";
+        filter.frequency.value = freq;
+        filter.gain.value = eqGains[i];
+        return filter;
+      });
+
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+
+      source.connect(bands[0]);
+      for (let i = 0; i < bands.length - 1; i++) {
+        bands[i].connect(bands[i + 1]);
+      }
+      bands[bands.length - 1].connect(analyser);
+      analyser.connect(ctx.destination);
+
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
+      eqBandsRef.current = bands;
+
+      startVisualizer();
+    } catch (e) {
+      console.warn("Failed to init Web Audio API", e);
+    }
+  }, [eqGains, startVisualizer]);
+
+  useEffect(() => {
+    if (eqBandsRef.current.length === 5) {
+      eqGains.forEach((gain, i) => {
+        eqBandsRef.current[i].gain.value = gain;
+      });
+    }
+  }, [eqGains]);
+
   const handleAudioError = useCallback(() => {
     if (!isTauri && currentTrackRef.current && !triedDownloadRef.current) {
       triedDownloadRef.current = true;
@@ -1260,7 +1398,7 @@ export default function App() {
     setBlocked((prev) => {
       const newBlocked = prev.includes(track.artist) ? prev : [...prev, track.artist];
       const blockedSet = new Set(newBlocked);
-      
+
       setShelves((shelvesPrev) => {
         const newShelves: Record<string, Track[]> = {};
         for (const k in shelvesPrev) {
@@ -1552,11 +1690,11 @@ export default function App() {
   // menu / play actions can reuse it.
   const topResultTrack: Track | null = searchTopResult && searchTopResult.videoId
     ? {
-        videoId: searchTopResult.videoId,
-        title: searchTopResult.title || searchTopResult.name || "Unknown",
-        artist: searchTopResult.artists?.[0]?.name || searchTopResult.artist || "Unknown",
-        artwork: hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)
-      }
+      videoId: searchTopResult.videoId,
+      title: searchTopResult.title || searchTopResult.name || "Unknown",
+      artist: searchTopResult.artists?.[0]?.name || searchTopResult.artist || "Unknown",
+      artwork: hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)
+    }
     : null;
 
   const renderAlbumCard = (track: Track, context: Track[]) => (
@@ -1616,7 +1754,7 @@ export default function App() {
         e.preventDefault();
       }
     }}>
-      {playerUrl && <audio key={playerUrl} ref={audioRef} src={playerUrl} onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />}
+      <audio ref={audioRef} src={playerUrl || ""} crossOrigin="anonymous" onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onPause={() => setIsPlaying(false)} />
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
@@ -1692,6 +1830,11 @@ export default function App() {
             </div>
           </div>
           <div className="header-right">
+            <div className="header-now-playing glass" style={{ display: currentTrack ? 'flex' : 'none', alignItems: 'center', gap: 12, padding: '4px 16px 4px 4px', borderRadius: 24, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(24px)' }}>
+              <img src={currentTrack?.artwork || ""} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} alt="" />
+              <span style={{ fontSize: 13, fontWeight: 600, maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack?.title}</span>
+              <canvas ref={visualizerCanvasRef} width={120} height={16} className="visualizer-canvas" style={{ display: 'block', marginLeft: 4 }} />
+            </div>
             {isAuth ? (
               <Button className="win-btn" onClick={handleLogout} title="Logout"><User size={16} style={{ color: 'var(--accent)' }} /></Button>
             ) : (
@@ -1840,257 +1983,320 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                
+
                 {searchSongsResults.length > 0 && <section className="search-section"><div className="section-head"><h2>Songs</h2></div><div className="grid-container">{searchSongsResults.map((t) => renderAlbumCard(t, searchSongsResults))}</div></section>}
-                
+
                 {searchVideos.length > 0 && <section className="search-section"><div className="section-head"><h2>Videos</h2><span className="section-badge muted">Live, Covers &amp; Remixes</span></div><div className="grid-container">{searchVideos.map((t) => renderAlbumCard(t, searchVideos))}</div></section>}
               </>
             ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Search for your favorite songs"}</p><span>Type an artist name or song title in the search box.</span></div>}
           </div>
         )}
         {activeTab === "shelf" && activeShelf && (
-            <div className="page">
-              <div className="section-head" style={{ marginTop: 20 }}>
-                <h2>{homeShelvesState.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
-                <span className="section-badge muted">{homeShelvesState.find(s => s.id === activeShelf)?.subtitle}</span>
-              </div>
-              <div className="grid-container">
-                {shelves[activeShelf]?.map(t => renderAlbumCard(t, shelves[activeShelf]))}
-              </div>
+          <div className="page">
+            <div className="section-head" style={{ marginTop: 20 }}>
+              <h2>{homeShelvesState.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
+              <span className="section-badge muted">{homeShelvesState.find(s => s.id === activeShelf)?.subtitle}</span>
             </div>
-          )}
-          {activeTab === "profile" && (
+            <div className="grid-container">
+              {shelves[activeShelf]?.map(t => renderAlbumCard(t, shelves[activeShelf]))}
+            </div>
+          </div>
+        )}
+        {activeTab === "profile" && (
           <div className="page profile-page">
             <div className="profile-hero" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
               {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
-                <div className="profile-hero-info">
-                  <span className="artist-hero-label glass-text"><UserCircle size={13} /> Profile</span>
-                  <h1 className="glass-text">{profile.name || "Guest"}</h1>
-                  <p className="glass-text">Account connected : {accounts.length ? accounts.map(a => a.provider.charAt(0).toUpperCase() + a.provider.slice(1)).join(" - ") : "None"}</p>
-                  <p className="glass-text">Theme : {theme.charAt(0).toUpperCase() + theme.slice(1)}</p>
-                </div>
+              <div className="profile-hero-info">
+                <span className="artist-hero-label glass-text"><UserCircle size={13} /> Profile</span>
+                <h1 className="glass-text">{profile.name || "Guest"}</h1>
+                <p className="glass-text">Account connected : {accounts.length ? accounts.map(a => a.provider.charAt(0).toUpperCase() + a.provider.slice(1)).join(" - ") : "None"}</p>
+                <p className="glass-text">Theme : {theme.charAt(0).toUpperCase() + theme.slice(1)}</p>
+              </div>
             </div>
-            <motion.div className="profile-tabs" layout>
-              {[
-                { id: "appearance", label: "Themes", Icon: Palette },
-                { id: "accounts", label: "Accounts", Icon: User },
-                { id: "discord", label: "Discord RPC", Icon: Gamepad2, ChevronLeft },
-                { id: "updates", label: "Updates", Icon: RefreshCw },
-                { id: "about", label: "About", Icon: Sparkles },
-              ].map((tb) => <Button key={tb.id} className={`ptab ${profileTab === tb.id ? "active" : ""}`} onClick={() => setProfileTab(tb.id)}><tb.Icon size={15} /> {tb.label}</Button>)}
-            </motion.div>
-            <AnimatePresence mode="wait">
-              <motion.div key={profileTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="profile-content">
-                {profileTab === "appearance" && (
-                  <>
-                    <div className="setting-block">
-                      <h3>Profile Banner</h3><p className="setting-desc">Upload a custom banner for your profile. (GIF, PNG, JPG)</p>
-                      <div className="setting-actions">
-                        <label className="btn-primary file-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                          <Upload size={15} /> Add banner
-                          <input type="file" accept="image/png, image/jpeg, image/gif, image/webp" hidden onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (ev) => {
-                                const b64 = ev.target?.result as string;
-                                setProfile(p => ({ ...p, banner: b64 }));
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }} />
-                        </label>
-                        {profile.banner && (
-                          <Button variant="ghost" onClick={() => setProfile(p => ({ ...p, banner: null }))}>Remove</Button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="setting-block">
-                      <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
-                      <div className="theme-grid">
-                        {[{ id: "system", label: "System", Icon: Monitor }, { id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }].map((tOpt) => (
-                          <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
-                            <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
-                            <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
-                            {theme === tOpt.id && <Check size={16} className="theme-check" />}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-                {profileTab === "accounts" && (
-                  <>
-                    <div className="setting-block">
-                      <h3>Accounts</h3>
-                      <div className="provider-list">
-                        {PROVIDERS.map((p) => {
-                          const connected = accounts.find((a) => a.provider === p.id);
-                          return (
-                            <Button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
-                              {connected?.avatar ? <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} /> : p.id === "discord" ? <DiscordIcon size={18} /> : <p.Icon size={18} />}
-                              <span className="prov-name">{p.label}</span>
-                              {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">Connect Account</span>}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="setting-block">
-                      <h3>Configuration Backup</h3><p className="setting-desc">Save all settings to a file.</p>
-                      <div className="setting-actions">
-                        <Button variant="default" onClick={exportConfig}><Download size={15} /> Export</Button>
-                        <label className="btn-ghost file-btn"><Upload size={15} /> Import<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
-                      </div>
-                    </div>
-                  </>
-                )}
-                {profileTab === "discord" && (
-                  <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-                    <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-                      <div>
-                        <h3 style={{ fontSize: 20, marginBottom: 8 }}>Discord Rich Presence</h3>
-                        <p style={{ color: 'var(--text-secondary)' }}>Show the currently playing song on your Discord status.{!isTauri && " (only on desktop app)"}</p>
-                      </div>
+            <div className="profile-tabs">
+              <div className={`ptab ${profileTab === "themes" ? "active" : ""}`} onClick={() => setProfileTab("themes")}><Palette size={16} /> Themes</div>
+              <div className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</div>
+              <div className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</div>
+              <div className={`ptab ${profileTab === "updates" ? "active" : ""}`} onClick={() => setProfileTab("updates")}><RefreshCw size={16} /> Updates</div>
+              <div className={`ptab ${profileTab === "about" ? "active" : ""}`} onClick={() => setProfileTab("about")}><Sparkles size={16} /> Stats</div>
+            </div>
 
-                      <div>
-                        {(() => {
-                          const dc = accounts.find(a => a.provider === "discord");
-                          if (dc) {
-                            return (
-                              <div className="discord-profile-card" style={{ marginBottom: 16, background: 'rgba(0,0,0,0.4)', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <div style={{ height: 100, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
-                                  <div style={{ position: 'absolute', bottom: -30, left: 16 }}>
-                                    <img src={dc.avatar || ''} alt="" style={{ width: 64, height: 64, borderRadius: '50%', border: '4px solid #111', objectFit: 'cover' }} />
-                                  </div>
-                                </div>
-                                <div style={{ padding: '36px 16px 16px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
-                                  </div>
-                                  <span style={{ fontSize: 13, color: '#aaa' }}>@{dc.username}</span>
+            <div className="profile-content">
+              {profileTab === "themes" && (
+                <>
+                  <div className="setting-block">
+                    <h3>Profile Banner</h3><p className="setting-desc">Upload a custom banner for your profile. (GIF, PNG, JPG)</p>
+                    <div className="setting-actions">
+                      <label className="btn-primary file-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <Upload size={15} /> Add banner
+                        <input type="file" accept="image/png, image/jpeg, image/gif, image/webp" hidden onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              const b64 = ev.target?.result as string;
+                              setProfile(p => ({ ...p, banner: b64 }));
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }} />
+                      </label>
+                      {profile.banner && (
+                        <Button variant="ghost" onClick={() => setProfile(p => ({ ...p, banner: null }))}>Remove</Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="setting-block">
+                    <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
+                    <div className="theme-grid">
+                      {[{ id: "system", label: "System", Icon: Monitor }, { id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }].map((tOpt) => (
+                        <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
+                          <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
+                          <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
+                          {theme === tOpt.id && <Check size={16} className="theme-check" />}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+              {profileTab === "accounts" && (
+                <>
+                  <div className="setting-block">
+                    <h3>Accounts</h3>
+                    <div className="provider-list">
+                      {PROVIDERS.map((p) => {
+                        const connected = accounts.find((a) => a.provider === p.id);
+                        return (
+                          <Button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
+                            {connected?.avatar ? <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} /> : p.id === "discord" ? <DiscordIcon size={18} /> : <p.Icon size={18} />}
+                            <span className="prov-name">{p.label}</span>
+                            {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">Connect Account</span>}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="setting-block">
+                    <h3>Configuration Backup</h3><p className="setting-desc">Save all settings to a file.</p>
+                    <div className="setting-actions">
+                      <Button variant="default" onClick={exportConfig}><Download size={15} /> Export</Button>
+                      <label className="btn-ghost file-btn"><Upload size={15} /> Import<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
+                    </div>
+                  </div>
+                </>
+              )}
+              {profileTab === "discord" && (
+                <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+                  <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                    <div>
+                      <h3 style={{ fontSize: 20, marginBottom: 8 }}>Discord Rich Presence</h3>
+                      <p style={{ color: 'var(--text-secondary)' }}>Show the currently playing song on your Discord status.{!isTauri && " (only on desktop app)"}</p>
+                    </div>
+
+                    <div>
+                      {(() => {
+                        const dc = accounts.find(a => a.provider === "discord");
+                        if (dc) {
+                          return (
+                            <div className="discord-profile-card" style={{ marginBottom: 16, background: 'rgba(0,0,0,0.4)', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                              <div style={{ height: 100, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
+                                <div style={{ position: 'absolute', bottom: -30, left: 16 }}>
+                                  <img src={dc.avatar || ''} alt="" style={{ width: 64, height: 64, borderRadius: '50%', border: '4px solid #111', objectFit: 'cover' }} />
                                 </div>
                               </div>
-                            );
-                          }
-                          return null;
-                        })()}
+                              <div style={{ padding: '36px 16px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
+                                </div>
+                                <span style={{ fontSize: 13, color: '#aaa' }}>@{dc.username}</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
-                        <div className="setting-actions" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                          {accounts.some(a => a.provider === "discord") ? (
-                            <>
-                              {rpcStatus === "on" ? 
-                                <Button variant="ghost" onClick={disconnectDiscord} style={{ background: 'rgba(88,101,242,0.2)', color: '#5865F2', border: '1px solid rgba(88,101,242,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Disconnect RPC</Button> 
-                                : 
-                                <Button variant="default" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Connect RPC</Button>
-                              }
-                              <Button variant="ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>Disconnect Account</Button>
-                            </>
-                          ) : (
-                            <Button variant="default" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ flex: '1 1 400px', background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)', borderRadius: 16, padding: 24, border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: 24 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Activity Content</h4>
-                        
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span>Enable Custom RPC</span>
-                          <Switch checked={rpcSettings.enableCustom} onCheckedChange={c => setRpcSettings({...rpcSettings, enableCustom: c})} />
-                        </div>
-
-                        {rpcSettings.enableCustom && (
+                      <div className="setting-actions" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {accounts.some(a => a.provider === "discord") ? (
                           <>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <label style={{ fontSize: 13 }}>Activity name</label>
-                              <CustomSelect value={rpcSettings.activityName} onChange={v => setRpcSettings({...rpcSettings, activityName: v as any})} options={[{label: "Artist name", value: "artist"}, {label: "Album name", value: "album"}, {label: "Song title", value: "song"}, {label: "Custom", value: "custom"}]} />
-                              {rpcSettings.activityName === "custom" && <input type="text" value={rpcSettings.activityNameCustom} onChange={e => setRpcSettings({...rpcSettings, activityNameCustom: e.target.value})} placeholder="Custom Activity Name" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <label style={{ fontSize: 13 }}>Detail</label>
-                              <CustomSelect value={rpcSettings.detail} onChange={v => setRpcSettings({...rpcSettings, detail: v as any})} options={[{label: "Artist name", value: "artist"}, {label: "Album name", value: "album"}, {label: "Song title", value: "song"}, {label: "Custom", value: "custom"}]} />
-                              {rpcSettings.detail === "custom" && <input type="text" value={rpcSettings.detailCustom} onChange={e => setRpcSettings({...rpcSettings, detailCustom: e.target.value})} placeholder="Custom Detail" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <label style={{ fontSize: 13 }}>State</label>
-                              <CustomSelect value={rpcSettings.stateStr} onChange={v => setRpcSettings({...rpcSettings, stateStr: v as any})} options={[{label: "Artist name", value: "artist"}, {label: "Album name", value: "album"}, {label: "Song title", value: "song"}, {label: "Custom", value: "custom"}]} />
-                              {rpcSettings.stateStr === "custom" && <input type="text" value={rpcSettings.stateCustom} onChange={e => setRpcSettings({...rpcSettings, stateCustom: e.target.value})} placeholder="Custom State" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <label style={{ fontSize: 13 }}>Activity type</label>
-                              <CustomSelect value={rpcSettings.type} onChange={v => setRpcSettings({...rpcSettings, type: parseInt(v)})} options={[{label: "Playing", value: 0}, {label: "Streaming", value: 1}, {label: "Listening", value: 2}, {label: "Watching", value: 3}, {label: "Competing", value: 5}]} />
-                            </div>
+                            {rpcStatus === "on" ?
+                              <Button variant="ghost" onClick={disconnectDiscord} style={{ background: 'rgba(88,101,242,0.2)', color: '#5865F2', border: '1px solid rgba(88,101,242,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Disconnect RPC</Button>
+                              :
+                              <Button variant="default" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Connect RPC</Button>
+                            }
+                            <Button variant="ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>Disconnect Account</Button>
                           </>
+                        ) : (
+                          <Button variant="default" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</Button>
                         )}
                       </div>
-
-                      {rpcSettings.enableCustom && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                          <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Image Option</h4>
-                          
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <label style={{ fontSize: 13 }}>Large image</label>
-                            <CustomSelect value={rpcSettings.largeImage} onChange={v => setRpcSettings({...rpcSettings, largeImage: v as any})} options={[{label: "Album Artwork", value: "album"}, {label: "Artist Artwork", value: "artist"}, {label: "App icon", value: "app"}, {label: "Dont show", value: "none"}, {label: "Custom URL", value: "custom"}]} />
-                            {rpcSettings.largeImage === "custom" && <input type="text" value={rpcSettings.largeImageCustom} onChange={e => setRpcSettings({...rpcSettings, largeImageCustom: e.target.value})} placeholder="Image URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <label style={{ fontSize: 13 }}>Small image</label>
-                            <CustomSelect value={rpcSettings.smallImage} onChange={v => setRpcSettings({...rpcSettings, smallImage: v as any})} options={[{label: "Album Artwork", value: "album"}, {label: "Artist Artwork", value: "artist"}, {label: "App icon", value: "app"}, {label: "Dont show", value: "none"}, {label: "Custom URL", value: "custom"}]} />
-                            {rpcSettings.smallImage === "custom" && <input type="text" value={rpcSettings.smallImageCustom} onChange={e => setRpcSettings({...rpcSettings, smallImageCustom: e.target.value})} placeholder="Image URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                          </div>
-                        </div>
-                      )}
-
-                      {rpcSettings.enableCustom && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                          <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Other</h4>
-                          
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span>Enable Button 1</span>
-                            <Switch checked={rpcSettings.enableButton1} onCheckedChange={c => setRpcSettings({...rpcSettings, enableButton1: c})} />
-                          </div>
-                          {rpcSettings.enableButton1 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                              <input type="text" value={rpcSettings.button1Label} onChange={e => setRpcSettings({...rpcSettings, button1Label: e.target.value})} placeholder="Button 1 Label (e.g. Listen on Music Venue)" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />
-                              <CustomSelect value={rpcSettings.button1Source} onChange={v => setRpcSettings({...rpcSettings, button1Source: v as any})} options={[{label: "Song URL", value: "song"}, {label: "Artist URL", value: "artist"}, {label: "Album URL", value: "album"}, {label: "Custom URL", value: "custom"}]} />
-                              {rpcSettings.button1Source === "custom" && <input type="text" value={rpcSettings.button1CustomUrl} onChange={e => setRpcSettings({...rpcSettings, button1CustomUrl: e.target.value})} placeholder="Custom URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span>Enable Button 2</span>
-                            <Switch checked={rpcSettings.enableButton2} onCheckedChange={c => setRpcSettings({...rpcSettings, enableButton2: c})} />
-                          </div>
-                          {rpcSettings.enableButton2 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                              <input type="text" value={rpcSettings.button2Label} onChange={e => setRpcSettings({...rpcSettings, button2Label: e.target.value})} placeholder="Button 2 Label" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />
-                              <CustomSelect value={rpcSettings.button2Source} onChange={v => setRpcSettings({...rpcSettings, button2Source: v as any})} options={[{label: "Song URL", value: "song"}, {label: "Artist URL", value: "artist"}, {label: "Album URL", value: "album"}, {label: "Custom URL", value: "custom"}]} />
-                              {rpcSettings.button2Source === "custom" && <input type="text" value={rpcSettings.button2CustomUrl} onChange={e => setRpcSettings({...rpcSettings, button2CustomUrl: e.target.value})} placeholder="Custom URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
-                )}
-                {profileTab === "updates" && (
-                  <div className="setting-block">
-                    <h3>Updates</h3>
-                    <div className="setting-actions">
-                      <Button variant="default" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} /> {isCheckingUpdate ? "Checking..." : "Check Updates"}</Button>
+
+                  <div style={{ flex: '1 1 400px', background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)', borderRadius: 16, padding: 24, border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Activity Content</h4>
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>Enable Custom RPC</span>
+                        <Switch checked={rpcSettings.enableCustom} onCheckedChange={c => setRpcSettings({ ...rpcSettings, enableCustom: c })} />
+                      </div>
+
+                      {rpcSettings.enableCustom && (
+                        <>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <label style={{ fontSize: 13 }}>Activity name</label>
+                            <CustomSelect value={rpcSettings.activityName} onChange={v => setRpcSettings({ ...rpcSettings, activityName: v as any })} options={[{ label: "Artist name", value: "artist" }, { label: "Album name", value: "album" }, { label: "Song title", value: "song" }, { label: "Custom", value: "custom" }]} />
+                            {rpcSettings.activityName === "custom" && <input type="text" value={rpcSettings.activityNameCustom} onChange={e => setRpcSettings({ ...rpcSettings, activityNameCustom: e.target.value })} placeholder="Custom Activity Name" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <label style={{ fontSize: 13 }}>Detail</label>
+                            <CustomSelect value={rpcSettings.detail} onChange={v => setRpcSettings({ ...rpcSettings, detail: v as any })} options={[{ label: "Artist name", value: "artist" }, { label: "Album name", value: "album" }, { label: "Song title", value: "song" }, { label: "Custom", value: "custom" }]} />
+                            {rpcSettings.detail === "custom" && <input type="text" value={rpcSettings.detailCustom} onChange={e => setRpcSettings({ ...rpcSettings, detailCustom: e.target.value })} placeholder="Custom Detail" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <label style={{ fontSize: 13 }}>State</label>
+                            <CustomSelect value={rpcSettings.stateStr} onChange={v => setRpcSettings({ ...rpcSettings, stateStr: v as any })} options={[{ label: "Artist name", value: "artist" }, { label: "Album name", value: "album" }, { label: "Song title", value: "song" }, { label: "Custom", value: "custom" }]} />
+                            {rpcSettings.stateStr === "custom" && <input type="text" value={rpcSettings.stateCustom} onChange={e => setRpcSettings({ ...rpcSettings, stateCustom: e.target.value })} placeholder="Custom State" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <label style={{ fontSize: 13 }}>Activity type</label>
+                            <CustomSelect value={rpcSettings.type} onChange={v => setRpcSettings({ ...rpcSettings, type: parseInt(v) })} options={[{ label: "Playing", value: 0 }, { label: "Streaming", value: 1 }, { label: "Listening", value: 2 }, { label: "Watching", value: 3 }, { label: "Competing", value: 5 }]} />
+                          </div>
+                        </>
+                      )}
                     </div>
-                    {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
+
+                    {rpcSettings.enableCustom && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Image Option</h4>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <label style={{ fontSize: 13 }}>Large image</label>
+                          <CustomSelect value={rpcSettings.largeImage} onChange={v => setRpcSettings({ ...rpcSettings, largeImage: v as any })} options={[{ label: "Album Artwork", value: "album" }, { label: "Artist Artwork", value: "artist" }, { label: "App icon", value: "app" }, { label: "Dont show", value: "none" }, { label: "Custom URL", value: "custom" }]} />
+                          {rpcSettings.largeImage === "custom" && <input type="text" value={rpcSettings.largeImageCustom} onChange={e => setRpcSettings({ ...rpcSettings, largeImageCustom: e.target.value })} placeholder="Image URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <label style={{ fontSize: 13 }}>Small image</label>
+                          <CustomSelect value={rpcSettings.smallImage} onChange={v => setRpcSettings({ ...rpcSettings, smallImage: v as any })} options={[{ label: "Album Artwork", value: "album" }, { label: "Artist Artwork", value: "artist" }, { label: "App icon", value: "app" }, { label: "Dont show", value: "none" }, { label: "Custom URL", value: "custom" }]} />
+                          {rpcSettings.smallImage === "custom" && <input type="text" value={rpcSettings.smallImageCustom} onChange={e => setRpcSettings({ ...rpcSettings, smallImageCustom: e.target.value })} placeholder="Image URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                        </div>
+                      </div>
+                    )}
+
+                    {rpcSettings.enableCustom && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Other</h4>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>Enable Button 1</span>
+                          <Switch checked={rpcSettings.enableButton1} onCheckedChange={c => setRpcSettings({ ...rpcSettings, enableButton1: c })} />
+                        </div>
+                        {rpcSettings.enableButton1 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                            <input type="text" value={rpcSettings.button1Label} onChange={e => setRpcSettings({ ...rpcSettings, button1Label: e.target.value })} placeholder="Button 1 Label (e.g. Listen on Music Venue)" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />
+                            <CustomSelect value={rpcSettings.button1Source} onChange={v => setRpcSettings({ ...rpcSettings, button1Source: v as any })} options={[{ label: "Song URL", value: "song" }, { label: "Artist URL", value: "artist" }, { label: "Album URL", value: "album" }, { label: "Custom URL", value: "custom" }]} />
+                            {rpcSettings.button1Source === "custom" && <input type="text" value={rpcSettings.button1CustomUrl} onChange={e => setRpcSettings({ ...rpcSettings, button1CustomUrl: e.target.value })} placeholder="Custom URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>Enable Button 2</span>
+                          <Switch checked={rpcSettings.enableButton2} onCheckedChange={c => setRpcSettings({ ...rpcSettings, enableButton2: c })} />
+                        </div>
+                        {rpcSettings.enableButton2 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                            <input type="text" value={rpcSettings.button2Label} onChange={e => setRpcSettings({ ...rpcSettings, button2Label: e.target.value })} placeholder="Button 2 Label" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />
+                            <CustomSelect value={rpcSettings.button2Source} onChange={v => setRpcSettings({ ...rpcSettings, button2Source: v as any })} options={[{ label: "Song URL", value: "song" }, { label: "Artist URL", value: "artist" }, { label: "Album URL", value: "album" }, { label: "Custom URL", value: "custom" }]} />
+                            {rpcSettings.button2Source === "custom" && <input type="text" value={rpcSettings.button2CustomUrl} onChange={e => setRpcSettings({ ...rpcSettings, button2CustomUrl: e.target.value })} placeholder="Custom URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-              </motion.div>
-            </AnimatePresence>
+                </div>
+              )}
+              {profileTab === "updates" && (
+                <div className="setting-block">
+                  <h3>Updates</h3>
+                  <div className="setting-actions">
+                    <Button variant="default" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} /> {isCheckingUpdate ? "Checking..." : "Check Updates"}</Button>
+                  </div>
+                  {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
+                </div>
+              )}
+              {profileTab === "about" && (
+                <div className="settings-card">
+                  <h2>Your Listening Stats</h2>
+                  <p className="settings-desc">Your most played tracks and artists based on your listening history.</p>
+
+                  <div className="stats-dashboard">
+                    <div className="stats-card" style={{ alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+                      <h3>Top Track</h3>
+                      {(() => {
+                        const sortedTracks = Object.values(history || {}).sort((a, b) => b.count - a.count);
+                        const topTrack = sortedTracks[0];
+                        const totalPlays = sortedTracks.reduce((sum, t) => sum + t.count, 0) || 1;
+                        if (!topTrack) return <p>No listening history yet.</p>;
+                        const pct = (topTrack.count / totalPlays) * 100;
+                        const dasharray = `${(pct / 100) * 251.2} 251.2`;
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                            <div style={{ position: 'relative', width: 200, height: 200 }}>
+                              <svg viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
+                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="8" />
+                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="var(--accent)" strokeWidth="8" strokeDasharray={dasharray} strokeDashoffset="0" strokeLinecap="round" />
+                              </svg>
+                              <img src={topTrack.artwork} alt="" style={{ position: 'absolute', top: 12, left: 12, width: 176, height: 176, borderRadius: '50%', objectFit: 'cover' }} />
+                            </div>
+                            <div style={{ textAlign: 'center' }}>
+                              <h4 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{topTrack.title}</h4>
+                              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, margin: '4px 0 0 0' }}>{topTrack.artist}</p>
+                            </div>
+                            <div style={{ marginTop: 8, background: 'rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: 20 }}>
+                              <span style={{ fontWeight: 600 }}>{topTrack.count}</span> <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>plays ({Math.round(pct)}% of total)</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="stats-card">
+                      <h3>Top Artists Graph</h3>
+                      {(() => {
+                        const rawArtistScores = Object.values(history || {}).reduce((acc, h) => {
+                          acc[h.artist] = (acc[h.artist] || 0) + h.count;
+                          return acc;
+                        }, {} as Record<string, number>);
+                        const sortedArtists = Object.entries(rawArtistScores).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                        if (!sortedArtists.length) return <p>No listening history yet.</p>;
+                        const maxScore = sortedArtists[0][1];
+                        return sortedArtists.map(([artist, score], i) => {
+                          const pct = Math.max(5, (score / maxScore) * 100);
+                          return (
+                            <div key={artist} className="stat-row" onDoubleClick={() => { setSearchQuery(artist); runSearch(artist); }}>
+                              <div className="stat-rank">#{i + 1}</div>
+                              <div className="stat-info">
+                                <div className="stat-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '250px' }}>{artist}</div>
+                                <div className="stat-count">{score} plays</div>
+                                <div className="stat-bar-container">
+                                  <motion.div className="stat-bar" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1, ease: "easeOut" }} />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>
@@ -2165,7 +2371,7 @@ export default function App() {
                   <span style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600 }}>{updateProgress}%</span>
                 </div>
                 <div style={{ width: "100%", height: 6, background: "rgba(255,255,255,0.1)", borderRadius: 4, overflow: "hidden" }}>
-                  <motion.div 
+                  <motion.div
                     style={{ height: "100%", background: "var(--accent)", borderRadius: 4 }}
                     animate={{ width: `${updateProgress}%` }}
                     transition={{ type: "tween", duration: 0.2 }}
@@ -2207,43 +2413,43 @@ export default function App() {
               <div className="np-lyrics" ref={lyricsContainerRef}>
                 {lyricsLoading ? <p className="lyric-status">Memuat lirik...</p> : lyrics?.synced.length ? (
                   <>
-                  <div className="lyric-sync-bar">
-                    <button
-                      className={`lyric-sync-btn ${lyricSync ? "on" : ""}`}
-                      onClick={() => setLyricSync((s) => !s)}
-                      title={lyricSync ? "Auto-scroll: ON — click to disable" : "Auto-scroll: OFF — click to enable"}
-                    >
-                      <RefreshCw size={13} className={lyricSync ? "spin" : ""} />
-                      {lyricSync ? "Auto-scroll on" : "Auto-scroll off"}
-                    </button>
-                  </div>
-                  <div className="lyric-lines">
-                    {lyrics.synced.map((line, i) => {
-                      const active = i === activeLyric;
-                      const past = i < activeLyric;
-                      return (
-                        <div
-                          key={i}
-                          className={`blyrics--line ${active ? "blyrics--active" : ""} ${past ? "blyrics--past" : ""}`}
-                          onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}
-                        >
-                          <span className="blyrics-line-main">
-                            {line.parts.map((p, j) => (
-                              <span key={`${i}-${j}`} className="blyrics-word-group">
-                                <span
-                                  className={`blyrics--word${active && prefersReduced ? " blyrics--reduced-active" : ""}`}
-                                  data-key={`L${i}W${j}`}
-                                  data-time={p.t.toFixed(3)}
-                                  data-duration={p.d.toFixed(3)}
-                                  data-content={p.text}
-                                >{p.text}</span>{" "}
-                              </span>
-                            ))}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                    <div className="lyric-sync-bar">
+                      <button
+                        className={`lyric-sync-btn ${lyricSync ? "on" : ""}`}
+                        onClick={() => setLyricSync((s) => !s)}
+                        title={lyricSync ? "Auto-scroll: ON — click to disable" : "Auto-scroll: OFF — click to enable"}
+                      >
+                        <RefreshCw size={13} className={lyricSync ? "spin" : ""} />
+                        {lyricSync ? "Auto-scroll on" : "Auto-scroll off"}
+                      </button>
+                    </div>
+                    <div className="lyric-lines">
+                      {lyrics.synced.map((line, i) => {
+                        const active = i === activeLyric;
+                        const past = i < activeLyric;
+                        return (
+                          <div
+                            key={i}
+                            className={`blyrics--line ${active ? "blyrics--active" : ""} ${past ? "blyrics--past" : ""}`}
+                            onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}
+                          >
+                            <span className="blyrics-line-main">
+                              {line.parts.map((p, j) => (
+                                <span key={`${i}-${j}`} className="blyrics-word-group">
+                                  <span
+                                    className={`blyrics--word${active && prefersReduced ? " blyrics--reduced-active" : ""}`}
+                                    data-key={`L${i}W${j}`}
+                                    data-time={p.t.toFixed(3)}
+                                    data-duration={p.d.toFixed(3)}
+                                    data-content={p.text}
+                                  >{p.text}</span>{" "}
+                                </span>
+                              ))}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </>
                 ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div> : <p className="lyric-status">Lyrics are not available for this song.</p>}
               </div>
@@ -2291,11 +2497,35 @@ export default function App() {
 
         <div className="player-extras">
           <CtrlButton label="Lyrics" className={`btn-icon sm ${nowPlayingOpen ? "on" : ""}`} onClick={() => currentTrack && setNowPlayingOpen(true)} title="Lyrics"><Mic2 size={18} /></CtrlButton>
-          <CtrlButton label="Queue" className="btn-icon sm" onClick={() => setShowQueue(true)} title="Queue"><ListMusic size={18} /></CtrlButton>
+          <div className="relative" style={{ position: 'relative' }}>
+            <CtrlButton label="Equalizer" className={`btn-icon sm ${showEQ ? "on" : ""}`} onClick={() => setShowEQ(!showEQ)} title="Equalizer"><SlidersHorizontal size={18} /></CtrlButton>
+          </div>
           <CtrlButton label="Mute" className="btn-icon sm" onClick={() => setIsMuted((m) => !m)} title="Mute"><VolIcon size={18} /></CtrlButton>
           <Slider value={[isMuted ? 0 : volume * 100]} max={100} step={1} onValueChange={(val) => { setVolume(val[0] / 100); setIsMuted(false); }} className="w-24 cursor-pointer" />
         </div>
       </footer>
+
+      <AnimatePresence>
+        {showEQ && (
+          <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }} className="eq-popover glass" onClick={(e) => e.stopPropagation()} style={{ position: 'fixed', transformOrigin: 'bottom right', bottom: '110px', right: '30px', zIndex: 9999, background: 'rgba(25, 25, 25, 0.45)', backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.15)', padding: '24px', borderRadius: '24px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', width: 320 }}>
+            <div className="eq-header" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+              <span style={{ fontWeight: 600, fontSize: '15px' }}>Equalizer</span>
+              <div style={{ flex: 1 }}>
+                <CustomSelect value={activeEqPreset} onChange={(v) => { setActiveEqPreset(v); setEqGains(eqPresets[v] || eqPresets["Flat"]); }} options={Object.keys(eqPresets).map(k => ({ label: k, value: k }))} />
+              </div>
+            </div>
+            <div className="eq-sliders" style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '0 16px' }}>
+              {eqGains.map((gain, i) => (
+                <div key={i} className="eq-band" style={{ background: 'rgba(255, 255, 255, 0.08)', borderRadius: '24px', padding: '12px 8px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flex: '1 1 0', minWidth: 0, flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                  <EqPctLabel gain={gain} />
+                  <Slider orientation="vertical" value={[gain]} min={-12} max={12} step={1} onValueChange={(val) => { const newGains = [...eqGains]; newGains[i] = val[0]; setEqGains(newGains); setActiveEqPreset("Custom"); }} className="h-28 cursor-pointer" />
+                  <span className="eq-freq" style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>{["60", "230", "910", "3.6k", "14k"][i]}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {isPlaylistDialogOpen && (
         <div className="modal-overlay" onClick={() => setIsPlaylistDialogOpen(false)}>
@@ -2387,7 +2617,7 @@ export default function App() {
           <div className="modal-content glass-card" onClick={e => e.stopPropagation()} style={{ width: 400, textAlign: 'center', padding: '2rem' }}>
             <h2 style={{ marginBottom: 10 }}>Login with Google</h2>
             <p style={{ color: '#aaa', marginBottom: 20 }}>Connect your YouTube Music account to get personalized recommendations.</p>
-            
+
             {loginData ? (
               <div>
                 <p style={{ marginBottom: 10 }}>Please go to:</p>
@@ -2411,7 +2641,7 @@ export default function App() {
             ) : (
               <div>Loading code...</div>
             )}
-            
+
             <button onClick={() => setShowLoginModal(false)} style={{ display: 'block', margin: '20px auto 0', background: 'transparent', color: '#aaa', border: 'none', cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
