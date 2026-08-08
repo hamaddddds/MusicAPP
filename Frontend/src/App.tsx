@@ -15,6 +15,7 @@ import {
 import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, Playlist, fetchPlaylistsFromGist, syncPlaylistsToGist } from "./lib/github";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import SplashIntro from "./components/SplashIntro";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -414,6 +415,7 @@ const defaultRpcSettings: RpcSettings = {
 };
 
 export default function App() {
+  const [showIntro, setShowIntro] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(() => load("mv:last-track", null));
   const [activeTab, setActiveTab] = useState("home");
@@ -1745,7 +1747,17 @@ export default function App() {
   };
 
   return (
-    <div className="app-container" onContextMenu={(e) => {
+    <>
+      <AnimatePresence>
+        {showIntro && <SplashIntro onComplete={() => setShowIntro(false)} />}
+      </AnimatePresence>
+      <motion.div 
+        className="app-container" 
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: showIntro ? 0 : 1, scale: showIntro ? 0.97 : 1 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        style={{ pointerEvents: showIntro ? 'none' : 'auto' }}
+        onContextMenu={(e) => {
       // Suppress the native browser right-click menu on the main window
       // (track/album cards handle their own custom menu via openCtx).
       const target = e.target as HTMLElement;
@@ -2685,7 +2697,8 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
+    </>
   );
 }
 
