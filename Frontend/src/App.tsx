@@ -9,7 +9,7 @@ import {
   X, Minus, Square, Maximize, Repeat, Repeat1, Shuffle,
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
-  Settings, Palette, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
+  Settings, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
   UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
 } from "lucide-react";
 import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, Playlist, fetchPlaylistsFromGist, syncPlaylistsToGist } from "./lib/github";
@@ -414,6 +414,24 @@ const defaultRpcSettings: RpcSettings = {
   button2CustomUrl: ""
 };
 
+const pageVariants = {
+  initial: (transition: string) => {
+    if (transition === "slide") return { opacity: 0, x: 20 };
+    if (transition === "zoom") return { opacity: 0, scale: 0.95 };
+    return { opacity: 0 };
+  },
+  in: {
+    opacity: 1,
+    x: 0,
+    scale: 1
+  },
+  out: (transition: string) => {
+    if (transition === "slide") return { opacity: 0, x: -20 };
+    if (transition === "zoom") return { opacity: 0, scale: 1.05 };
+    return { opacity: 0 };
+  }
+};
+
 export default function App() {
   const [showIntro, setShowIntro] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -457,7 +475,8 @@ export default function App() {
   const [region, setRegion] = useState<Region | null>(() => load("mv:region", null));
 
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
-  const [profileTab, setProfileTab] = useState("appearance");
+  const [pageTransition, setPageTransition] = useState<string>(() => load("mv:page-transition", "fade"));
+  const [profileTab, setProfileTab] = useState("general");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null; access_token?: string }[]>(() => load("mv:accounts", []));
   const [subscribedArtists, setSubscribedArtists] = useState<SubscribedArtist[]>(() => load("mv:subscribedArtists", []));
@@ -604,6 +623,10 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("mv:theme", JSON.stringify(theme));
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem("mv:page-transition", JSON.stringify(pageTransition));
+  }, [pageTransition]);
 
   // "System" theme follows the OS color scheme.
   useEffect(() => {
@@ -1813,7 +1836,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <Button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
             {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" /> : <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
-            <div className="profile-brief"><span className="profile-name">{profile.name || "Guest"}</span><span className="profile-sub">Profile & Settings</span></div>
+            <div className="profile-brief"><span className="profile-name">{profile.name || "Guest"}</span><span className="profile-sub">Settings</span></div>
             <Settings size={16} />
           </Button>
         </div>
@@ -1855,8 +1878,9 @@ export default function App() {
             )}
           </div>
         </header>
+        <AnimatePresence mode="wait" custom={pageTransition}>
         {activeTab === "home" && (
-          <div className="page">
+          <motion.div key="home" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
             {quickPicks.length > 0 && (
               <section className="shelf">
                 <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}{region?.city ? ` ... ${region.city}` : ""}</p></div></div>
@@ -1868,15 +1892,15 @@ export default function App() {
               <div className="shelf-head"><div><h2>Liked Music <ChevronRight size={20} /></h2><p>Songs you like</p></div></div>
               {favorites.length ? <div className="track-grid">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state"><Heart size={34} /><p>No liked music yet</p><span>Press the ♥ icon on a song to save it here.</span></div>}
             </section>
-          </div>
+          </motion.div>
         )}
         {activeTab === "favorites" && (
-          <div className="page">
+          <motion.div key="favorites" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
             {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music is empty</p><span>All songs you mark with ♥ will appear here.</span></div>}
-          </div>
+          </motion.div>
         )}
         {activeTab === "playlistDetail" && activePlaylistId && (
-          <div className="page">
+          <motion.div key="playlistDetail" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
             {(() => {
               const pl = playlists.find(p => p.id === activePlaylistId);
               if (!pl) return <div className="empty-state big"><p>Playlist not found</p></div>;
@@ -1928,10 +1952,10 @@ export default function App() {
                 </div>
               );
             })()}
-          </div>
+          </motion.div>
         )}
         {activeTab === "artist" && (
-          <div className="page">
+          <motion.div key="artist" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
             {artistLoading ? <div className="artist-page-head"><div className="artist-avatar sk-avatar" /><div className="artist-page-meta"><div className="sk-line" /><div className="sk-line short" /></div></div> : artistView?.artist ? (
               <>
                 <div className="artist-page-head">
@@ -1955,10 +1979,10 @@ export default function App() {
                 </section>
               </>
             ) : <div className="empty-state big"><User size={44} /><p>Artist not found</p><span>Try searching for another artist.</span></div>}
-          </div>
+          </motion.div>
         )}
         {(activeTab === "search" || activeTab === "radio") && (
-          <div className="page">
+          <motion.div key={activeTab} custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
             {loading ? (
               <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div>
             ) : searchTopResult || searchSongsResults.length || searchVideos.length || searchAlbums.length ? (
@@ -1995,10 +2019,10 @@ export default function App() {
                 {searchVideos.length > 0 && <section className="search-section"><div className="section-head"><h2>Videos</h2><span className="section-badge muted">Live, Covers &amp; Remixes</span></div><div className="grid-container">{searchVideos.map((t) => renderAlbumCard(t, searchVideos))}</div></section>}
               </>
             ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Search for your favorite songs"}</p><span>Type an artist name or song title in the search box.</span></div>}
-          </div>
+          </motion.div>
         )}
         {activeTab === "shelf" && activeShelf && (
-          <div className="page">
+          <motion.div key="shelf" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
             <div className="section-head" style={{ marginTop: 20 }}>
               <h2>{homeShelvesState.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
               <span className="section-badge muted">{homeShelvesState.find(s => s.id === activeShelf)?.subtitle}</span>
@@ -2006,10 +2030,10 @@ export default function App() {
             <div className="grid-container">
               {shelves[activeShelf]?.map(t => renderAlbumCard(t, shelves[activeShelf]))}
             </div>
-          </div>
-        )}
+            </motion.div>
+          )}
         {activeTab === "profile" && (
-          <div className="page profile-page">
+          <motion.div key="profile" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page profile-page">
             <div className="profile-hero" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
               {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
               <div className="profile-hero-info">
@@ -2018,18 +2042,42 @@ export default function App() {
                 <p className="glass-text">Account connected : {accounts.length ? accounts.map(a => a.provider.charAt(0).toUpperCase() + a.provider.slice(1)).join(" - ") : "None"}</p>
                 <p className="glass-text">Theme : {theme.charAt(0).toUpperCase() + theme.slice(1)}</p>
               </div>
-            </div>
-            <div className="profile-tabs">
-              <div className={`ptab ${profileTab === "themes" ? "active" : ""}`} onClick={() => setProfileTab("themes")}><Palette size={16} /> Themes</div>
-              <div className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</div>
-              <div className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</div>
-              <div className={`ptab ${profileTab === "updates" ? "active" : ""}`} onClick={() => setProfileTab("updates")}><RefreshCw size={16} /> Updates</div>
-              <div className={`ptab ${profileTab === "about" ? "active" : ""}`} onClick={() => setProfileTab("about")}><Sparkles size={16} /> Stats</div>
+              <div className="profile-tabs">
+                <div className={`ptab ${profileTab === "general" ? "active" : ""}`} onClick={() => setProfileTab("general")}><Settings size={16} /> General</div>
+                <div className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</div>
+                <div className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</div>
+                <div className={`ptab ${profileTab === "about" ? "active" : ""}`} onClick={() => setProfileTab("about")}><Sparkles size={16} /> Stats</div>
+              </div>
             </div>
 
             <div className="profile-content">
-              {profileTab === "themes" && (
-                <>
+              {profileTab === "general" && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+                  <div className="setting-block">
+                    <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
+                    <div className="theme-grid">
+                      {[{ id: "system", label: "System", Icon: Monitor }, { id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }].map((tOpt) => (
+                        <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
+                          <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
+                          <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
+                          {theme === tOpt.id && <Check size={16} className="theme-check" />}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="setting-block">
+                    <h3>Page Transition</h3><p className="setting-desc">Animation when switching tabs.</p>
+                    <div className="theme-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                      {[{ id: "fade", label: "Fade" }, { id: "slide", label: "Slide" }, { id: "zoom", label: "Zoom" }].map((tOpt) => (
+                        <Button key={tOpt.id} className={`theme-card ${pageTransition === tOpt.id ? "active" : ""}`} onClick={() => setPageTransition(tOpt.id)} style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div className="theme-card-label" style={{ marginTop: 0 }}>{tOpt.label}</div>
+                          {pageTransition === tOpt.id && <Check size={16} className="theme-check" />}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="setting-block">
                     <h3>Profile Banner</h3><p className="setting-desc">Upload a custom banner for your profile. (GIF, PNG, JPG)</p>
                     <div className="setting-actions">
@@ -2052,19 +2100,15 @@ export default function App() {
                       )}
                     </div>
                   </div>
+
                   <div className="setting-block">
-                    <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
-                    <div className="theme-grid">
-                      {[{ id: "system", label: "System", Icon: Monitor }, { id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }].map((tOpt) => (
-                        <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
-                          <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
-                          <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
-                          {theme === tOpt.id && <Check size={16} className="theme-check" />}
-                        </Button>
-                      ))}
+                    <h3>Updates</h3><p className="setting-desc">Check for application updates.</p>
+                    <div className="setting-actions">
+                      <Button variant="default" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} /> {isCheckingUpdate ? "Checking..." : "Check Updates"}</Button>
                     </div>
+                    {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
                   </div>
-                </>
+                </div>
               )}
               {profileTab === "accounts" && (
                 <>
@@ -2227,15 +2271,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {profileTab === "updates" && (
-                <div className="setting-block">
-                  <h3>Updates</h3>
-                  <div className="setting-actions">
-                    <Button variant="default" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} /> {isCheckingUpdate ? "Checking..." : "Check Updates"}</Button>
-                  </div>
-                  {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
-                </div>
-              )}
+
               {profileTab === "about" && (
                 <div className="settings-card">
                   <h2>Your Listening Stats</h2>
@@ -2303,8 +2339,9 @@ export default function App() {
                 </div>
               )}
             </div>
-          </div>
+          </motion.div>
         )}
+          </AnimatePresence>
       </main>
       {ctxMenu && (
         <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={(e) => e.stopPropagation()}>
