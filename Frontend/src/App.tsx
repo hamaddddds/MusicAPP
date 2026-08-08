@@ -1829,11 +1829,6 @@ export default function App() {
             </div>
           </div>
           <div className="header-right">
-            <div className="header-now-playing glass" style={{ display: currentTrack ? 'flex' : 'none', alignItems: 'center', gap: 12, padding: '4px 16px 4px 4px', borderRadius: 24, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(24px)' }}>
-              <img src={currentTrack?.artwork || ""} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} alt="" />
-              <span style={{ fontSize: 13, fontWeight: 600, maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack?.title}</span>
-              <canvas ref={visualizerCanvasRef} width={120} height={16} className="visualizer-canvas" style={{ display: 'block', marginLeft: 4 }} />
-            </div>
             {isAuth ? (
               <Button className="win-btn" onClick={handleLogout} title="Logout"><User size={16} style={{ color: 'var(--accent)' }} /></Button>
             ) : (
@@ -2645,6 +2640,51 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <AnimatePresence>
+        {isPlaying && currentTrack && (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="glass"
+            onClick={() => setNowPlayingOpen(true)}
+            style={{
+              position: 'fixed',
+              top: isTauri ? '60px' : '24px',
+              right: '24px',
+              zIndex: 9999,
+              background: 'rgba(25, 25, 25, 0.45)',
+              backdropFilter: 'blur(40px)',
+              WebkitBackdropFilter: 'blur(40px)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              padding: '12px 16px',
+              borderRadius: '20px',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            <img src={currentTrack.artwork || ""} style={{ width: 44, height: 44, borderRadius: '12px', objectFit: 'cover', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} alt="" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'rgba(255,255,255,0.9)' }}>
+                  {currentTrack.title}
+                </span>
+                <canvas ref={visualizerCanvasRef} width={80} height={16} className="visualizer-canvas" style={{ display: 'block', opacity: 0.8 }} />
+              </div>
+              {orderRef.current[posRef.current + 1] && (
+                <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.5)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Next: {orderRef.current[posRef.current + 1].title}
+                </span>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
