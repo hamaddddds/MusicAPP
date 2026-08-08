@@ -11,7 +11,7 @@ export default function SplashIntro({ onComplete }: SplashIntroProps) {
   const backendReady = useRef(false);
 
   useEffect(() => {
-    let t1: NodeJS.Timeout, t2: NodeJS.Timeout, statusT1: NodeJS.Timeout, statusT2: NodeJS.Timeout;
+    let t1: ReturnType<typeof setTimeout>, t2: ReturnType<typeof setTimeout>, statusT1: ReturnType<typeof setTimeout>, statusT2: ReturnType<typeof setTimeout>;
     
     // Phase 0 -> 1: MV appears from bottom (0.5s)
     t1 = setTimeout(() => setPhase(1), 500);
