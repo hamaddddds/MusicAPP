@@ -38,7 +38,7 @@
       }
     },
     "externalBin": [
-      "binaries/yt-dlp"
+      "binaries/yt-dlp", "binaries/backend"
     ],
     "icon": [
       "icons/32x32.png",

@@ -240,6 +240,13 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        .setup(|app| {
+            // Start Python backend sidecar automatically in the background
+            if let Ok(sidecar) = app.shell().sidecar("backend") {
+                let _ = sidecar.spawn();
+            }
+            Ok(())
+        })
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
