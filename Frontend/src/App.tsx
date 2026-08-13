@@ -16,6 +16,7 @@ import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, 
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import SplashIntro from "./components/SplashIntro";
+import ShareLyricModal from "./components/ShareLyricModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -453,6 +454,11 @@ export default function App() {
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [loginData, setLoginData] = useState<{ user_code: string, verification_url: string, device_code: string } | null>(null);
+
+  // Hover and Share Lyric states
+  const [isHoveringArt, setIsHoveringArt] = useState(false);
+  const [shareLyricOpen, setShareLyricOpen] = useState(false);
+  
   const [isPolling, setIsPolling] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -2438,7 +2444,22 @@ export default function App() {
             <Button className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></Button>
             <div className="np-body">
               <div className="np-left">
-                <img src={currentTrack.artwork} alt="" className="np-art" />
+                <div className="np-art-wrapper" onMouseEnter={() => setIsHoveringArt(true)} onMouseLeave={() => setIsHoveringArt(false)}>
+                  <img src={currentTrack.artwork} alt="" className="np-art" />
+                  <AnimatePresence>
+                    {isHoveringArt && (
+                      <motion.div className="np-art-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        <div className="np-overlay-top">
+                          <Button className="overlay-btn" onClick={() => setShareLyricOpen(true)}><Share2 size={24} /></Button>
+                          <Button className="overlay-btn" onClick={() => setShowQueue(!showQueue)}><ListMusic size={24} /></Button>
+                        </div>
+                        <motion.button className="overlay-btn heart-btn" onClick={() => toggleFavorite(currentTrack)} whileTap={{ scale: 0.8 }} animate={{ scale: isFavorite(currentTrack.videoId) ? [1, 1.2, 1] : 1 }}>
+                          <Heart size={48} fill={isFavorite(currentTrack.videoId) ? "var(--primary)" : "none"} color={isFavorite(currentTrack.videoId) ? "var(--primary)" : "currentColor"} />
+                        </motion.button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
                 <div className="np-meta"><h2>{currentTrack.artist}</h2><p>{currentTrack.title}</p></div>
                 <div className="np-progress">
                   <span>{formatTime(currentTime)}</span>
@@ -2732,6 +2753,16 @@ export default function App() {
               )}
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {shareLyricOpen && (
+          <ShareLyricModal
+            isOpen={shareLyricOpen}
+            onClose={() => setShareLyricOpen(false)}
+            track={currentTrack}
+            lyrics={lyrics}
+          />
         )}
       </AnimatePresence>
     </motion.div>
