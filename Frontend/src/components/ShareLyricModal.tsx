@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { toPng } from 'html-to-image';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
 import { X, Download, Image as ImageIcon, Check } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -38,13 +40,34 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
       const dataUrl = await toPng(cardRef.current, { cacheBust: true, pixelRatio: 3, style: { transform: 'scale(1)' } });
       
       setExportStatus('downloading');
-      // Use native HTML5 download which triggers OS Save As dialog natively
-      const link = document.createElement('a');
-      link.download = `${track.artist} - ${track.title} Lyric.png`;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      
+      // @ts-ignore - Check if running in Tauri
+      if (window.__TAURI_INTERNALS__) {
+        const b64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
+        const binaryStr = atob(b64Data);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        const filePath = await save({
+          filters: [{ name: 'Image', extensions: ['png'] }],
+          defaultPath: `${track.title} - Share Lyric.png`
+        });
+
+        if (filePath) {
+          await writeFile(filePath, bytes);
+        }
+      } else {
+        // Use native HTML5 download which triggers OS Save As dialog natively in Web
+        const link = document.createElement('a');
+        link.download = `${track.artist} - ${track.title} Lyric.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
 
       setExportStatus('done');
       setTimeout(() => {
