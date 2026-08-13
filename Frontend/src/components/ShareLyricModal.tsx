@@ -3,8 +3,14 @@ import { motion } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
-import { X, Download, Image as ImageIcon, Check } from 'lucide-react';
+import { X, Download, Image as ImageIcon, Check, Bold, Italic, Underline } from 'lucide-react';
 import { Button } from './ui/button';
+
+interface LineStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+}
 
 interface ShareLyricModalProps {
   isOpen: boolean;
@@ -18,6 +24,8 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
   const [selectedLines, setSelectedLines] = useState<number[]>([]);
   const cardRef = useRef<HTMLDivElement>(null);
   const [exportStatus, setExportStatus] = useState<'idle' | 'rendering' | 'downloading' | 'done'>('idle');
+  const [customText, setCustomText] = useState("");
+  const [lineStyles, setLineStyles] = useState<Record<number, LineStyle>>({});
 
   const lines = lyrics?.synced 
     ? lyrics.synced.map((s: any) => s.text) 
@@ -29,6 +37,16 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
       if (prev.length >= 6) return prev; 
       return [...prev, index].sort((a, b) => a - b);
     });
+  };
+
+  const toggleStyle = (index: number, styleType: keyof LineStyle) => {
+    setLineStyles(prev => ({
+      ...prev,
+      [index]: {
+        ...prev[index],
+        [styleType]: !prev[index]?.[styleType]
+      }
+    }));
   };
 
   const handleDownload = async () => {
@@ -103,17 +121,34 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
                   </div>
                   
                   <div className="slm-card-lyrics">
-                    {selectedLines.length > 0 ? (
-                      selectedLines.map(idx => (
-                        <p key={idx} className="slm-lyric-line">{lines[idx]}</p>
-                      ))
-                    ) : (
+                  {selectedLines.length > 0 ? (
+                    selectedLines.map(idx => {
+                      const st = lineStyles[idx] || {};
+                      return (
+                        <p key={idx} className="slm-lyric-line" style={{
+                          fontWeight: st.bold ? 900 : 700,
+                          fontStyle: st.italic ? 'italic' : 'normal',
+                          textDecoration: st.underline ? 'underline' : 'none'
+                        }}>
+                          {lines[idx]}
+                        </p>
+                      );
+                    })
+                  ) : (
                       <p className="slm-lyric-line placeholder">Select lyrics to share...</p>
                     )}
                   </div>
                 </div>
               </div>
               <div className="slm-card-footer">
+                <input 
+                  type="text" 
+                  className="slm-custom-text-input" 
+                  placeholder="Add custom text..." 
+                  maxLength={40} 
+                  value={customText} 
+                  onChange={e => setCustomText(e.target.value)} 
+                />
                 <span>MusicVenue</span>
               </div>
             </div>
@@ -131,12 +166,25 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
 
             <div className="slm-lyrics-list">
               <h4>Select Lyrics (Max 6)</h4>
-              <div className="slm-lines">
-                {lines.length > 0 ? lines.map((line: any, idx: number) => (
-                  <div key={idx} className={`slm-line-item ${selectedLines.includes(idx) ? 'selected' : ''}`} onClick={() => toggleLine(idx)}>
-                    {line}
-                  </div>
-                )) : <p className="muted">No lyrics available.</p>}
+              <div className="slm-lines glass-panel">
+                {lines.length > 0 ? lines.map((line: any, idx: number) => {
+                  const isSelected = selectedLines.includes(idx);
+                  const st = lineStyles[idx] || {};
+                  return (
+                    <div key={idx} className={`slm-line-item-wrapper ${isSelected ? 'selected' : ''}`}>
+                      <div className="slm-line-item" onClick={() => toggleLine(idx)}>
+                        {line}
+                      </div>
+                      {isSelected && (
+                        <div className="slm-line-toolbar">
+                          <button className={st.bold ? 'active' : ''} onClick={() => toggleStyle(idx, 'bold')}><Bold size={14}/></button>
+                          <button className={st.italic ? 'active' : ''} onClick={() => toggleStyle(idx, 'italic')}><Italic size={14}/></button>
+                          <button className={st.underline ? 'active' : ''} onClick={() => toggleStyle(idx, 'underline')}><Underline size={14}/></button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }) : <p className="muted">No lyrics available.</p>}
               </div>
             </div>
 
