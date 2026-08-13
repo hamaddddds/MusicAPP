@@ -1,9 +1,7 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { toPng } from 'html-to-image';
-import { save } from '@tauri-apps/plugin-dialog';
-import { writeFile } from '@tauri-apps/plugin-fs';
-import { X, Download, Image as ImageIcon } from 'lucide-react';
+import { X, Download, Image as ImageIcon, Check } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface ShareLyricModalProps {
@@ -17,7 +15,7 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
   const [theme, setTheme] = useState<'glass' | 'base' | 'cover'>('glass');
   const [selectedLines, setSelectedLines] = useState<number[]>([]);
   const cardRef = useRef<HTMLDivElement>(null);
-  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<'idle' | 'rendering' | 'downloading' | 'done'>('idle');
 
   const lines = lyrics?.synced 
     ? lyrics.synced.map((s: any) => s.text) 
@@ -33,29 +31,28 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
 
   const handleDownload = async () => {
     if (!cardRef.current || !track) return;
-    setIsExporting(true);
+    setExportStatus('rendering');
     try {
+      // Small delay to allow UI to update
+      await new Promise(r => setTimeout(r, 100));
       const dataUrl = await toPng(cardRef.current, { cacheBust: true, pixelRatio: 3, style: { transform: 'scale(1)' } });
-      const b64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
-      const binaryStr = atob(b64Data);
-      const len = binaryStr.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
+      
+      setExportStatus('downloading');
+      // Use native HTML5 download which triggers OS Save As dialog natively
+      const link = document.createElement('a');
+      link.download = `${track.artist} - ${track.title} Lyric.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
-      const filePath = await save({
-        filters: [{ name: 'Image', extensions: ['png'] }],
-        defaultPath: `${track.title} - Share Lyric.png`
-      });
-
-      if (filePath) {
-        await writeFile(filePath, bytes);
-      }
+      setExportStatus('done');
+      setTimeout(() => {
+        setExportStatus(prev => prev !== 'idle' ? 'idle' : prev);
+      }, 2000);
     } catch (error) {
       console.error("Error exporting image:", error);
-    } finally {
-      setIsExporting(false);
+      setExportStatus('idle');
     }
   };
 
@@ -120,9 +117,9 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
               </div>
             </div>
 
-            <Button className="slm-export-btn btn-primary" onClick={handleDownload} disabled={isExporting || selectedLines.length === 0}>
-              {isExporting ? <span className="spin"><ImageIcon size={18} /></span> : <Download size={18} />}
-              {isExporting ? 'Exporting...' : 'Save Image'}
+            <Button className="slm-export-btn" onClick={handleDownload} disabled={exportStatus !== 'idle' || selectedLines.length === 0}>
+              {exportStatus === 'rendering' || exportStatus === 'downloading' ? <span className="spin"><ImageIcon size={18} /></span> : exportStatus === 'done' ? <Check size={18} /> : <Download size={18} />}
+              {exportStatus === 'rendering' ? 'Rendering Image...' : exportStatus === 'downloading' ? 'Downloading...' : exportStatus === 'done' ? 'Done!' : 'Save Image'}
             </Button>
           </div>
         </div>
