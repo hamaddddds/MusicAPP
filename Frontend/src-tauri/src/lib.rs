@@ -233,6 +233,15 @@ fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
     Ok(port)
 }
 
+// ============================
+// FS HELPERS
+// ============================
+
+#[tauri::command]
+async fn save_image_to_disk(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     unsafe {
@@ -262,7 +271,8 @@ pub fn run() {
             connect_rpc,
             disconnect_rpc,
             set_rpc_activity,
-            start_oauth_server
+            start_oauth_server,
+            save_image_to_disk
         ])
         .on_window_event(|_window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } => {

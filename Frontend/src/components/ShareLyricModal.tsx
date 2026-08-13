@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { toPng } from 'html-to-image';
+import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
-import { writeFile } from '@tauri-apps/plugin-fs';
 import { X, Download, Image as ImageIcon, Check, Bold, Italic, Underline } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -75,7 +75,7 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
         });
 
         if (filePath) {
-          await writeFile(filePath, bytes);
+          await invoke('save_image_to_disk', { path: filePath, bytes: Array.from(bytes) });
         }
       } else {
         // Use native HTML5 download which triggers OS Save As dialog natively in Web
