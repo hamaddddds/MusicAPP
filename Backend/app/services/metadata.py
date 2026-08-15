@@ -20,6 +20,11 @@ from ytmusicapi import YTMusic
 
 from app.config import settings
 
+try:
+    import syncedlyrics
+except ImportError:
+    syncedlyrics = None
+
 _yt_instance: Optional[YTMusic] = None
 
 
@@ -191,13 +196,52 @@ def _group_parts_into_lines(tokens, timed_lines):
     return lines
 
 
-def get_lyrics_by_video_id(video_id: str):
-    """Normalized lyrics for a video: { error?, lines, plain, source }.
+def _parse_lrc(lrc_str: str):
+    """Parses LRC format into a lines list expected by frontend."""
+    lines = []
+    # Match [mm:ss.xx] text
+    pattern = re.compile(r"\[(\d+):(\d+\.\d+)\](.*)")
+    for line in lrc_str.split("\n"):
+        match = pattern.search(line)
+        if match:
+            m = int(match.group(1))
+            s = float(match.group(2))
+            text = match.group(3).strip()
+            if text:
+                t = m * 60 + s
+                lines.append({"t": round(t, 3), "end": 0, "text": text, "parts": []})
+    
+    # Calculate end times based on next line's start time
+    for i in range(len(lines) - 1):
+        lines[i]["end"] = lines[i+1]["t"]
+    if lines:
+        lines[-1]["end"] = lines[-1]["t"] + 5 # approximate last line length
+        
+    return lines
+
+
+def get_lyrics_by_video_id(video_id: str, title: str = None, artist: str = None):
+    """Normalized lyrics: { error?, lines, plain, source }.
 
     lines is a list of { t, text, parts: [{t,d,text}] }. parts carries word-level
     richsync when available; an empty parts list tells the frontend to synthesize
     per-word timings from the line.
     """
+    if syncedlyrics and title and artist:
+        try:
+            lrc = syncedlyrics.search(f"{title} {artist}")
+            if lrc:
+                parsed_lines = _parse_lrc(lrc)
+                if parsed_lines:
+                    return {
+                        "error": None,
+                        "lines": parsed_lines,
+                        "plain": "\n".join(l["text"] for l in parsed_lines),
+                        "source": "syncedlyrics"
+                    }
+        except Exception as e:
+            print(f"Syncedlyrics failed ({e}); falling back to ytmusicapi.")
+
     watch = get_yt().get_watch_playlist(videoId=video_id)
     lyrics_id = watch.get("lyrics")
     if not lyrics_id:

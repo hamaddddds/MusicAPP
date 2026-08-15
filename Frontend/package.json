@@ -27,6 +27,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "fast-average-color": "^9.5.2",
     "framer-motion": "^12.42.2",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.28.0",

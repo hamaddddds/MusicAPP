@@ -1475,7 +1475,7 @@ export default function App() {
     setLyrics(null); setLyricsLoading(true);
     (async () => {
       try {
-        const url = `${API_URL}/lyrics/${encodeURIComponent(currentTrack.videoId)}/auto`;
+        const url = `${API_URL}/lyrics/${encodeURIComponent(currentTrack.videoId)}/auto?title=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}`;
         const d = await (await fetch(url)).json();
         if (cancelled) return;
         setLyrics(d.error ? null : normalizeLyrics(d));
