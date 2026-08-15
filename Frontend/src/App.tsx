@@ -83,7 +83,7 @@ export interface RpcSettings {
 }
 
 const isTauri = "__TAURI_INTERNALS__" in window;
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const prefersReduced =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
