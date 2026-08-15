@@ -454,20 +454,7 @@ export default function App() {
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [loginData, setLoginData] = useState<{ user_code: string, verification_url: string, device_code: string } | null>(null);
-  const [healthData, setHealthData] = useState<{ status: string, uptime: number, logs: string[] } | null>(null);
 
-  useEffect(() => {
-    if (profileTab !== "system") return;
-    const int = setInterval(async () => {
-      try {
-        const res = await fetch(`${API_URL}/health`);
-        setHealthData(await res.json());
-      } catch (e: any) {
-        setHealthData({ status: "disconnected", uptime: 0, logs: [e.message] });
-      }
-    }, 2000);
-    return () => clearInterval(int);
-  }, [profileTab]);
 
   // Hover and Share Lyric states
   const [isHoveringArt, setIsHoveringArt] = useState(false);
@@ -497,6 +484,20 @@ export default function App() {
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [pageTransition, setPageTransition] = useState<string>(() => load("mv:page-transition", "fade"));
   const [profileTab, setProfileTab] = useState("general");
+  const [healthData, setHealthData] = useState<{ status: string, uptime: number, logs: string[] } | null>(null);
+
+  useEffect(() => {
+    if (profileTab !== "system") return;
+    const int = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/health`);
+        setHealthData(await res.json());
+      } catch (e: any) {
+        setHealthData({ status: "disconnected", uptime: 0, logs: [e.message] });
+      }
+    }, 2000);
+    return () => clearInterval(int);
+  }, [profileTab]);
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null; access_token?: string }[]>(() => load("mv:accounts", []));
   const [subscribedArtists, setSubscribedArtists] = useState<SubscribedArtist[]>(() => load("mv:subscribedArtists", []));
@@ -2062,12 +2063,13 @@ export default function App() {
                 <p className="glass-text">Account connected : {accounts.length ? accounts.map(a => a.provider.charAt(0).toUpperCase() + a.provider.slice(1)).join(" - ") : "None"}</p>
                 <p className="glass-text">Theme : {theme.charAt(0).toUpperCase() + theme.slice(1)}</p>
               </div>
-              <div className="profile-tabs">
-                <div className={`ptab ${profileTab === "general" ? "active" : ""}`} onClick={() => setProfileTab("general")}><Settings size={16} /> General</div>
-                <div className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</div>
-                <div className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</div>
-                <div className={`ptab ${profileTab === "system" ? "active" : ""}`} onClick={() => setProfileTab("system")}><Activity size={16} /> System</div>
-              </div>
+            </div>
+
+            <div className="profile-tabs">
+              <div className={`ptab ${profileTab === "general" ? "active" : ""}`} onClick={() => setProfileTab("general")}><Settings size={16} /> General</div>
+              <div className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</div>
+              <div className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</div>
+              <div className={`ptab ${profileTab === "system" ? "active" : ""}`} onClick={() => setProfileTab("system")}><Activity size={16} /> System</div>
             </div>
 
             <div className="profile-content">
