@@ -1794,7 +1794,7 @@ export default function App() {
         e.preventDefault();
       }
     }}>
-      <audio ref={audioRef} src={playerUrl || ""} crossOrigin="anonymous" onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onPause={() => setIsPlaying(false)} />
+      <audio ref={audioRef} src={playerUrl || ""} crossOrigin="anonymous" onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onPause={(e) => { if (e.currentTarget.paused) setIsPlaying(false); }} />
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
