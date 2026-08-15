@@ -4,6 +4,8 @@ from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks
 from pydantic import BaseModel
 import json
 import os
+import time
+import collections
 from ytmusicapi.auth.oauth.credentials import OAuthCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -22,6 +24,18 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+START_TIME = time.time()
+backend_logs = collections.deque(maxlen=100)
+
+def log_msg(msg: str):
+    ts = time.strftime("%H:%M:%S")
+    log_line = f"[{ts}] {msg}"
+    backend_logs.appendleft(log_line)
+    print(log_line)
+
+# --- Ensure we log startup ---
+log_msg("Backend Server Started")
 
 app.add_middleware(
     CORSMiddleware,
@@ -209,7 +223,10 @@ async def stream_audio(video_id: str, request: Request):
     )
 
     if status_code not in (200, 206):
+        log_msg(f"ERROR 502: Failed to stream {video_id}. Upstream status: {status_code}, headers: {upstream_headers}")
         raise HTTPException(status_code=502, detail="Upstream audio source unavailable")
+    else:
+        log_msg(f"Streaming {video_id} (Status: {status_code})")
 
     passthrough = {"content-type", "content-length", "content-range", "accept-ranges"}
     headers = {k: v for k, v in upstream_headers.items() if k.lower() in passthrough}
@@ -222,4 +239,13 @@ async def stream_audio(video_id: str, request: Request):
 @app.post("/stream/{video_id}/refresh")
 async def refresh_stream(video_id: str):
     fmt = await stream_service.resolver.resolve(video_id, force_refresh=True)
+    log_msg(f"Refreshed stream URL for {video_id}")
     return {"refreshed": True, "resolved_at": fmt.resolved_at}
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "uptime": round(time.time() - START_TIME, 2),
+        "logs": list(backend_logs)
+    }

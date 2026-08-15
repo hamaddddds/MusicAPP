@@ -10,7 +10,7 @@ import {
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
   Settings, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
-  UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
+  UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal, Activity
 } from "lucide-react";
 import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, Playlist, fetchPlaylistsFromGist, syncPlaylistsToGist } from "./lib/github";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
@@ -454,6 +454,20 @@ export default function App() {
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [loginData, setLoginData] = useState<{ user_code: string, verification_url: string, device_code: string } | null>(null);
+  const [healthData, setHealthData] = useState<{ status: string, uptime: number, logs: string[] } | null>(null);
+
+  useEffect(() => {
+    if (profileTab !== "system") return;
+    const int = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/health`);
+        setHealthData(await res.json());
+      } catch (e: any) {
+        setHealthData({ status: "disconnected", uptime: 0, logs: [e.message] });
+      }
+    }, 2000);
+    return () => clearInterval(int);
+  }, [profileTab]);
 
   // Hover and Share Lyric states
   const [isHoveringArt, setIsHoveringArt] = useState(false);
@@ -2052,7 +2066,7 @@ export default function App() {
                 <div className={`ptab ${profileTab === "general" ? "active" : ""}`} onClick={() => setProfileTab("general")}><Settings size={16} /> General</div>
                 <div className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</div>
                 <div className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</div>
-                <div className={`ptab ${profileTab === "about" ? "active" : ""}`} onClick={() => setProfileTab("about")}><Sparkles size={16} /> Stats</div>
+                <div className={`ptab ${profileTab === "system" ? "active" : ""}`} onClick={() => setProfileTab("system")}><Activity size={16} /> System</div>
               </div>
             </div>
 
@@ -2278,75 +2292,88 @@ export default function App() {
                 </div>
               )}
 
-              {profileTab === "about" && (
-                <div className="settings-card">
-                  <h2>Your Listening Stats</h2>
-                  <p className="settings-desc">Your most played tracks and artists based on your listening history.</p>
+              {profileTab === "system" && (
+                  <div className="settings-card">
+                    <h2>System Diagnostics</h2>
+                    <p className="settings-desc">Real-time health status and connection logs of the backend server.</p>
 
-                  <div className="stats-dashboard">
-                    <div className="stats-card" style={{ alignItems: 'center', justifyContent: 'center', gap: 24 }}>
-                      <h3>Top Track</h3>
-                      {(() => {
-                        const sortedTracks = Object.values(history || {}).sort((a, b) => b.count - a.count);
-                        const topTrack = sortedTracks[0];
-                        const totalPlays = sortedTracks.reduce((sum, t) => sum + t.count, 0) || 1;
-                        if (!topTrack) return <p>No listening history yet.</p>;
-                        const pct = (topTrack.count / totalPlays) * 100;
-                        const dasharray = `${(pct / 100) * 251.2} 251.2`;
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-                            <div style={{ position: 'relative', width: 200, height: 200 }}>
-                              <svg viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="8" />
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="var(--accent)" strokeWidth="8" strokeDasharray={dasharray} strokeDashoffset="0" strokeLinecap="round" />
-                              </svg>
-                              <img src={topTrack.artwork} alt="" style={{ position: 'absolute', top: 12, left: 12, width: 176, height: 176, borderRadius: '50%', objectFit: 'cover' }} />
-                            </div>
-                            <div style={{ textAlign: 'center' }}>
-                              <h4 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{topTrack.title}</h4>
-                              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, margin: '4px 0 0 0' }}>{topTrack.artist}</p>
-                            </div>
-                            <div style={{ marginTop: 8, background: 'rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: 20 }}>
-                              <span style={{ fontWeight: 600 }}>{topTrack.count}</span> <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>plays ({Math.round(pct)}% of total)</span>
-                            </div>
+                    <div style={{
+                      display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px'
+                    }}>
+                      <div style={{
+                        display: 'flex', gap: '16px', flexWrap: 'wrap'
+                      }}>
+                        <div style={{
+                          flex: 1, minWidth: '200px', background: 'rgba(255,255,255,0.03)',
+                          borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.1)'
+                        }}>
+                          <div style={{ fontSize: '12px', opacity: 0.6, marginBottom: '4px' }}>Server Status</div>
+                          <div style={{ fontSize: '18px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              width: '8px', height: '8px', borderRadius: '50%',
+                              background: healthData?.status === 'healthy' ? '#22c55e' : '#ef4444',
+                              boxShadow: `0 0 10px ${healthData?.status === 'healthy' ? '#22c55e' : '#ef4444'}`
+                            }}></span>
+                            {healthData?.status === 'healthy' ? 'Connected' : 'Disconnected'}
                           </div>
-                        );
-                      })()}
-                    </div>
+                        </div>
 
-                    <div className="stats-card">
-                      <h3>Top Artists Graph</h3>
-                      {(() => {
-                        const rawArtistScores = Object.values(history || {}).reduce((acc, h) => {
-                          acc[h.artist] = (acc[h.artist] || 0) + h.count;
-                          return acc;
-                        }, {} as Record<string, number>);
-                        const sortedArtists = Object.entries(rawArtistScores).sort((a, b) => b[1] - a[1]).slice(0, 5);
-                        if (!sortedArtists.length) return <p>No listening history yet.</p>;
-                        const maxScore = sortedArtists[0][1];
-                        return sortedArtists.map(([artist, score], i) => {
-                          const pct = Math.max(5, (score / maxScore) * 100);
-                          return (
-                            <div key={artist} className="stat-row" onDoubleClick={() => { setSearchQuery(artist); runSearch(artist); }}>
-                              <div className="stat-rank">#{i + 1}</div>
-                              <div className="stat-info">
-                                <div className="stat-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '250px' }}>{artist}</div>
-                                <div className="stat-count">{score} plays</div>
-                                <div className="stat-bar-container">
-                                  <motion.div className="stat-bar" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1, ease: "easeOut" }} />
-                                </div>
+                        <div style={{
+                          flex: 1, minWidth: '200px', background: 'rgba(255,255,255,0.03)',
+                          borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.1)'
+                        }}>
+                          <div style={{ fontSize: '12px', opacity: 0.6, marginBottom: '4px' }}>Uptime</div>
+                          <div style={{ fontSize: '18px', fontWeight: 600 }}>
+                            {healthData?.uptime ? new Date(healthData.uptime * 1000).toISOString().substr(11, 8) : '00:00:00'}
+                          </div>
+                        </div>
+
+                        <div style={{
+                          flex: 1, minWidth: '200px', background: 'rgba(255,255,255,0.03)',
+                          borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.1)'
+                        }}>
+                          <div style={{ fontSize: '12px', opacity: 0.6, marginBottom: '4px' }}>Endpoint URL</div>
+                          <div style={{ fontSize: '14px', fontWeight: 500, wordBreak: 'break-all' }}>
+                            {API_URL}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{
+                        background: 'rgba(0,0,0,0.5)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)',
+                        padding: '16px', height: '300px', display: 'flex', flexDirection: 'column'
+                      }}>
+                        <div style={{ fontSize: '12px', opacity: 0.6, marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Live Console Logs</span>
+                          <Activity size={14} className="text-white/50 animate-pulse" />
+                        </div>
+                        <div style={{
+                          flex: 1, overflowY: 'auto', fontFamily: 'monospace', fontSize: '12px',
+                          display: 'flex', flexDirection: 'column', gap: '4px'
+                        }}>
+                          {!healthData ? (
+                            <div style={{ color: 'rgba(255,255,255,0.4)' }}>Connecting...</div>
+                          ) : healthData.logs.length === 0 ? (
+                            <div style={{ color: 'rgba(255,255,255,0.4)' }}>No logs available.</div>
+                          ) : (
+                            healthData.logs.map((log, i) => (
+                              <div key={i} style={{ 
+                                color: log.includes('ERROR') ? '#ef4444' : 'rgba(255,255,255,0.7)',
+                                borderBottom: '1px solid rgba(255,255,255,0.02)',
+                                paddingBottom: '4px', wordBreak: 'break-all'
+                              }}>
+                                {log}
                               </div>
-                            </div>
-                          );
-                        });
-                      })()}
+                            ))
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
+                )}
+              </div>
+            </motion.div>
+          )}
           </AnimatePresence>
       </main>
       {ctxMenu && (
