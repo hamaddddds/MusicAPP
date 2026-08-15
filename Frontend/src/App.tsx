@@ -2714,16 +2714,19 @@ export default function App() {
       <AnimatePresence>
         {isPlaying && currentTrack && (
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="glass"
+            drag
+            dragConstraints={{ left: -window.innerWidth + 350, right: 20, top: -60, bottom: window.innerHeight - 150 }}
+            dragElastic={0.1}
+            whileDrag={{ scale: 1.05, cursor: "grabbing" }}
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.4, type: "spring", bounce: 0.4 }}
             onClick={() => setNowPlayingOpen(true)}
             style={{
               position: 'fixed',
-              top: isTauri ? '90px' : '24px',
-              right: '24px',
+              top: 80,
+              right: 32,
               zIndex: 9999,
               background: 'rgba(25, 25, 25, 0.45)',
               backdropFilter: 'blur(40px)',
@@ -2735,7 +2738,7 @@ export default function App() {
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
-              cursor: 'pointer'
+              cursor: 'grab'
             }}
           >
             <img src={currentTrack.artwork || ""} style={{ width: 44, height: 44, borderRadius: '12px', objectFit: 'cover', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} alt="" />
