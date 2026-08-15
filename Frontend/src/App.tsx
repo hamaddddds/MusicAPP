@@ -1174,9 +1174,18 @@ export default function App() {
     }
   }, [updateInfo, flashToast]);
 
-  const resolveStreamUrl = async (videoId: string): Promise<string> => `${API_URL}/stream/${videoId}`;
+  const resolveStreamUrl = async (videoId: string, forceRefresh = false): Promise<string> => {
+    if (forceRefresh) {
+      try {
+        await fetch(`${API_URL}/stream/${videoId}/refresh`, { method: 'POST' });
+      } catch (e) {
+        console.error("Failed to refresh stream", e);
+      }
+    }
+    return `${API_URL}/stream/${videoId}?t=${Date.now()}`;
+  };
 
-  const startStream = useCallback(async (track: Track, resumeTime?: number) => {
+  const startStream = useCallback(async (track: Track, resumeTime?: number, forceRefresh = false) => {
     const requestId = ++playRequestRef.current;
     setStreamLoading(true);
     setPlayerUrl(null);
@@ -1184,7 +1193,7 @@ export default function App() {
     else { setCurrentTime(0); setDuration(0); }
     try {
       let url: string;
-      url = await resolveStreamUrl(track.videoId);
+      url = await resolveStreamUrl(track.videoId, forceRefresh);
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
       setIsPlaying(true);
@@ -1376,9 +1385,9 @@ export default function App() {
   }, [eqGains]);
 
   const handleAudioError = useCallback(() => {
-    if (!isTauri && currentTrackRef.current && !triedDownloadRef.current) {
+    if (currentTrackRef.current && !triedDownloadRef.current) {
       triedDownloadRef.current = true;
-      startStream(currentTrackRef.current);
+      startStream(currentTrackRef.current, 0, true);
     } else setIsPlaying(false);
   }, [startStream]);
 
@@ -2355,10 +2364,10 @@ export default function App() {
                         }}>
                           {!healthData ? (
                             <div style={{ color: 'rgba(255,255,255,0.4)' }}>Connecting...</div>
-                          ) : healthData.logs.length === 0 ? (
+                          ) : !healthData.logs || healthData.logs.length === 0 ? (
                             <div style={{ color: 'rgba(255,255,255,0.4)' }}>No logs available.</div>
                           ) : (
-                            healthData.logs.map((log, i) => (
+                            healthData.logs.map((log: string, i: number) => (
                               <div key={i} style={{ 
                                 color: log.includes('ERROR') ? '#ef4444' : 'rgba(255,255,255,0.7)',
                                 borderBottom: '1px solid rgba(255,255,255,0.02)',
