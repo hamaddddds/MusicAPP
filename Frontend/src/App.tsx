@@ -1159,7 +1159,7 @@ export default function App() {
     }
   }, [updateInfo, flashToast]);
 
-  const resolveStreamUrl = async (videoId: string): Promise<string> => `${API_URL}/stream/${videoId}`;
+  const resolveStreamUrl = async (videoId: string): Promise<string> => `${API_URL}/stream/${videoId}?t=${Date.now()}`;
 
   const startStream = useCallback(async (track: Track, resumeTime?: number) => {
     const requestId = ++playRequestRef.current;
@@ -1361,7 +1361,7 @@ export default function App() {
   }, [eqGains]);
 
   const handleAudioError = useCallback(() => {
-    if (!isTauri && currentTrackRef.current && !triedDownloadRef.current) {
+    if (currentTrackRef.current && !triedDownloadRef.current) {
       triedDownloadRef.current = true;
       startStream(currentTrackRef.current);
     } else setIsPlaying(false);

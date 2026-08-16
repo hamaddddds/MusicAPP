@@ -110,7 +110,9 @@ async def open_audio_stream(video_id: str, range_header: Optional[str] = None):
     response = await client.send(request, stream=True)
 
     # Expired/IP-mismatched URL -> refresh once and retry transparently.
-    if response.status_code == 403:
+    if response.status_code not in (200, 206):
+        import logging
+        logging.warning(f"Audio stream failed with status {response.status_code}. Retrying...")
         await response.aclose()
         await client.aclose()
 
