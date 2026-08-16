@@ -12,7 +12,7 @@ import {
   Settings, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
   UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
 } from "lucide-react";
-import { SubscribedArtist, fetchAppStateFromGist, syncAppStateToGist, Playlist } from "./lib/github";
+import { SubscribedArtist, fetchAppStateFromGist, syncAppStateToGist, fetchPlaylistsFromGist, Playlist } from "./lib/github";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import SplashIntro from "./components/SplashIntro";
@@ -441,7 +441,7 @@ export default function App() {
   const [activeShelf, setActiveShelf] = useState<string | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [homeShelvesState, setHomeShelvesState] = useState<{ id: string, title: string, subtitle: string, query?: string }[]>([]);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>(() => load("mv:custom-playlists", [] as Playlist[]));
   const [isPlaylistDialogOpen, setIsPlaylistDialogOpen] = useState(false);
   const [playlistDialogTrack, setPlaylistDialogTrack] = useState<Track | null>(null);
   const [newPlaylistName, setNewPlaylistName] = useState("");
@@ -597,10 +597,24 @@ export default function App() {
       // Restore the full app-state snapshot from the gist into localStorage,
       // then reload so every state initializer picks it up. Same flow as a
       // manual config import.
-      fetchAppStateFromGist(githubAccount.access_token).then(state => {
+      const gistToken = githubAccount.access_token;
+      fetchAppStateFromGist(gistToken).then(state => {
         if (!state?.data) return;
         for (const k in state.data) if (k.startsWith("mv:")) localStorage.setItem(k, state.data[k]);
-        window.location.reload();
+        // Backstop: if the all-state snapshot lost the playlists (they were empty
+        // in an older sync), fall back to the legacy playlists gist.
+        const saved = state.data["mv:custom-playlists"];
+        const empty = !saved || (Array.isArray(saved) && saved.length === 0)
+          || saved === "[]";
+        if (empty) {
+          fetchPlaylistsFromGist(gistToken).then(pl => {
+            if (pl.length) {
+              localStorage.setItem("mv:custom-playlists", JSON.stringify(pl));
+            }
+          }).finally(() => window.location.reload());
+        } else {
+          window.location.reload();
+        }
       });
     }
   }, [accounts]);
