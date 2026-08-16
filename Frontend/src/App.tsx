@@ -12,7 +12,7 @@ import {
   Settings, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
   UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
 } from "lucide-react";
-import { SubscribedArtist, fetchSubscriptionsFromGist, syncSubscriptionsToGist, Playlist, fetchPlaylistsFromGist, syncPlaylistsToGist } from "./lib/github";
+import { SubscribedArtist, fetchAppStateFromGist, syncAppStateToGist, Playlist } from "./lib/github";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import SplashIntro from "./components/SplashIntro";
@@ -571,17 +571,36 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:profile", JSON.stringify(profile)); }, [profile]);
   useEffect(() => { localStorage.setItem("mv:accounts", JSON.stringify(accounts)); }, [accounts]);
   useEffect(() => { localStorage.setItem("mv:subscribedArtists", JSON.stringify(subscribedArtists)); }, [subscribedArtists]);
+  useEffect(() => { localStorage.setItem("mv:custom-playlists", JSON.stringify(playlists)); }, [playlists]);
+
+  // Snapshot every mv:* local key into the GitHub gist (debounced) so a
+  // reinstall + GitHub login restores the entire app state (home personalization,
+  // likes, blocked artists, playlists, subscriptions).
+  const syncAllState = useCallback(() => {
+    const github = accounts.find(a => a.provider === "github");
+    if (!github?.access_token) return;
+    const cfg: Record<string, string> = {};
+    for (const k of Object.keys(localStorage)) if (k.startsWith("mv:")) cfg[k] = localStorage.getItem(k) || "";
+    syncAppStateToGist(github.access_token, cfg);
+  }, [accounts]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(syncAllState, 1500);
+    return () => window.clearTimeout(timer);
+  }, [favorites, history, blocked, searchHistory, subscribedArtists, playlists, accounts, syncAllState]);
   useEffect(() => { localStorage.setItem("mv:rpc_settings", JSON.stringify(rpcSettings)); }, [rpcSettings]);
   useEffect(() => { rpcStatusRef.current = rpcStatus; }, [rpcStatus]);
 
   useEffect(() => {
     const githubAccount = accounts.find(a => a.provider === "github");
     if (githubAccount && githubAccount.access_token) {
-      fetchSubscriptionsFromGist(githubAccount.access_token).then(subs => {
-        setSubscribedArtists(subs);
-      });
-      fetchPlaylistsFromGist(githubAccount.access_token).then(pl => {
-        setPlaylists(pl);
+      // Restore the full app-state snapshot from the gist into localStorage,
+      // then reload so every state initializer picks it up. Same flow as a
+      // manual config import.
+      fetchAppStateFromGist(githubAccount.access_token).then(state => {
+        if (!state?.data) return;
+        for (const k in state.data) if (k.startsWith("mv:")) localStorage.setItem(k, state.data[k]);
+        window.location.reload();
       });
     }
   }, [accounts]);
@@ -589,14 +608,9 @@ export default function App() {
   const toggleSubscribe = useCallback((artistId: string, name: string, thumbnails: any[]) => {
     setSubscribedArtists(prev => {
       const isSubbed = prev.some(a => a.artistId === artistId);
-      const newSubs = isSubbed ? prev.filter(a => a.artistId !== artistId) : [...prev, { artistId, name, thumbnails }];
-      const githubAccount = accounts.find(a => a.provider === "github");
-      if (githubAccount && githubAccount.access_token) {
-        syncSubscriptionsToGist(githubAccount.access_token, newSubs);
-      }
-      return newSubs;
+      return isSubbed ? prev.filter(a => a.artistId !== artistId) : [...prev, { artistId, name, thumbnails }];
     });
-  }, [accounts]);
+  }, []);
 
   const handleAuthPayload = useCallback((base64Payload: string) => {
     try {
@@ -1583,10 +1597,6 @@ export default function App() {
       if (!p) return prev;
       if (p.tracks.some(t => t.videoId === playlistDialogTrack.videoId)) return prev;
       const newPlaylists = prev.map(x => x.id === playlistId ? { ...x, tracks: [...x.tracks, playlistDialogTrack] } : x);
-      const githubAccount = accounts.find(a => a.provider === "github");
-      if (githubAccount && githubAccount.access_token) {
-        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
-      }
       return newPlaylists;
     });
     setIsPlaylistDialogOpen(false);
@@ -1605,10 +1615,6 @@ export default function App() {
     };
     setPlaylists(prev => {
       const newPlaylists = [...prev, newPlaylist];
-      const githubAccount = accounts.find(a => a.provider === "github");
-      if (githubAccount && githubAccount.access_token) {
-        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
-      }
       return newPlaylists;
     });
     setNewPlaylistName("");
@@ -1622,10 +1628,6 @@ export default function App() {
     if (!editingPlaylistId || !newPlaylistName.trim()) return;
     setPlaylists(prev => {
       const newPlaylists = prev.map(p => p.id === editingPlaylistId ? { ...p, name: newPlaylistName.trim(), description: newPlaylistDesc.trim(), image: newPlaylistImg.trim(), banner: newPlaylistBanner.trim() } : p);
-      const githubAccount = accounts.find(a => a.provider === "github");
-      if (githubAccount && githubAccount.access_token) {
-        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
-      }
       return newPlaylists;
     });
     setNewPlaylistName("");
@@ -1662,10 +1664,6 @@ export default function App() {
     if (!editingPlaylistId) return;
     setPlaylists(prev => {
       const newPlaylists = prev.filter(p => p.id !== editingPlaylistId);
-      const githubAccount = accounts.find(a => a.provider === "github");
-      if (githubAccount && githubAccount.access_token) {
-        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
-      }
       return newPlaylists;
     });
     if (activePlaylistId === editingPlaylistId) {
@@ -1688,10 +1686,6 @@ export default function App() {
         }
         return p;
       });
-      const githubAccount = accounts.find(a => a.provider === "github");
-      if (githubAccount && githubAccount.access_token) {
-        syncPlaylistsToGist(githubAccount.access_token, newPlaylists);
-      }
       return newPlaylists;
     });
   };
