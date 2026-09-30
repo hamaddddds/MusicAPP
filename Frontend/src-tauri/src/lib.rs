@@ -109,6 +109,75 @@ async fn save_image_to_disk(path: String, bytes: Vec<u8>) -> Result<(), String> 
     std::fs::write(&path, bytes).map_err(|e| e.to_string())
 }
 
+/// Windows keeps a child running after its parent dies, and this app leaves via `process::exit`
+/// (window close, updater). A stray backend then held port 8000 and locked backend.exe so updates
+/// could not replace it. A kill-on-close job ends the backend with this process, however it exits.
+#[cfg(windows)]
+fn tie_to_app(pid: u32) {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::JobObjects::*;
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return;
+        }
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as *const _,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+        let process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+        if !process.is_null() {
+            AssignProcessToJobObject(job, process);
+            CloseHandle(process);
+        }
+        // `job` stays open on purpose: Windows closes it when this process ends.
+    }
+}
+
+/// Ends backends left behind by builds before `tie_to_app`. Matched by full path, so another
+/// program's backend.exe is never touched.
+#[cfg(windows)]
+fn kill_stale_backends(path: &std::path::Path) {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
+    use windows_sys::Win32::System::Threading::*;
+    let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_lowercase()) else { return };
+    let wanted = path.to_string_lossy().to_lowercase();
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut more = Process32FirstW(snapshot, &mut entry) != 0;
+        while more {
+            let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+            if String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase() == name {
+                let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, 0, entry.th32ProcessID);
+                if !process.is_null() {
+                    let mut buf = [0u16; 1024];
+                    let mut size = buf.len() as u32;
+                    if QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut size) != 0
+                        && std::ffi::OsString::from_wide(&buf[..size as usize]).to_string_lossy().to_lowercase() == wanted
+                    {
+                        TerminateProcess(process, 1);
+                    }
+                    CloseHandle(process);
+                }
+            }
+            more = Process32NextW(snapshot, &mut entry) != 0;
+        }
+        CloseHandle(snapshot);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     unsafe {
@@ -119,9 +188,16 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(windows)]
+            if let Ok(exe) = std::env::current_exe() {
+                kill_stale_backends(&exe.with_file_name("backend.exe"));
+            }
             // Start Python backend sidecar automatically in the background
             if let Ok(sidecar) = app.shell().sidecar("backend") {
-                let _ = sidecar.spawn();
+                if let Ok((_events, _child)) = sidecar.spawn() {
+                    #[cfg(windows)]
+                    tie_to_app(_child.pid());
+                }
             }
             // The updater leaves every downloaded installer in %TEMP% ("<app>-<version>-updater-XXXXXX")
             // because it exits without cleaning up. Once a new version runs they are dead weight.
