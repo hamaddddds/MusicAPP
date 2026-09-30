@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
+import { useEffect, useState, useRef, useCallback, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -17,6 +17,8 @@ import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import SplashIntro from "./components/SplashIntro";
 import ShareLyricModal from "./components/ShareLyricModal";
+import SyncedLyrics from "./components/SyncedLyrics";
+import { fetchLyrics, type Lyrics } from "./lib/lyrics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -46,12 +48,9 @@ const CustomSelect = ({ value, onChange, options }: { value: string | number, on
 };
 
 // ... Types ...
-interface Track { videoId: string; title: string; artist: string; artwork: string; }
+interface Track { videoId: string; title: string; artist: string; artwork: string; duration?: number; }
 type RepeatMode = "off" | "all" | "one";
 type ShuffleMode = "off" | "random" | "smart";
-interface WordPart { t: number; d: number; text: string } // t start, d duration (seconds)
-interface SyncedLine { t: number; end?: number; text: string; parts: WordPart[] } // parts synthesized when empty
-interface Lyrics { synced: SyncedLine[]; plain: string }
 interface HistEntry extends Track { count: number; last: number; }
 interface Region { country: string | null; countryCode: string | null; city: string | null; }
 interface CtxMenu { x: number; y: number; track: Track; context: Track[]; playlistId?: string; }
@@ -84,11 +83,6 @@ export interface RpcSettings {
 
 const isTauri = "__TAURI_INTERNALS__" in window;
 const API_URL = "http://127.0.0.1:8000";
-const prefersReduced =
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-
 const PROVIDERS = [
   { id: "google", label: "Google", Icon: LogIn },
   { id: "github", label: "GitHub", Icon: LogIn },
@@ -131,7 +125,8 @@ function mapTracks(data: any): Track[] {
     .map((item: any) => ({
       videoId: item.videoId,
       title: item.title || item.name || "Unknown Title",
-      artist: (item.artists && item.artists[0]?.name) || "Unknown Artist",
+      artist: item.artists?.map((a: any) => a.name).filter(Boolean).join(", ") || item.artist || item.author?.name || "Unknown Artist",
+      duration: Number.isFinite(item.duration_seconds) ? item.duration_seconds : undefined,
       artwork: pickArtwork(item.thumbnails),
     }));
 }
@@ -157,178 +152,8 @@ function smartOrder(list: Track[], start: Track): Track[] {
   return result;
 }
 
-function parseLRC(lrc: string): SyncedLine[] {
-  const out: SyncedLine[] = [];
-  for (const raw of lrc.split("\n")) {
-    const matches = [...raw.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
-    if (!matches.length) continue;
-    const text = raw.replace(/\[[^\]]*\]/g, "").trim();
-    for (const m of matches) {
-      const min = parseInt(m[1], 10);
-      const sec = parseInt(m[2], 10);
-      const frac = m[3] ? parseInt(m[3].padEnd(3, "0"), 10) / 1000 : 0;
-      out.push({ t: min * 60 + sec + frac, text, parts: [] });
-    }
-  }
-  return out.sort((a, b) => a.t - b.t);
-}
-
-/** Word timings synthesized from a line when richsync is unavailable. When the
- * line has a known end time, words get proportional durations spanning [t, end]
- * so the karaoke swipe advances word-by-word left→right. Without an end time,
- * words are line-synced (d:0 → sweep over the line window). */
-function synthParts(text: string, lineT: number, lineEnd?: number): WordPart[] {
-  const tokens = (text.match(/\S+/g) ?? []);
-  if (!tokens.length) return [];
-  const span = (lineEnd ?? 0) - lineT;
-  if (span > 0) {
-    const nonWs = tokens.reduce((n, tk) => n + tk.length, 0) || 1;
-    let cursor = 0;
-    return tokens.map((tk) => {
-      const wStart = lineT + (span * cursor) / nonWs;
-      cursor += tk.length;
-      const wEnd = lineT + (span * cursor) / nonWs;
-      return { t: wStart, d: wEnd - wStart, text: tk };
-    });
-  }
-  return tokens.map((w, i) => ({ t: lineT + i * 0.05, d: 0, text: w }));
-}
-
-/** Accepts the new backend shape ({lines:[{t,end,text,parts}]}) AND the legacy
- * shape ({synced: LRC-string, plain}), so old/new backends both work. */
-function normalizeLyrics(d: any): Lyrics {
-  const lines: SyncedLine[] = [];
-  if (Array.isArray(d?.lines)) {
-    for (const raw of d.lines) {
-      if (!raw || typeof raw.t === "undefined") continue;
-      const t = Number(raw.t);
-      const end = raw.end != null ? Number(raw.end) : undefined;
-      const text = String(raw.text ?? "");
-      const rawParts: any[] = Array.isArray(raw.parts) ? raw.parts : [];
-      const parts: WordPart[] = rawParts
-        .filter((p: any) => p && typeof p.t === "number")
-        .map((p: any) => ({ t: Number(p.t), d: Number(p.d ?? 0), text: String(p.text ?? "") }))
-        .filter((p) => p.text.trim().length > 0);
-      lines.push({ t, end, text, parts: parts.length ? parts : synthParts(text, t, end) });
-    }
-  } else if (typeof d?.synced === "string") {
-    // Legacy: backend still returned LRC under 'synced'.
-    lines.push(...parseLRC(d.synced).map((l) => ({ ...l, parts: synthParts(l.text, l.t) })));
-  }
-  return { synced: lines.sort((a, b) => a.t - b.t), plain: d?.plain || "" };
-}
-
-/** Karaoke "passing light" lyric animation. Each word span has a ::after overlay
- * (content: attr(data-content), solid white, background-clip:text) whose opacity
- * is driven by --lyric-lit (set inline on the word). Only the word currently
- * being sung is lit bright; past words fade back to dim and upcoming words stay
- * dim, so the eye tracks the active word as it advances left→right.
- *
- * We drive the custom prop directly on the word's inline style from a
- * requestAnimationFrame loop (pseudo-element WAAPI is dropped by some webviews).
- * The ::after inherits it, so the overlay re-computes every frame. The RAF loop
- * only runs while audio plays; it freezes on pause and re-seeds on seek. */
-function useLyricAnimation(
-  lines: SyncedLine[] | null,
-  activeIndex: number,
-  currentTime: number,
-  isPlaying: boolean,
-  containerRef: React.RefObject<HTMLDivElement | null>,
-  audioRef: React.RefObject<HTMLAudioElement | null>,
-  syncEnabled = true,
-) {
-  // Latest currentTime, read by the RAF loop without re-running the effect.
-  const timeRef = useRef(currentTime);
-  timeRef.current = currentTime;
-  const isPlayingRef = useRef(isPlaying);
-  isPlayingRef.current = isPlaying;
-
-  // Drive the word swipes + line activation classes from a RAF loop.
-  useEffect(() => {
-    if (prefersReduced) return; // static reveal via CSS class instead
-    const container = containerRef.current;
-    if (!container) return;
-    if (activeIndex < 0) return;
-    const line = lines?.[activeIndex];
-    if (!line) return;
-
-    // Toggle active/past classes on the affected lines.
-    const lineEls = container.querySelectorAll<HTMLElement>(".blyrics--line");
-    const lo = Math.max(0, activeIndex - 1);
-    const hi = Math.min(lineEls.length - 1, activeIndex + 1);
-    for (let i = lo; i <= hi; i++) {
-      const el = lineEls[i];
-      if (!el) continue;
-      el.classList.toggle("blyrics--active", i === activeIndex);
-      el.classList.toggle("blyrics--past", i < activeIndex);
-    }
-
-    // Collect the active line's word spans directly from the DOM.
-    const activeLineEl = container.querySelectorAll<HTMLElement>(".blyrics--line")[activeIndex];
-    const wordNodes = activeLineEl
-      ? [...activeLineEl.querySelectorAll<HTMLSpanElement>(".blyrics--word")]
-      : [];
-    const els: { el: HTMLSpanElement; t: number; d: number }[] = [];
-    for (let j = 0; j < Math.min(wordNodes.length, line.parts.length); j++) {
-      const part = line.parts[j];
-      const el = wordNodes[j];
-      if (!el) continue;
-      els.push({ el, t: part.t, d: part.d });
-    }
-    if (!els.length) return;
-
-    // Sweep window for line-synced (d:0) words — use the line's own duration
-    // when known so the whole line lights progressively, not all at once.
-    const lineDur = Math.max(0.3, (line.end ?? 0) - line.t || 0.6);
-
-    let raf = 0;
-    const tick = () => {
-      // Read the audio element's live currentTime directly every frame for
-      // frame-accurate sync (the React state only updates ~4x/sec, which is
-      // what caused the perceived delay). Fall back to the state value.
-      const audio = audioRef.current;
-      const now = audio && !Number.isNaN(audio.currentTime)
-        ? audio.currentTime
-        : timeRef.current;
-
-      // "Passing light" karaoke: only the word currently being sung is lit
-      // bright; past words fade back to dim, upcoming words stay dim. A small
-      // lead time lights each word slightly before its timestamp so the swipe
-      // keeps up with the vocals (no perceived lag).
-      const LEAD_MS = 0.08; // 80ms lead — word starts lighting a touch early
-      for (const { el, t, d } of els) {
-        const dur = d > 0 ? d : lineDur;
-        const elapsed = now - t + LEAD_MS;
-        let lit: number;
-        if (elapsed <= 0) {
-          lit = 0; // not yet sung
-        } else if (elapsed < dur) {
-          // currently being sung — shine bright, ramping up quickly
-          lit = 0.5 + 0.5 * (elapsed / dur);
-        } else {
-          lit = 0; // already sung → fade back to dim
-        }
-        el.style.setProperty("--lyric-lit", lit.toFixed(3));
-      }
-      if (isPlayingRef.current) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [lines, activeIndex, containerRef]);
-
-  // Auto-scroll the container so the active line sits ~37% from the top.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || activeIndex < 0 || !syncEnabled) return;
-    const lineEl = el.querySelector<HTMLElement>(".blyrics--line.blyrics--active") || el.children[activeIndex] as HTMLElement | undefined;
-    if (!lineEl) return;
-    const target = lineEl.offsetTop + lineEl.offsetHeight / 2 - el.clientHeight * 0.37;
-    el.scrollTo({ top: Math.max(0, target), behavior: prefersReduced ? "auto" : "smooth" });
-  }, [activeIndex, containerRef, syncEnabled]);
-}
-
 function formatTime(seconds: number) {
-  if (isNaN(seconds) || seconds <= 0) return "0:00";
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
   const mm = Math.floor(seconds / 60);
   const ss = Math.floor(seconds % 60).toString().padStart(2, "0");
   return `${mm}:${ss}`;
@@ -358,6 +183,7 @@ function CtrlButton({
   return (
     <span className="ctrl-wrap">
       <motion.button
+        aria-label={label}
         className={`ctrl-btn ${className}`}
         whileHover={{ scale: 1.12, y: -2 }}
         whileTap={{ scale: 0.9 }}
@@ -544,8 +370,12 @@ export default function App() {
   const triedDownloadRef = useRef(false);
   const playRequestRef = useRef(0);
   const freshTrackRef = useRef(false); // true while a brand-new track is loading
-  const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
-  const [lyricSync, setLyricSync] = useState(true);
+  const [lyricOffset, setLyricOffset] = useState<number>(() => {
+    const saved = load("mv:lyric-offset", 0);
+    return Number.isFinite(saved) ? Math.max(-10, Math.min(10, saved)) : 0;
+  });
+  const pendingResume = useRef(0);
+  useEffect(() => { localStorage.setItem("mv:lyric-offset", JSON.stringify(lyricOffset)); }, [lyricOffset]);
   const toastTimer = useRef<number | undefined>(undefined);
   const suggestTimer = useRef<number | undefined>(undefined);
   const searchBoxRef = useRef<HTMLDivElement>(null);
@@ -683,7 +513,7 @@ export default function App() {
   }, []);
 
   const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&filter=songs`);
     return mapTracks(await res.json());
   }, []);
 
@@ -803,7 +633,7 @@ export default function App() {
 
     let similarArtist = "The Weeknd";
     if (historyList.length > 0) {
-      const validHistory = historyList.filter(h => !blockedSet.has(h.artist));
+      const validHistory = historyList.filter(h => h.artist && h.artist !== "Unknown Artist" && !blockedSet.has(h.artist));
       if (validHistory.length > 0) {
         const randomIdx = Math.floor(Math.random() * Math.min(validHistory.length, 10));
         similarArtist = validHistory[randomIdx].artist;
@@ -1192,6 +1022,7 @@ export default function App() {
   const startStream = useCallback(async (track: Track, resumeTime?: number) => {
     const requestId = ++playRequestRef.current;
     setStreamLoading(true);
+    pendingResume.current = Number.isFinite(resumeTime) ? Math.max(0, resumeTime || 0) : 0;
     setPlayerUrl(null);
     if (resumeTime) { setCurrentTime(resumeTime); setDuration(0); }
     else { setCurrentTime(0); setDuration(0); }
@@ -1201,13 +1032,12 @@ export default function App() {
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
       setIsPlaying(true);
-      if (resumeTime) setTimeout(() => { if (audioRef.current) audioRef.current.currentTime = resumeTime; }, 100);
+
     } catch (e) {
       console.error("Failed to resolve stream", e);
       if (playRequestRef.current === requestId) { setIsPlaying(false); flashToast("Failed to load audio."); }
     } finally {
       if (playRequestRef.current === requestId) {
-        setStreamLoading(false);
         freshTrackRef.current = false; // stream is ready — no longer a fresh load
       }
     }
@@ -1392,8 +1222,8 @@ export default function App() {
     if (currentTrackRef.current && !triedDownloadRef.current) {
       triedDownloadRef.current = true;
       startStream(currentTrackRef.current);
-    } else setIsPlaying(false);
-  }, [startStream]);
+    } else { setIsPlaying(false); setStreamLoading(false); flashToast("Audio could not be loaded. Try another song or play again."); }
+  }, [startStream, flashToast]);
 
   const playNext = useCallback((track: Track) => {
     if (!currentTrackRef.current) { playTrack(track, [track]); return; }
@@ -1483,8 +1313,14 @@ export default function App() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !playerUrl) return;
-    if (isPlaying) audio.play().catch(() => setIsPlaying(false));
-    else audio.pause();
+    let cancelled = false;
+    if (isPlaying) {
+      audioContextRef.current?.resume().catch(() => {});
+      audio.play().catch(error => {
+        if (!cancelled && error.name !== "AbortError") { setIsPlaying(false); setStreamLoading(false); }
+      });
+    } else audio.pause();
+    return () => { cancelled = true; };
   }, [isPlaying, playerUrl]);
 
   useEffect(() => {
@@ -1499,38 +1335,15 @@ export default function App() {
 
   useEffect(() => {
     if (!currentTrack) { setLyrics(null); return; }
-    let cancelled = false;
-    setLyrics(null); setLyricsLoading(true);
-    (async () => {
-      try {
-        const url = `${API_URL}/lyrics/${encodeURIComponent(currentTrack.videoId)}/auto`;
-        const d = await (await fetch(url)).json();
-        if (cancelled) return;
-        setLyrics(d.error ? null : normalizeLyrics(d));
-      } catch { if (!cancelled) setLyrics({ synced: [], plain: "" }); }
-      finally { if (!cancelled) setLyricsLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [currentTrack]);
-
-  const activeLyric = useMemo(() => {
-    if (!lyrics?.synced.length) return -1;
-    let idx = -1;
-    for (let i = 0; i < lyrics.synced.length; i++) {
-      if (lyrics.synced[i].t <= currentTime + 0.25) idx = i; else break;
-    }
-    return idx;
-  }, [lyrics, currentTime]);
-
-  useLyricAnimation(
-    lyrics?.synced ?? null,
-    activeLyric,
-    currentTime,
-    isPlaying,
-    lyricsContainerRef,
-    audioRef,
-    lyricSync,
-  );
+    const controller = new AbortController();
+    setLyrics(null);
+    setLyricsLoading(true);
+    fetchLyrics(currentTrack, API_URL, controller.signal, duration || currentTrack.duration)
+      .then(result => { if (!controller.signal.aborted) setLyrics(result); })
+      .catch(() => { if (!controller.signal.aborted) setLyrics(null); })
+      .finally(() => { if (!controller.signal.aborted) setLyricsLoading(false); });
+    return () => controller.abort();
+  }, [currentTrack?.videoId, currentTrack?.title, currentTrack?.artist, currentTrack?.duration, duration]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator) || !currentTrack) return;
@@ -1721,7 +1534,7 @@ export default function App() {
     }
   };
 
-  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progressPct = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
   const VolIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   const upNext = orderRef.current.slice(posRef.current + 1);
   // Build a Track from the current top result (if it's a song) so the context
@@ -1802,7 +1615,9 @@ export default function App() {
         e.preventDefault();
       }
     }}>
-      <audio ref={audioRef} src={playerUrl || ""} crossOrigin="anonymous" onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onPause={() => setIsPlaying(false)} />
+      <audio ref={audioRef} src={playerUrl || undefined} crossOrigin="anonymous" onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)} onLoadedMetadata={(e) => {
+        if (pendingResume.current > 0) { e.currentTarget.currentTime = Math.min(pendingResume.current, Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : pendingResume.current); pendingResume.current = 0; }
+      }} onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onWaiting={() => setStreamLoading(true)} onCanPlay={() => setStreamLoading(false)} onPlaying={() => setStreamLoading(false)} onPause={(e) => { if (e.currentTarget.readyState >= 2 && !streamLoading) setIsPlaying(false); }} />
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
@@ -1895,6 +1710,22 @@ export default function App() {
         <AnimatePresence mode="wait" custom={pageTransition}>
         {activeTab === "home" && (
           <motion.div key="home" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
+            <section className="listen-hero">
+              <div className="listen-hero-copy">
+                <span className="eyebrow"><Sparkles size={13} /> YOUR DAILY SOUNDTRACK</span>
+                <h2>A little more<br />you. A lot more music.</h2>
+                <p>Old favorites. New obsessions. All in one place.</p>
+                <div className="hero-actions">
+                  <button className="hero-play" onClick={() => quickPicks.length ? playTrack(quickPicks[0], quickPicks) : setActiveTab("search")}><Play size={16} fill="currentColor" /> {quickPicks.length ? "Play your mix" : "Find your music"}</button>
+                  <button className="hero-secondary" onClick={() => setActiveTab("favorites")}><Heart size={16} /> Your collection</button>
+                </div>
+              </div>
+              <div className="hero-art-stack" aria-hidden="true">
+                {quickPicks.slice(0, 3).map((track, i) => <img key={track.videoId} src={track.artwork} alt="" className={`hero-cover hero-cover-${i}`} />)}
+                {!quickPicks.length && <div className="hero-art-placeholder"><ListMusic size={90} strokeWidth={1} /></div>}
+                <span className="hero-glass-tag"><span className="live-dot" /> Made for your everyday</span>
+              </div>
+            </section>
             {quickPicks.length > 0 && (
               <section className="shelf">
                 <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}{region?.city ? ` ... ${region.city}` : ""}</p></div></div>
@@ -2054,19 +1885,42 @@ export default function App() {
                 <span className="artist-hero-label glass-text"><UserCircle size={13} /> Profile</span>
                 <h1 className="glass-text">{profile.name || "Guest"}</h1>
                 <p className="glass-text">Account connected : {accounts.length ? accounts.map(a => a.provider.charAt(0).toUpperCase() + a.provider.slice(1)).join(" - ") : "None"}</p>
-                <p className="glass-text">Theme : {theme.charAt(0).toUpperCase() + theme.slice(1)}</p>
+                <p className="glass-text">{favorites.length} liked songs · {subscribedArtists.length} artists followed</p>
               </div>
               <div className="profile-tabs">
-                <div className={`ptab ${profileTab === "general" ? "active" : ""}`} onClick={() => setProfileTab("general")}><Settings size={16} /> General</div>
-                <div className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</div>
-                <div className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</div>
-                <div className={`ptab ${profileTab === "about" ? "active" : ""}`} onClick={() => setProfileTab("about")}><Sparkles size={16} /> Stats</div>
+                <button type="button" className={`ptab ${profileTab === "general" ? "active" : ""}`} onClick={() => setProfileTab("general")}><Settings size={16} /> General</button>
+                <button type="button" className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</button>
+                <button type="button" className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</button>
+                <button type="button" className={`ptab ${profileTab === "about" ? "active" : ""}`} onClick={() => setProfileTab("about")}><Sparkles size={16} /> Stats</button>
               </div>
             </div>
 
             <div className="profile-content">
               {profileTab === "general" && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+                  <div className="setting-block profile-edit">
+                    <span className="setting-icon"><UserCircle size={21} /></span>
+                    <h3>Make it yours</h3><p className="setting-desc">Your name, your music, your space.</p>
+                    <label className="field-label" htmlFor="profile-name">Display name</label>
+                    <Input id="profile-name" maxLength={40} value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} />
+                    <label className="field-label" htmlFor="profile-bio">A few words about you</label>
+                    <Input id="profile-bio" maxLength={120} placeholder="Always looking for my next favorite song" value={profile.bio || ""} onChange={e => setProfile(p => ({ ...p, bio: e.target.value }))} />
+                    <label className="file-btn btn-ghost"><Upload size={14} /> Change photo<input hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 2 * 1024 * 1024) { flashToast("Choose a photo smaller than 2 MB."); return; }
+                      const reader = new FileReader(); reader.onload = () => setProfile(p => ({ ...p, avatar: String(reader.result) })); reader.readAsDataURL(file);
+                    }} /></label>
+                  </div>
+                  <div className="setting-block">
+                    <span className="setting-icon"><Mic2 size={21} /></span>
+                    <h3>Live lyrics</h3><p className="setting-desc">Better Lyrics timing follows your audio. Adjust the offset if your recording starts earlier or later.</p>
+                    <div className="offset-value">{lyricOffset > 0 ? "+" : ""}{lyricOffset.toFixed(1)}<span> seconds</span></div>
+                    <Slider aria-label="Lyrics timing offset" value={[lyricOffset]} min={-10} max={10} step={0.1} onValueChange={([value]) => setLyricOffset(value)} />
+                    <div className="offset-labels"><span>Delay lyrics</span><span>Advance lyrics</span></div>
+                    <button className="text-action" onClick={() => setLyricOffset(0)}>Reset timing</button>
+                    <p className="setting-hint">Word timing depends on the song. Line-only lyrics keep their original timestamps.</p>
+                  </div>
                   <div className="setting-block">
                     <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
                     <div className="theme-grid">
@@ -2100,6 +1954,7 @@ export default function App() {
                         <input type="file" accept="image/png, image/jpeg, image/gif, image/webp" hidden onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            if (file.size > 2 * 1024 * 1024) { flashToast("Choose a banner smaller than 2 MB."); return; }
                             const reader = new FileReader();
                             reader.onload = (ev) => {
                               const b64 = ev.target?.result as string;
@@ -2449,7 +2304,7 @@ export default function App() {
         {nowPlayingOpen && currentTrack && (
           <motion.div className="now-playing" initial={{ y: "100%", opacity: 1 }} animate={{ y: 0, opacity: 1 }} exit={{ y: "100%", opacity: 1 }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}>
             <div className="np-bg" style={{ backgroundImage: `url(${currentTrack.artwork})` }} />
-            <Button className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></Button>
+            <Button aria-label="Close now playing" className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></Button>
             <div className="np-body">
               <div className="np-left">
                 <div className="np-art-wrapper" onMouseEnter={() => setIsHoveringArt(true)} onMouseLeave={() => setIsHoveringArt(false)}>
@@ -2468,10 +2323,10 @@ export default function App() {
                     )}
                   </AnimatePresence>
                 </div>
-                <div className="np-meta"><h2>{currentTrack.artist}</h2><p>{currentTrack.title}</p></div>
+                <div className="np-meta"><span className="np-eyebrow">NOW PLAYING</span><h2>{currentTrack.title}</h2><p>{currentTrack.artist}</p></div>
                 <div className="np-progress">
                   <span>{formatTime(currentTime)}</span>
-                  <Slider value={[progressPct]} max={100} step={0.1} onValueChange={(val) => { if (audioRef.current) audioRef.current.currentTime = val[0] / 100 * duration; }} className="cursor-pointer" />
+                  <Slider value={[progressPct]} max={100} step={0.1} onValueChange={(val) => { if (audioRef.current && duration > 0) audioRef.current.currentTime = val[0] / 100 * duration; }} className="cursor-pointer" />
                   <span>{formatTime(duration)}</span>
                 </div>
                 <div className="np-controls">
@@ -2482,49 +2337,7 @@ export default function App() {
                   <CtrlButton label="Repeat" className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</CtrlButton>
                 </div>
               </div>
-              <div className="np-lyrics" ref={lyricsContainerRef}>
-                {lyricsLoading ? <p className="lyric-status">Memuat lirik...</p> : lyrics?.synced.length ? (
-                  <>
-                    <div className="lyric-sync-bar">
-                      <button
-                        className={`lyric-sync-btn ${lyricSync ? "on" : ""}`}
-                        onClick={() => setLyricSync((s) => !s)}
-                        title={lyricSync ? "Auto-scroll: ON — click to disable" : "Auto-scroll: OFF — click to enable"}
-                      >
-                        <RefreshCw size={13} className={lyricSync ? "spin" : ""} />
-                        {lyricSync ? "Auto-scroll on" : "Auto-scroll off"}
-                      </button>
-                    </div>
-                    <div className="lyric-lines">
-                      {lyrics.synced.map((line, i) => {
-                        const active = i === activeLyric;
-                        const past = i < activeLyric;
-                        return (
-                          <div
-                            key={i}
-                            className={`blyrics--line ${active ? "blyrics--active" : ""} ${past ? "blyrics--past" : ""}`}
-                            onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.t; }}
-                          >
-                            <span className="blyrics-line-main">
-                              {line.parts.map((p, j) => (
-                                <span key={`${i}-${j}`} className="blyrics-word-group">
-                                  <span
-                                    className={`blyrics--word${active && prefersReduced ? " blyrics--reduced-active" : ""}`}
-                                    data-key={`L${i}W${j}`}
-                                    data-time={p.t.toFixed(3)}
-                                    data-duration={p.d.toFixed(3)}
-                                    data-content={p.text}
-                                  >{p.text}</span>{" "}
-                                </span>
-                              ))}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : lyrics?.plain ? <div className="lyric-plain">{lyrics.plain}</div> : <p className="lyric-status">Lyrics are not available for this song.</p>}
-              </div>
+              <SyncedLyrics lyrics={lyrics} loading={lyricsLoading} audioRef={audioRef} offset={lyricOffset} />
             </div>
           </motion.div>
         )}
@@ -2546,7 +2359,7 @@ export default function App() {
           {currentTrack ? (
             <>
               <img src={currentTrack.artwork} alt="" className="player-artwork" />
-              <div className="player-text"><span className="player-title">{currentTrack.artist}</span><span className="player-artist">{currentTrack.title}</span></div>
+              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span></div>
               <Button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></Button>
             </>
           ) : <div className="player-text idle">Not Playing</div>}
@@ -2556,13 +2369,13 @@ export default function App() {
           <div className="control-buttons">
             <CtrlButton label="Shuffle" className={`btn-icon sm ${shuffleMode !== "off" ? "on" : ""}`} onClick={cycleShuffle} title={`Shuffle: ${shuffleMode}`}><Shuffle size={17} />{shuffleMode === "smart" && <span className="mode-dot" />}</CtrlButton>
             <CtrlButton label="Previous" className="btn-icon sm" onClick={playPrev}><SkipBack size={19} fill="currentColor" /></CtrlButton>
-            <CtrlButton label={isPlaying ? "Pause" : "Play"} className="btn-icon sm btn-play" onClick={togglePlay}>{isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: 2 }} />}</CtrlButton>
+            <CtrlButton label={streamLoading ? "Loading" : isPlaying ? "Pause" : "Play"} className="btn-icon sm btn-play" onClick={togglePlay}>{streamLoading ? <RefreshCw size={18} className="spin" /> : isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: 2 }} />}</CtrlButton>
             <CtrlButton label="Next" className="btn-icon sm" onClick={() => advance(true)}><SkipForward size={19} fill="currentColor" /></CtrlButton>
             <CtrlButton label="Repeat" className={`btn-icon sm ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}</CtrlButton>
           </div>
           <div className="progress-container">
             <span>{formatTime(currentTime)}</span>
-            <Slider value={[progressPct]} max={100} step={0.1} onValueChange={(val) => { if (audioRef.current) audioRef.current.currentTime = val[0] / 100 * duration; }} className="cursor-pointer" />
+            <Slider value={[progressPct]} max={100} step={0.1} onValueChange={(val) => { if (audioRef.current && duration > 0) audioRef.current.currentTime = val[0] / 100 * duration; }} className="cursor-pointer" />
             <span>{formatTime(duration)}</span>
           </div>
         </div>

@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks
 from pydantic import BaseModel
 import json
 import os
+import httpx
 from ytmusicapi.auth.oauth.credentials import OAuthCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -152,6 +153,33 @@ def song(video_id: str):
 def watch(video_id: str, radio: bool = False, limit: int = Query(25, ge=1, le=100)):
     """Up-next / radio queue for a video — good for autoplay."""
     return _call(metadata.get_watch_playlist, video_id, radio=radio, limit=limit)
+
+
+@app.get("/lyrics/better")
+async def better_lyrics(
+    title: str = Query(..., min_length=1, max_length=500),
+    artist: str = Query(..., min_length=1, max_length=500),
+    duration: Optional[int] = Query(None, ge=1, le=86400),
+):
+    """Fetch Better Lyrics TTML through the sidecar (WebView origins lack CORS).
+
+    The upstream host is fixed. No API key is embedded; public cache misses,
+    rate limits and missing songs are returned so the client can fall back.
+    """
+    params = {"s": title, "a": artist}
+    if duration is not None:
+        params["d"] = str(duration)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("https://api.betterlyrics.org/getLyrics", params=params)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Better Lyrics unavailable")
+        data = response.json()
+        if not isinstance(data, dict) or not isinstance(data.get("ttml"), str):
+            raise HTTPException(status_code=502, detail="Invalid lyrics response")
+        return {"ttml": data["ttml"], "score": data.get("score")}
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Better Lyrics request failed") from exc
 
 
 @app.get("/lyrics/{video_id}/auto")
