@@ -1,0 +1,92 @@
+@import url("https://fonts.boidu.dev/css/switzer-variable");
+
+/*
+Even Better Lyrics Plus (MIT) by boidushya & noah — github.com/better-lyrics/theme-eblp
+Lyric rules kept as-is; YouTube Music player/page rules dropped. Better Lyrics sizes are
+rem on YouTube Music's 10px root, so they are written here as px.
+
+blyrics-hide-instrumental-only = true;
+blyrics-letter-wave = true;
+*/
+
+.blyrics-container {
+  --blyrics-font-size: 30px;
+  --blyrics-translated-font-size: 20px;
+  --blyrics-padding: 20px;
+  --blyrics-margin: 20px;
+  --blyrics-small-border-radius: 10px;
+  --blyrics-highlight-glow-radius-from: 8px;
+  --blyrics-hover-scale: 1.01;
+  --blyrics-font-family:
+    "Switzer", "SF Pro", var(--noto-sans-universal, "Noto Sans"), system-ui, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol";
+  --blyrics-font-weight: 600;
+  --blyrics-wobble-duration: 1s;
+  --blyrics-glow-color: color(display-p3 1 1 1 / 0.0001);
+  --blyrics-word-wobble-transform-from: translateY(0);
+  --blyrics-word-wobble-transform-peak: translateY(0);
+  --blyrics-word-wobble-transform-settle: translateY(0);
+  --blyrics-word-wobble-transform-to: translateY(0);
+  --blyrics-letter-wave-transform: translateY(-0.04em);
+  --blyrics-letter-wave-settle: translateY(-0.015em);
+  --blyrics-letter-wave-duration: 0.75s;
+  --blyrics-letter-wave-emphasis-scale: 1.09;
+  padding-top: var(--blyrics-padding-top, 20px);
+  padding-inline: 20px 10px;
+}
+
+@media (max-width: 640px) { .blyrics-container { --blyrics-font-size: 24px; --blyrics-translated-font-size: 16px; } }
+@media (min-width: 1400px) { .blyrics-container { --blyrics-font-size: 40px; --blyrics-translated-font-size: 26px; } }
+@media (min-width: 1600px) { .blyrics-container { --blyrics-font-size: 50px; --blyrics-translated-font-size: 32px; } }
+@media (min-width: 1800px) { .blyrics-container { --blyrics-font-size: 60px; --blyrics-translated-font-size: 38px; } }
+
+.blyrics-background-lyric {
+  font-size: 0.9em;
+}
+
+.blyrics-container:has(.blyrics--active):not(.blyrics-user-scrolling)
+  > div:not(.blyrics--active):not(.blyrics--active ~ div) {
+  opacity: 0.33;
+  filter: blur(2.5px);
+}
+
+.blyrics-container > div.blyrics--active {
+  opacity: 1;
+  filter: blur(0px);
+}
+
+.blyrics-container > div.blyrics--active ~ div {
+  opacity: 0.66;
+  filter: blur(0px);
+}
+
+/* .blyrics--active follows the scroll clock and drops ~0.5s before a line stops
+   playing; .blyrics--animating follows the audio clock. */
+.blyrics-container > :is(.blyrics--active, .blyrics--animating) {
+  opacity: 1 !important;
+  filter: blur(0px);
+}
+
+.blyrics-container > div {
+  transition:
+    filter calc(var(--blyrics-duration) / 3) 0.4s,
+    opacity calc(var(--blyrics-duration) / 2) 0.166s,
+    transform 0.166s var(--blyrics-anim-delay, 0s) !important;
+  transform-origin: left center;
+}
+
+.blyrics-container > div:hover {
+  opacity: 1 !important;
+  filter: blur(0px) !important;
+  transform: scale(var(--blyrics-hover-scale));
+  transition: all 0.3s ease;
+}
+
+.blyrics-word-highlight {
+  --blyrics-glow-color: color(display-p3 1 1 1 / 0.0001);
+}
+
+.blyrics-word-highlight[data-long-word] {
+  --blyrics-glow-color: color(display-p3 1 1 1 / 1);
+}

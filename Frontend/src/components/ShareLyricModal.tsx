@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { X, Download, Image as ImageIcon, Check, Bold, Italic, Underline } from 'lucide-react';
 import { Button } from './ui/button';
+import type { Lyrics } from '../lib/lyrics';
 
 interface LineStyle {
   bold?: boolean;
@@ -16,7 +17,7 @@ interface ShareLyricModalProps {
   isOpen: boolean;
   onClose: () => void;
   track: any | null;
-  lyrics: any | null;
+  lyrics: Lyrics | null;
 }
 
 export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: ShareLyricModalProps) {
@@ -27,9 +28,7 @@ export default function ShareLyricModal({ isOpen, onClose, track, lyrics }: Shar
   const [customText, setCustomText] = useState("");
   const [lineStyles, setLineStyles] = useState<Record<number, LineStyle>>({});
 
-  const lines = lyrics?.synced 
-    ? lyrics.synced.map((s: any) => s.text) 
-    : lyrics?.plain?.split('\n').filter((l: string) => l.trim().length > 0) || [];
+  const lines = lyrics?.lines.map(line => line.words).filter(words => words.trim().length > 0) || [];
 
   const toggleLine = (index: number) => {
     setSelectedLines(prev => {

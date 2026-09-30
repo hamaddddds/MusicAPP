@@ -579,7 +579,7 @@ button { font-family: inherit; }
 /* ── Now Playing overlay ─────────────────────────── */
 .now-playing {
   position: fixed; inset: 0; z-index: var(--z-nowplaying);
-  background: var(--bg-elev); overflow: hidden;
+  background: var(--bg-elev); overflow: clip;
   display: flex; flex-direction: column;
 }
 .np-bg {
@@ -1002,8 +1002,6 @@ button { font-family: inherit; }
   .np-left { width: 100%; }
   .np-art-wrapper { width: 240px; height: 240px; }
   .np-art { width: 100%; height: 100%; }
-  .np-lyrics { width: 100%; padding: 10px 0; mask-image: none; }
-  .blyrics--line { font-size: 22px; }
   .player-info { width: 40%; }
   .player-extras .volume-bar { display: none; }
 }

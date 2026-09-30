@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Mic2, RefreshCw } from "lucide-react";
-import { activeLineAt, type Lyrics } from "../lib/lyrics";
+import { Languages, Mic2, RefreshCw } from "lucide-react";
+import { injectRomanization, injectTranslation } from "@braccato/core";
+import "@braccato/core/element";
+import type { BraccatoLyricsElement } from "@braccato/core/element";
+import "@braccato/core/styles/variables.css";
+import "@braccato/core/styles/lyrics.css";
+import "@braccato/core/styles/instrumental.css";
+import theme from "./eblp.css?raw";
+import { translateLines, type Lyrics } from "../lib/lyrics";
 
 interface Props {
   lyrics: Lyrics | null;
@@ -9,71 +16,86 @@ interface Props {
   offset: number;
 }
 
+const LANGUAGES: [string, string][] = [["en", "English"], ["id", "Indonesia"], ["ja", "日本語"], ["ko", "한국어"], ["zh-CN", "中文"], ["es", "Español"], ["pt", "Português"], ["fr", "Français"], ["de", "Deutsch"], ["ar", "العربية"], ["hi", "हिन्दी"], ["th", "ไทย"], ["vi", "Tiếng Việt"], ["ru", "Русский"]];
+const saved = <T,>(key: string, fallback: T): T => { try { const value = localStorage.getItem(key); return value === null ? fallback : JSON.parse(value); } catch { return fallback; } };
+
+/** Better Lyrics' own renderer (@braccato/core) with the Even Better Lyrics Plus theme. */
 export default function SyncedLyrics({ lyrics, loading, audioRef, offset }: Props) {
-  const container = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(-1);
-  const [following, setFollowing] = useState(true);
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  useEffect(() => { setFollowing(true); setActive(-1); }, [lyrics]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !lyrics?.synced.length) return;
-    let frame = 0;
-    const paint = () => {
-      const time = audio.currentTime + offset;
-      const index = activeLineAt(lyrics.synced, time);
-      setActive(previous => previous === index ? previous : index);
-      const row = container.current?.querySelectorAll<HTMLElement>(".lyric-line")[index];
-      row?.querySelectorAll<HTMLElement>(".lyric-word").forEach((word, i) => {
-        const part = lyrics.synced[index].parts[i];
-        const amount = reduced ? 1 : part.d > 0 ? Math.min(1, Math.max(0, (time - part.t) / part.d)) : Number(time >= part.t);
-        word.style.setProperty("--word-progress", `${amount * 100}%`);
-      });
-    };
-    const tick = () => { paint(); if (!audio.paused && !audio.ended) frame = requestAnimationFrame(tick); };
-    const restart = () => { cancelAnimationFrame(frame); tick(); };
-    ["play", "pause", "seeking", "seeked", "timeupdate", "loadedmetadata", "ended"].forEach(event => audio.addEventListener(event, restart));
-    restart();
-    return () => {
-      cancelAnimationFrame(frame);
-      ["play", "pause", "seeking", "seeked", "timeupdate", "loadedmetadata", "ended"].forEach(event => audio.removeEventListener(event, restart));
-    };
-  }, [lyrics, audioRef, offset, reduced]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const mount = useRef<HTMLDivElement>(null);
+  const view = useRef<BraccatoLyricsElement | null>(null);
+  const [userScrolling, setUserScrolling] = useState(false);
+  const [translate, setTranslate] = useState(() => saved("mv:lyrics-translate", false));
+  const [romanize, setRomanize] = useState(() => saved("mv:lyrics-romanize", true));
+  const [language, setLanguage] = useState(() => saved("mv:lyrics-language", navigator.language.startsWith("id") ? "id" : "en"));
+  const [translated, setTranslated] = useState<(string | null)[] | null>(null);
 
   useEffect(() => {
-    const el = container.current;
-    if (!el || !following) return;
-    const center = () => {
-      const line = el.querySelectorAll<HTMLElement>(".lyric-line")[Math.max(0, active)];
-      if (!line) return;
-      el.scrollTo({ top: Math.max(0, el.scrollTop + line.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientHeight * 0.4), behavior: reduced ? "instant" : "smooth" });
-    };
-    center();
-    const resize = new ResizeObserver(center);
-    resize.observe(el);
-    return () => resize.disconnect();
-  }, [active, following, lyrics, reduced]);
+    localStorage.setItem("mv:lyrics-translate", JSON.stringify(translate));
+    localStorage.setItem("mv:lyrics-romanize", JSON.stringify(romanize));
+    localStorage.setItem("mv:lyrics-language", JSON.stringify(language));
+  }, [translate, romanize, language]);
 
+  useEffect(() => {
+    const el = document.createElement("braccato-lyrics") as BraccatoLyricsElement;
+    el.host = { getScrollElement: () => scroller.current };
+    el.theme = theme;
+    el.source = audioRef.current;
+    const onScrollState = (event: Event) => setUserScrolling((event as CustomEvent<{ userScrolling: boolean }>).detail.userScrolling);
+    el.addEventListener("braccato:scroll-state", onScrollState);
+    mount.current!.appendChild(el);
+    view.current = el;
+    return () => { el.removeEventListener("braccato:scroll-state", onScrollState); el.remove(); view.current = null; };
+  }, [audioRef]);
+
+  // The engine subtracts its offset from the clock; the app's offset setting advances lyrics.
+  useEffect(() => { if (view.current) view.current.tickOptions = { lyricOffset: -offset, passiveScrollEnabled: true }; }, [offset]);
+
+  useEffect(() => {
+    setTranslated(null);
+    if (!translate || !lyrics?.lines.length) return;
+    const controller = new AbortController();
+    translateLines(lyrics.lines.map(line => line.words), language, controller.signal).then(setTranslated).catch(() => {});
+    return () => controller.abort();
+  }, [lyrics, translate, language]);
+
+  // Rebuilding the lines is how decorations come off again when a toggle turns them off.
+  useEffect(() => {
+    const el = view.current;
+    if (!el) return;
+    el.lyricsOptions = { language: lyrics?.language, songwriters: lyrics?.songwriters };
+    el.lyrics = lyrics?.lines ?? [];
+    const renderer = el.renderer;
+    if (!renderer || !lyrics?.lines.length || !(romanize || translate)) return;
+    renderer.lines.forEach((line, i) => {
+      const lyric = lyrics.lines[i];
+      if (romanize && lyric.romanization && lyric.romanization !== lyric.words) {
+        injectRomanization(document, line.lyricElement, line, lyric.romanization, lyric.timedRomanization ?? null);
+      }
+      const own = lyric.translations?.[language] ?? (lyric.translation?.lang === language ? lyric.translation.text : undefined);
+      const text = translate ? own ?? translated?.[i] : null;
+      if (text) injectTranslation(document, line.lyricElement, text, language);
+    });
+    renderer.relayout(true);
+  }, [lyrics, romanize, translate, translated, language]);
+
+  const hasRomanization = !!lyrics?.lines.some(line => line.romanization);
   return <section className="lyrics-stage" aria-label="Song lyrics">
     <div className="lyrics-toolbar">
       <span><Mic2 size={13} /> {lyrics?.source || "Lyrics"}</span>
-      {lyrics?.synced.length ? <button className={`follow-lyrics ${following ? "on" : ""}`} onClick={() => setFollowing(!following)} aria-pressed={following}>
-        <RefreshCw size={12} /> {following ? "Live lyrics" : "Resume sync"}
-      </button> : null}
+      {lyrics?.lines.length ? <div className="lyrics-actions">
+        {hasRomanization && <button className={`follow-lyrics ${romanize ? "on" : ""}`} onClick={() => setRomanize(!romanize)} aria-pressed={romanize} title="Romanization">Aa</button>}
+        <button className={`follow-lyrics ${translate ? "on" : ""}`} onClick={() => setTranslate(!translate)} aria-pressed={translate} title="Translate lyrics"><Languages size={12} /> Translate</button>
+        {translate && <select className="lyrics-language" value={language} onChange={e => setLanguage(e.target.value)} aria-label="Translation language">
+          {LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+        </select>}
+        {userScrolling && <button className="follow-lyrics" onClick={() => view.current?.renderer?.resumeAutoscroll()}><RefreshCw size={12} /> Resume sync</button>}
+      </div> : null}
     </div>
-    <div className="lyrics-scroll" ref={container} onWheel={() => setFollowing(false)} onTouchMove={() => setFollowing(false)}>
-      {loading ? <div className="lyrics-message"><RefreshCw className="spin" size={24} /><p>Finding the words…</p></div> : lyrics?.synced.length ?
-        <div className="lyrics-flow">{lyrics.synced.map((line, i) => <button key={i} type="button" dir="auto"
-          className={`lyric-line ${i === active ? "is-active" : ""} ${i < active ? "is-past" : ""}`}
-          aria-current={i === active ? "true" : undefined} aria-label={`Seek to ${line.text || "instrumental"}`}
-          onClick={() => { const audio = audioRef.current; if (audio && audio.readyState > 0) { audio.currentTime = Math.max(0, Math.min(Number.isFinite(audio.duration) ? audio.duration : Infinity, line.t - offset)); setFollowing(true); } }}>
-          <span className="lyric-primary">{line.parts.length ? line.parts.map((part, j) => <span key={j} className="lyric-word">{part.text}</span>) : line.text || <span className="instrumental-dots" aria-label="Instrumental">•••</span>}</span>
-          {line.background && <span className="lyric-background">{line.background}</span>}
-        </button>)}</div> : lyrics?.plain ? <div className="lyric-plain"><small>Timing is unavailable for this song</small>{lyrics.plain}</div> :
-          <div className="lyrics-message"><Mic2 size={30} /><p>No lyrics for this one yet.</p><span>Enjoy the music. Lyrics will appear when available.</span></div>}
+    <div className="lyrics-scroll" ref={scroller}>
+      <div ref={mount} />
+      {loading ? <div className="lyrics-message"><RefreshCw className="spin" size={24} /><p>Finding the words…</p></div>
+        : !lyrics?.lines.length && <div className="lyrics-message"><Mic2 size={30} /><p>No lyrics for this one yet.</p><span>Enjoy the music. Lyrics will appear when available.</span></div>}
     </div>
-    <p className="lyrics-caption">{lyrics?.notice || (lyrics?.synced.length ? "Tap a line to jump to that moment" : "")}</p>
   </section>;
 }
