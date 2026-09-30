@@ -13,28 +13,33 @@ generated via `ytmusicapi oauth` or the browser-header flow — see the
 README for setup instructions.
 """
 
-from functools import lru_cache
+import os
+import threading
 from typing import Optional
 
 from ytmusicapi import YTMusic
 
 from app.config import settings
 
-_yt_instance: Optional[YTMusic] = None
+# One client per worker thread. get_lyrics(timestamps=True) switches the client
+# into its mobile context (ytmusicapi's as_mobile(), documented "not thread-safe"),
+# so a shared client made concurrent search/playlist calls parse mobile responses
+# and fail with KeyError -> 502 whenever lyrics loaded at the same time.
+_local = threading.local()
+_generation = 0
 
 
 def get_yt() -> YTMusic:
-    """Return a shared YTMusic client, created lazily on first use."""
-    global _yt_instance
-    if _yt_instance is None:
-        import os
+    """Return this thread's YTMusic client, created lazily on first use."""
+    if getattr(_local, "generation", None) != _generation:
         auth_file = "oauth.json" if os.path.exists("oauth.json") else (settings.ytmusic_auth_file or None)
-        _yt_instance = YTMusic(auth_file) if auth_file else YTMusic()
-    return _yt_instance
+        _local.yt = YTMusic(auth_file) if auth_file else YTMusic()
+        _local.generation = _generation
+    return _local.yt
 
 def reset_yt():
-    global _yt_instance
-    _yt_instance = None
+    global _generation
+    _generation += 1
 
 
 def search(query: str, filter: Optional[str] = None, limit: int = 20):
