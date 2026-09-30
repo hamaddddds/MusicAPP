@@ -123,6 +123,19 @@ pub fn run() {
             if let Ok(sidecar) = app.shell().sidecar("backend") {
                 let _ = sidecar.spawn();
             }
+            // The updater leaves every downloaded installer in %TEMP% ("<app>-<version>-updater-XXXXXX")
+            // because it exits without cleaning up. Once a new version runs they are dead weight.
+            // One still locked by a finishing installer is skipped and removed on the next launch.
+            let prefix = format!("{}-", app.package_info().name);
+            std::thread::spawn(move || {
+                let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if name.starts_with(&prefix) && name.contains("-updater-") {
+                        let _ = std::fs::remove_dir_all(entry.path());
+                    }
+                }
+            });
             Ok(())
         })
         .plugin(tauri_plugin_deep_link::init())
