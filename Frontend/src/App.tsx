@@ -1716,6 +1716,7 @@ export default function App() {
         <div className="player-info" onClick={() => currentTrack && setNowPlayingOpen(true)}>
           {currentTrack ? (
             <>
+              <img src={currentTrack.artwork} alt="" className="player-artwork" />
               <canvas ref={visualizerCanvasRef} className="player-viz" aria-hidden="true" />
               <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span>{upNext[0] && <span className="player-next">Next · {upNext[0].title}</span>}</div>
               <Button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></Button>

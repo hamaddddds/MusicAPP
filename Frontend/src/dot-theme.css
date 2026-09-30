@@ -206,8 +206,9 @@
 .wheel-index button.on { color: #f2f2f2; font-weight: 600; }
 @container (max-width: 620px) { .wheel-index { display: none; } .wheel-stage, .wheel-title { right: 0; } }
 
-/* Dot visualizer in the player's artwork slot: the dim 9×9 grid is painted here, the canvas lights it up. */
-.player-viz { --pitch: 6px; flex-shrink: 0; width: calc(var(--pitch) * 9); height: calc(var(--pitch) * 9); border-radius: 14px;
+.player-artwork { width: 54px; height: 54px; border-radius: 12px; }
+/* Dot visualizer beside the cover: the dim 9×9 grid is painted here, the canvas lights it up. */
+.player-viz { --pitch: 6px; flex-shrink: 0; width: calc(var(--pitch) * 9); height: calc(var(--pitch) * 9); border-radius: 12px;
   background: radial-gradient(circle, rgba(255,255,255,.16) 1.2px, transparent 1.7px) 0 0 / var(--pitch) var(--pitch), rgba(255,255,255,.035);
   box-shadow: 0 0 calc(var(--beat, 0) * 22px) rgba(255,255,255, calc(var(--beat, 0) * .22)), inset 0 0 0 1px rgba(255,255,255,.1), inset 0 1px 0 rgba(255,255,255,.12); }
 .player-info { flex: 0 1 30%; min-width: 0; }
@@ -215,4 +216,4 @@
 .player-artist { font-size: clamp(11px, .3vw + 7.5px, 12.5px); }
 .player-next { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 1100px) { .player-next { display: none; } }
-@media (max-width: 640px) { .player-viz { --pitch: 5px; border-radius: 11px; } .player-like { display: none; } }
+@media (max-width: 640px) { .player-viz { --pitch: 5px; border-radius: 10px; } .player-artwork { width: 45px; height: 45px; border-radius: 10px; } .player-like { display: none; } }
