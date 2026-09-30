@@ -2,6 +2,8 @@
 // Spotify redirects to the backend sidecar's loopback page, which hands the code back to us once.
 const ACCOUNTS = "https://accounts.spotify.com";
 export const SPOTIFY_REDIRECT = "http://127.0.0.1:8000/spotify/callback";
+// Music Venue's Spotify app. A client ID is public by design; PKCE needs no secret.
+export const SPOTIFY_CLIENT_ID = "e68a27876bb5455b9398a5b3e3e31dcc";
 const SCOPES = "user-top-read user-read-recently-played user-library-read playlist-read-private user-follow-read";
 
 export interface SpotifySession { clientId: string; access: string; refresh: string; expires: number }

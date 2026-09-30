@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import GlassSelect from "./components/GlassSelect";
-import { connectSpotify, fetchTaste, type SpotifySession, type SpotifyTaste } from "./lib/spotify";
+import { SPOTIFY_CLIENT_ID, connectSpotify, fetchTaste, type SpotifySession, type SpotifyTaste } from "./lib/spotify";
 
 // ... Types ...
 interface Track { videoId: string; title: string; artist: string; artwork: string; duration?: number; }
@@ -248,7 +248,6 @@ export default function App() {
 
   const [theme, setTheme] = useState<string>(() => load<string>("mv:theme", "dark") === 'amoled' ? 'amoled' : 'dark');
   const [dotTheme, setDotTheme] = useState<DotMode>(() => load<DotMode>("mv:dot-theme", "wave"));
-  const [spotifyClientId, setSpotifyClientId] = useState<string>(() => load("mv:spotify-client", ""));
   const [spotify, setSpotify] = useState<SpotifySession | null>(() => load("mv:spotify", null));
   const [spotifyTaste, setSpotifyTaste] = useState<SpotifyTaste | null>(() => load("mv:spotify-taste", null));
   const [spotifyBusy, setSpotifyBusy] = useState(false);
@@ -340,7 +339,6 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:blocked", JSON.stringify(blocked)); }, [blocked]);
   useEffect(() => { localStorage.setItem("mv:searches", JSON.stringify(searchHistory)); }, [searchHistory]);
   useEffect(() => { localStorage.setItem("mv:profile", JSON.stringify(profile)); }, [profile]);
-  useEffect(() => { localStorage.setItem("mv:spotify-client", JSON.stringify(spotifyClientId.trim())); }, [spotifyClientId]);
   useEffect(() => { localStorage.setItem("mv:spotify", JSON.stringify(spotify)); }, [spotify]);
   useEffect(() => { localStorage.setItem("mv:spotify-taste", JSON.stringify(spotifyTaste)); }, [spotifyTaste]);
   useEffect(() => { localStorage.setItem("mv:accounts", JSON.stringify(accounts)); }, [accounts]);
@@ -569,12 +567,10 @@ export default function App() {
   }, [spotify, spotifyTaste, flashToast]);
 
   const linkSpotify = async () => {
-    const id = spotifyClientId.trim();
-    if (!/^[0-9a-f]{32}$/i.test(id)) { flashToast("Paste the Client ID from your Spotify app first."); return; }
     setSpotifyBusy(true);
     try {
       const open = isTauri ? (await import("@tauri-apps/plugin-opener")).openUrl : async (url: string) => { window.open(url, "_blank"); };
-      setSpotify(await connectSpotify(id, API_URL, open));
+      setSpotify(await connectSpotify(SPOTIFY_CLIENT_ID, API_URL, open));
       flashToast("Spotify connected. Tuning your picks…");
     } catch (e) {
       flashToast(e instanceof Error ? e.message : "Spotify login failed.");
@@ -1639,10 +1635,7 @@ export default function App() {
                       <Button className="spotify-unlink" onClick={unlinkSpotify}>Disconnect</Button>
                     </div>
                   ) : (
-                    <div className="spotify-connect">
-                      <Input aria-label="Spotify Client ID" placeholder="Spotify Client ID" spellCheck={false} value={spotifyClientId} onChange={(e) => setSpotifyClientId(e.target.value)} />
-                      <Button className="spotify-btn" disabled={spotifyBusy} onClick={linkSpotify}>{spotifyBusy ? "Waiting for Spotify…" : "Connect Spotify"}</Button>
-                    </div>
+                    <Button className="spotify-btn" disabled={spotifyBusy} onClick={linkSpotify}>{spotifyBusy ? "Waiting for Spotify…" : "Connect Spotify"}</Button>
                   )}
                 </div>
               </div>

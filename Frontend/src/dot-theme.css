@@ -221,8 +221,6 @@
 .profile-hero.has-banner .profile-hero-info .glass-text { color: rgba(255,255,255,.78) !important; }
 
 /* Spotify link */
-.spotify-connect { display: flex; gap: 10px; align-items: center; }
-.spotify-connect input { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 12px; }
 .spotify-btn { flex-shrink: 0; border: 0; border-radius: 999px; padding: 0 18px; height: 38px; background: #1ed760; color: #000; font-weight: 700; }
 .spotify-btn:hover { background: #3be477; }
 .spotify-btn:disabled { opacity: .6; }
