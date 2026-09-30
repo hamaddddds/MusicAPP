@@ -236,9 +236,6 @@ async def stream_audio(video_id: str, request: Request):
         video_id, range_header
     )
 
-    if status_code not in (200, 206):
-        raise HTTPException(status_code=502, detail="Upstream audio source unavailable")
-
     passthrough = {"content-type", "content-length", "content-range", "accept-ranges"}
     headers = {k: v for k, v in upstream_headers.items() if k.lower() in passthrough}
     headers.setdefault("accept-ranges", "bytes")

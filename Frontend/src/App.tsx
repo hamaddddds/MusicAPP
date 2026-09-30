@@ -1032,6 +1032,9 @@ export default function App() {
       if (playRequestRef.current !== requestId) return;
       setPlayerUrl(url);
       setIsPlaying(true);
+      // Warm the backend's resolve cache so auto-next starts instantly.
+      const next = orderRef.current[posRef.current + 1];
+      if (next && next.videoId !== track.videoId) fetch(`${API_URL}/stream/${next.videoId}/info`).catch(() => {});
 
     } catch (e) {
       console.error("Failed to resolve stream", e);
@@ -1221,7 +1224,7 @@ export default function App() {
   const handleAudioError = useCallback(() => {
     if (currentTrackRef.current && !triedDownloadRef.current) {
       triedDownloadRef.current = true;
-      startStream(currentTrackRef.current);
+      startStream(currentTrackRef.current, audioRef.current?.currentTime); // resume where it dropped, not from 0
     } else { setIsPlaying(false); setStreamLoading(false); flashToast("Audio could not be loaded. Try another song or play again."); }
   }, [startStream, flashToast]);
 
@@ -2533,7 +2536,7 @@ export default function App() {
       )}
 
       <AnimatePresence>
-        {isPlaying && currentTrack && (
+        {isPlaying && currentTrack && !nowPlayingOpen && (
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}

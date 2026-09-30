@@ -1,12 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
+# Build from Backend/:  python -m PyInstaller backend.spec  ->  dist/backend.exe
+# Used by both AGENTS.md (local) and .github/workflows/build.yml (CI).
+import os
 
+from PyInstaller.utils.hooks import collect_data_files
 
 a = Analysis(
     ['run.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=[],
+    # QuickJS solves YouTube's JS challenge when no deno/node/bun is installed.
+    binaries=[(os.path.join(SPECPATH, 'bin', 'qjs.exe'), 'bin')],
+    # ytmusicapi loads gettext locales at YTMusic() init; without them every
+    # metadata endpoint fails with "No translation file found for domain: 'base'".
+    datas=collect_data_files('ytmusicapi') + collect_data_files('yt_dlp', includes=['**/*.js']),
+    hiddenimports=[
+        'app',
+        'uvicorn.logging',
+        'uvicorn.loops',
+        'uvicorn.loops.auto',
+        'uvicorn.protocols.http.auto',
+        'uvicorn.protocols.websockets.auto',
+        'uvicorn.lifespan.on',
+        'uvicorn.lifespan.off',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -29,7 +45,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
