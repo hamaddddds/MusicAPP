@@ -206,14 +206,17 @@
 .wheel-index button.on { color: #f2f2f2; font-weight: 600; }
 @container (max-width: 620px) { .wheel-index { display: none; } .wheel-stage, .wheel-title { right: 0; } }
 
-.player-artwork { width: 54px; height: 54px; border-radius: 12px; }
-/* Dot visualizer beside the cover: the dim 9×9 grid is painted here, the canvas lights it up. */
-.player-viz { --pitch: 6px; flex-shrink: 0; width: calc(var(--pitch) * 9); height: calc(var(--pitch) * 9); border-radius: 12px;
-  background: radial-gradient(circle, rgba(255,255,255,.16) 1.2px, transparent 1.7px) 0 0 / var(--pitch) var(--pitch), rgba(255,255,255,.035);
-  box-shadow: 0 0 calc(var(--beat, 0) * 22px) rgba(255,255,255, calc(var(--beat, 0) * .22)), inset 0 0 0 1px rgba(255,255,255,.1), inset 0 1px 0 rgba(255,255,255,.12); }
-.player-info { flex: 0 1 30%; min-width: 0; }
+.player-info { flex: 0 1 30%; min-width: 0; gap: 14px; }
+/* The cover sits on a blurred copy of itself that breathes with the bass. */
+.player-art { position: relative; flex-shrink: 0; width: 54px; height: 54px; }
+.player-art .player-artwork { position: relative; width: 100%; height: 100%; border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.08); transform: scale(calc(1 + var(--beat, 0) * .045)); }
+.player-art-glow { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); border-radius: 16px; object-fit: cover; filter: blur(18px) saturate(2); opacity: calc(.5 + var(--beat, 0) * .5); transform: scale(calc(1.2 + var(--beat, 0) * .4)); pointer-events: none; }
+.player-text { flex: 0 1 auto; }
 .player-title { font-size: clamp(12.5px, .45vw + 7.5px, 15px); }
 .player-artist { font-size: clamp(11px, .3vw + 7.5px, 12.5px); }
-.player-next { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 1100px) { .player-next { display: none; } }
-@media (max-width: 640px) { .player-viz { --pitch: 5px; border-radius: 10px; } .player-artwork { width: 45px; height: 45px; border-radius: 10px; } .player-like { display: none; } }
+/* Dot waveform: the faint 16×7 grid is painted here, the canvas lights it up; the ends fade out. */
+.player-viz { --pitch: 5px; flex-shrink: 0; width: calc(var(--pitch) * 16); height: calc(var(--pitch) * 7); margin-left: 4px;
+  background: radial-gradient(circle, rgba(255,255,255,.14) 1px, transparent 1.5px) 0 0 / var(--pitch) var(--pitch);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+@media (max-width: 1100px) { .player-viz { display: none; } }
+@media (max-width: 640px) { .player-art { width: 45px; height: 45px; } .player-like { display: none; } }

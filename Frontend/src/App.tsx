@@ -754,8 +754,8 @@ export default function App() {
     const analyser = analyserRef.current;
     if (!analyser) return;
     const data = new Uint8Array(analyser.frequencyBinCount);
-    // A 9×9 dot matrix in the player's artwork slot: one column per band, lit outward from the middle row.
-    const COLS = 9, ROWS = 9, MID = (ROWS - 1) / 2;
+    // A dot waveform beside the player's title: one column per band, lit outward from the middle row.
+    const COLS = 16, ROWS = 7, MID = (ROWS - 1) / 2;
     const binHz = analyser.context.sampleRate / analyser.fftSize;
     // Log-spaced bands (45 Hz – 14 kHz): linear bins give bass one column and cymbals twenty.
     const edges = Array.from({ length: COLS + 1 }, (_, i) => Math.round(45 * (14000 / 45) ** (i / COLS) / binHz));
@@ -771,23 +771,23 @@ export default function App() {
         let peak = 0;
         for (let j = edges[i]; j <= Math.max(edges[i], edges[i + 1] - 1); j++) peak = Math.max(peak, data[j]);
         // Treble carries far less energy than bass; tilt it up about 2 dB a column so the whole row dances.
-        peaks[i] = peak + i * 6;
+        peaks[i] = peak + i * 54 / COLS;
         loudest = Math.max(loudest, peaks[i]);
       }
       // Auto-gain: the window follows the loudest band, so quiet ballads and brickwalled rock both move.
       // The floor keeps silence dark instead of stretching noise to full height.
-      top = Math.max(loudest, top - 0.25, 150);
+      top = Math.max(loudest, top - 0.6, 150);
       for (let i = 0; i < COLS; i++) {
         const target = Math.max(0, (peaks[i] - top + RANGE) / RANGE) ** 1.6;
         levels[i] += (target - levels[i]) * (target > levels[i] ? 0.5 : 0.16);
       }
-      beat += ((levels[0] + levels[1]) / 2 - beat) * 0.3;
+      beat += ((levels[0] + levels[1] + levels[2]) / 3 - beat) * 0.3;
       beatRef.current = beat; // the home Dotted Surface swells with the bass
 
       const canvas = visualizerCanvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx) return;
-      canvas.style.setProperty("--beat", beat.toFixed(3));
+      canvas.parentElement?.style.setProperty("--beat", beat.toFixed(3)); // the cover glow pulses too
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.clientWidth, h = canvas.clientHeight;
       if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
@@ -803,7 +803,7 @@ export default function App() {
         for (let j = 0; j < ROWS; j++) {
           const lit = Math.min(1, reach - Math.abs(j - MID));
           if (lit <= 0) continue;
-          ctx.globalAlpha = lit;
+          ctx.globalAlpha = lit * (1 - Math.abs(j - MID) / (MID + 1) * 0.5); // outer rows fade like a waveform
           ctx.beginPath();
           ctx.arc((i + 0.5) * pitch, (j + 0.5) * pitch, pitch * (0.26 + 0.08 * lit), 0, Math.PI * 2);
           ctx.fill();
@@ -1716,9 +1716,9 @@ export default function App() {
         <div className="player-info" onClick={() => currentTrack && setNowPlayingOpen(true)}>
           {currentTrack ? (
             <>
-              <img src={currentTrack.artwork} alt="" className="player-artwork" />
+              <span className="player-art"><img src={currentTrack.artwork} alt="" aria-hidden="true" className="player-art-glow" /><img src={currentTrack.artwork} alt="" className="player-artwork" /></span>
+              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span></div>
               <canvas ref={visualizerCanvasRef} className="player-viz" aria-hidden="true" />
-              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span>{upNext[0] && <span className="player-next">Next · {upNext[0].title}</span>}</div>
               <Button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></Button>
             </>
           ) : <div className="player-text idle">Not Playing</div>}
