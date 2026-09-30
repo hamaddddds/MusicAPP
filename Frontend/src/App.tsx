@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, memo } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
@@ -17,6 +17,8 @@ import ShareLyricModal from "./components/ShareLyricModal";
 import NowPlayingArtwork from "./components/NowPlayingArtwork";
 import TrackActions from "./components/TrackActions";
 import MusicVenueMark from "./components/MusicVenueMark";
+import DottedSurface from "./components/DottedSurface";
+import WorksWheel from "./components/WorksWheel";
 import SyncedLyrics from "./components/SyncedLyrics";
 import { fetchLyrics, type Lyrics } from "./lib/lyrics";
 import { Button } from "@/components/ui/button";
@@ -282,6 +284,7 @@ export default function App() {
   const eqBandsRef = useRef<BiquadFilterNode[]>([]);
   const visualizerCanvasRef = useRef<HTMLCanvasElement>(null);
   const islandRef = useRef<HTMLDivElement>(null);
+  const beatRef = useRef(0);
   const mainRef = useRef<HTMLElement>(null);
   const reqFrameRef = useRef<number>(0);
 
@@ -761,6 +764,18 @@ export default function App() {
 
     const draw = (now: number) => {
       reqFrameRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(data);
+      for (let i = 0; i < BARS; i++) {
+        let peak = 0;
+        for (let j = edges[i]; j <= Math.max(edges[i], edges[i + 1] - 1); j++) peak = Math.max(peak, data[j]);
+        // Treble carries far less energy than bass; tilt it up so the whole row dances.
+        const target = Math.min(1, (peak / 255) ** 2.2 * (1 + 0.9 * i / BARS));
+        levels[i] += (target - levels[i]) * (target > levels[i] ? 0.5 : 0.1);
+      }
+      beat += ((levels[0] + levels[1] + levels[2] + levels[3]) / 4 - beat) * 0.3;
+      beatRef.current = beat; // the home Dotted Surface swells with the bass
+      islandRef.current?.style.setProperty("--beat", beat.toFixed(3));
+
       const canvas = visualizerCanvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx) return;
@@ -769,7 +784,6 @@ export default function App() {
       if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      analyser.getByteFrequencyData(data);
 
       const slot = w / BARS, bar = slot * 0.52;
       const fill = ctx.createLinearGradient(0, 0, w, 0);
@@ -780,19 +794,12 @@ export default function App() {
       ctx.shadowColor = "rgba(255, 255, 255, 0.15)";
       ctx.shadowBlur = 8;
       for (let i = 0; i < BARS; i++) {
-        let peak = 0;
-        for (let j = edges[i]; j <= Math.max(edges[i], edges[i + 1] - 1); j++) peak = Math.max(peak, data[j]);
-        // Treble carries far less energy than bass; tilt it up so the whole row dances.
-        const target = Math.min(1, (peak / 255) ** 2.2 * (1 + 0.9 * i / BARS));
-        levels[i] += (target - levels[i]) * (target > levels[i] ? 0.5 : 0.1);
         const ripple = 1 + Math.sin(now / 260 + i * 0.55); // a soft wave stays alive through quiet intros
         const height = Math.max(bar + ripple, levels[i] * h);
         ctx.beginPath();
         ctx.roundRect(i * slot + (slot - bar) / 2, (h - height) / 2, bar, height, bar / 2);
         ctx.fill();
       }
-      beat += ((levels[0] + levels[1] + levels[2] + levels[3]) / 4 - beat) * 0.3;
-      islandRef.current?.style.setProperty("--beat", beat.toFixed(3));
     };
     reqFrameRef.current = requestAnimationFrame(draw);
   }, []);
@@ -1199,6 +1206,9 @@ export default function App() {
     );
   };
 
+  // Stable identity: App re-renders on every timeupdate, the wheel should not re-pose each time.
+  const wheelItems = useMemo(() => quickPicks.slice(0, 10).map(t => ({ id: t.videoId, title: t.title, subtitle: t.artist, image: t.artwork })), [quickPicks]);
+
   const renderShelf = (id: string, title: string, subtitle: string) => {
     const tracks = shelves[id] || [];
     return (
@@ -1239,7 +1249,11 @@ export default function App() {
       <audio ref={audioRef} src={playerUrl || undefined} crossOrigin="anonymous" onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)} onLoadedMetadata={(e) => {
         if (pendingResume.current > 0) { e.currentTarget.currentTime = Math.min(pendingResume.current, Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : pendingResume.current); pendingResume.current = 0; }
       }} onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onWaiting={() => setStreamLoading(true)} onCanPlay={() => setStreamLoading(false)} onPlaying={() => setStreamLoading(false)} onPause={(e) => { if (e.currentTarget.readyState >= 2 && !streamLoading) setIsPlaying(false); }} />
-      <div className="dot-backdrop" aria-hidden="true" />
+      <AnimatePresence initial={false}>
+        {activeTab === "home"
+          ? <motion.div key="surface" className="home-surface" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }}><DottedSurface level={beatRef} /></motion.div>
+          : <motion.div key="grid" className="dot-backdrop" aria-hidden="true" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }} />}
+      </AnimatePresence>
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
         <div className="sidebar-brand"><MusicVenueMark /><span>Music Venue</span></div>
@@ -1336,10 +1350,16 @@ export default function App() {
                   <button className="hero-play" onClick={() => quickPicks.length ? playTrack(quickPicks[0], quickPicks) : setActiveTab("search")}><Play size={16} fill="currentColor" /> {quickPicks.length ? "Play your mix" : "Find your music"}</button>
                   <button className="hero-secondary" onClick={() => setActiveTab("favorites")}><Heart size={16} /> Your collection</button>
                 </div>
+                {quickPicks.length > 0 && <div className="hero-stats">
+                  <span><b>{quickPicks.length}</b> tracks</span>
+                  <span><b>{new Set(quickPicks.map(t => t.artist.split(",")[0].trim())).size}</b> artists</span>
+                  <span><b>{favorites.length}</b> liked</span>
+                </div>}
               </div>
-              <div className="hero-dot-cover" aria-hidden="true">
-                <MusicVenueMark className="hero-dot-mark" field />
-                <span className="hero-dot-caption">SOUND IN EVERY DOT.</span>
+              <div className="hero-wheel">
+                {quickPicks.length >= 3
+                  ? <WorksWheel label="Daily Mix" items={wheelItems} onPlay={i => playTrack(quickPicks[i], quickPicks)} />
+                  : <div className="hero-dot-cover" aria-hidden="true"><MusicVenueMark className="hero-dot-mark" field /></div>}
               </div>
             </section>
             {quickPicks.length > 0 && (
