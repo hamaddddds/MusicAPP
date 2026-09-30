@@ -30,3 +30,6 @@ Frontend/src-tauri/binaries/
 *.njsproj
 *.sln
 *.sw?
+
+# PyInstaller intermediates (rebuilt by every backend build; only the copied sidecar binary is committed)
+Backend/build/
