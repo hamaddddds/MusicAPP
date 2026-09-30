@@ -17,7 +17,7 @@ import ShareLyricModal from "./components/ShareLyricModal";
 import NowPlayingArtwork from "./components/NowPlayingArtwork";
 import TrackActions from "./components/TrackActions";
 import MusicVenueMark from "./components/MusicVenueMark";
-import DottedSurface from "./components/DottedSurface";
+import DottedSurface, { type DotMode } from "./components/DottedSurface";
 import WorksWheel from "./components/WorksWheel";
 import SyncedLyrics from "./components/SyncedLyrics";
 import { fetchLyrics, type Lyrics } from "./lib/lyrics";
@@ -246,7 +246,7 @@ export default function App() {
   const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
 
   const [theme, setTheme] = useState<string>(() => load<string>("mv:theme", "dark") === 'amoled' ? 'amoled' : 'dark');
-  const [dotTheme, setDotTheme] = useState<string>(() => load<string>("mv:dot-theme", "grid"));
+  const [dotTheme, setDotTheme] = useState<DotMode>(() => load<DotMode>("mv:dot-theme", "wave"));
   const [pageTransition, setPageTransition] = useState<string>(() => load("mv:page-transition", "fade"));
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   // Account UI is gone (private app); an already-linked GitHub token keeps backing up state to its gist.
@@ -392,7 +392,6 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    document.documentElement.dataset.dotTheme = dotTheme;
     localStorage.setItem("mv:dot-theme", JSON.stringify(dotTheme));
   }, [dotTheme]);
 
@@ -1263,9 +1262,7 @@ export default function App() {
         if (pendingResume.current > 0) { e.currentTarget.currentTime = Math.min(pendingResume.current, Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : pendingResume.current); pendingResume.current = 0; }
       }} onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onWaiting={() => setStreamLoading(true)} onCanPlay={() => setStreamLoading(false)} onPlaying={() => setStreamLoading(false)} onPause={(e) => { if (e.currentTarget.readyState >= 2 && !streamLoading) setIsPlaying(false); }} />
       <AnimatePresence initial={false}>
-        {activeTab === "home"
-          ? <motion.div key="surface" className="home-surface" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }}><DottedSurface level={beatRef} /></motion.div>
-          : <motion.div key="grid" className="dot-backdrop" aria-hidden="true" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }} />}
+        <motion.div key={dotTheme} className="dot-field" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }}><DottedSurface mode={dotTheme} level={beatRef} /></motion.div>
       </AnimatePresence>
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
@@ -1558,7 +1555,7 @@ export default function App() {
                   </div>
                   <h3 className="dot-theme-heading">Dot motion</h3><p className="setting-desc">Choose how the dots move behind the interface.</p>
                   <div className="theme-grid dot-theme-grid">
-                    {[{ id: "grid", label: "Quiet Grid" }, { id: "flow", label: "Dot Flow" }, { id: "wave", label: "Dotted Wave" }, { id: "orbit", label: "Orbit Field" }].map((tOpt) => (
+                    {([{ id: "grid", label: "Quiet Grid" }, { id: "flow", label: "Dot Flow" }, { id: "wave", label: "Dotted Wave" }, { id: "orbit", label: "Orbit Field" }] as const).map((tOpt) => (
                       <Button key={tOpt.id} className={`theme-card ${dotTheme === tOpt.id ? "active" : ""}`} onClick={() => setDotTheme(tOpt.id)}>
                         <span className={`theme-swatch dot-swatch dot-swatch-${tOpt.id}`}><span className="tsw-bar" /></span>
                         <div className="theme-card-label">{tOpt.label}</div>

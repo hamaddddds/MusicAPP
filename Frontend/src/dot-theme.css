@@ -14,17 +14,8 @@
   --muted: 0 0% 13%; --muted-foreground: 0 0% 58%; --popover: 0 0% 8%; --popover-foreground: 0 0% 95%;
 }
 :root[data-theme="amoled"] { --bg: #000; --sidebar-bg: #080808f5; --player-bg: #101010f5; }
-.dot-backdrop, .np-dot-bg { position: fixed; inset: 0; pointer-events: none; background-image: radial-gradient(circle, #ffffff18 .8px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(#0009, #0003 75%, transparent); }
+.np-dot-bg { position: fixed; inset: 0; pointer-events: none; background-image: radial-gradient(circle, #ffffff18 .8px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(#0009, #0003 75%, transparent); }
 .np-dot-bg { position: absolute; opacity: .5; }
-.dot-backdrop { animation: dot-drift 28s linear infinite; }
-@keyframes dot-drift { to { background-position: 22px 22px; } }
-:root[data-dot-theme="flow"] .dot-backdrop { background-size: 18px 18px; animation: dot-flow 12s ease-in-out infinite alternate; mask-image: radial-gradient(ellipse at 50% 45%, #000b, transparent 82%); }
-:root[data-dot-theme="flow"] .dot-backdrop::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle, #fff2 1px, transparent 1.3px) 8px 6px / 29px 29px; transform: skewY(-4deg); opacity: .8; }
-@keyframes dot-flow { to { background-position: 0 38px; transform: skewY(2deg) scale(1.03); } }
-:root[data-dot-theme="wave"] .dot-backdrop { background-image: radial-gradient(circle, #ffffff28 1px, transparent 1.2px); background-size: 16px 16px; mask-image: linear-gradient(170deg, transparent 5%, #000 42%, transparent 94%); animation: dot-wave 9s ease-in-out infinite alternate; }
-@keyframes dot-wave { to { background-position: 36px -20px; transform: rotate(-1deg) scale(1.06); } }
-:root[data-dot-theme="orbit"] .dot-backdrop { background-image: radial-gradient(circle at 50% 50%, transparent 0 12%, #ffffff16 12.1% 12.3%, transparent 12.4% 25%, #ffffff14 25.1% 25.3%, transparent 25.4% 40%, #ffffff12 40.1% 40.3%, transparent 40.4%), radial-gradient(circle, #ffffff24 .8px, transparent 1px); background-size: 100% 100%, 20px 20px; animation: dot-orbit 20s linear infinite; }
-@keyframes dot-orbit { to { background-position: 0 0, 20px 20px; transform: rotate(4deg) scale(1.05); } }
 .app-container { background: var(--bg); }
 .sidebar { background: var(--sidebar-bg); box-shadow: inset 0 1px 0 #ffffff05; }
 .header { background: #080808ea; }
@@ -136,7 +127,7 @@
 .splash-wave i { display: block; width: 4px; height: 4px; border-radius: 50%; background: #e8e8e8; opacity: .1; animation: wave-dot 1.5s ease-in-out var(--d) infinite; }
 @keyframes wave-dot { 0%, 100% { opacity: .1; transform: scale(.7); } 40% { opacity: 1; transform: scale(1.3); } }
 .dot-splash-status { margin-top: 16px; font: 10px ui-monospace, 'Cascadia Code', monospace; letter-spacing: 2.6px; text-transform: uppercase; color: #777; }
-@media (prefers-reduced-motion: reduce) { .dot-backdrop, .dot-splash-shock, .dot-splash-ring, .splash-wordmark circle, .splash-wave i, .splash-lit { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .dot-splash-shock, .dot-splash-ring, .splash-wordmark circle, .splash-wave i, .splash-lit { animation: none; } }
 
 /* ── Liquid glass over the dots. Blur lives on panels; cards inside get tinted glass without their own blur. ── */
 :root, :root[data-theme] {
@@ -146,8 +137,8 @@
   --lg-lift: 0 18px 48px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(255,255,255,.03);
 }
 :root[data-theme="amoled"] { --sidebar-bg: rgba(0,0,0,.55); --player-bg: rgba(6,6,6,.72); }
-.home-surface { position: fixed; inset: 0; pointer-events: none; }
-.home-surface .dotted-surface { display: block; width: 100%; height: 100%; }
+.dot-field { position: fixed; inset: 0; pointer-events: none; }
+.dot-field .dotted-surface { display: block; width: 100%; height: 100%; }
 .sidebar { margin-bottom: 96px; background: var(--lg-fill), var(--sidebar-bg); border: 1px solid var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(40px) saturate(1.6); -webkit-backdrop-filter: blur(40px) saturate(1.6); }
 .header { background: linear-gradient(#080808d0, #08080838); border-bottom: 0; backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); }
 .player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .eq-popover { background: var(--lg-fill), var(--player-bg); border-color: var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(40px) saturate(1.7); -webkit-backdrop-filter: blur(40px) saturate(1.7); }
