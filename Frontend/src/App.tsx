@@ -425,12 +425,6 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  const searchSongs = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&filter=songs`);
-    return mapTracks(await res.json());
-  }, []);
-
-
   const loadHome = useCallback(async () => {
     setLoading(true);
     const blockedSet = new Set(blocked);
@@ -745,10 +739,32 @@ export default function App() {
     posRef.current = Math.max(0, order.findIndex((t) => t.videoId === start.videoId));
   }, []);
 
+  /** YouTube Music's radio for a song (the queue its own autoplay uses), minus blocked artists, junk and songs already queued. */
+  const fetchRadio = useCallback(async (seed: Track, skip: Track[]) => {
+    const blockedSet = new Set(blocked);
+    const seen = new Set([seed, ...skip].map(songKey));
+    return mapTracks((await getJson(`/watch/${seed.videoId}?radio=true&limit=50`))?.tracks)
+      .filter(t => !blockedSet.has(t.artist) && !JUNK_TITLE.test(t.title) && !seen.has(songKey(t)) && !!seen.add(songKey(t)));
+  }, [blocked]);
+
+  // Autoplay: when the last queued song starts, queue its radio so playback carries on in the same mood.
+  // A song played on its own is a queue of one, so it becomes a radio straight away.
+  const toppingUp = useRef(false);
+  const topUpQueue = useCallback(() => {
+    const order = orderRef.current;
+    if (toppingUp.current || repeatRef.current !== "off" || posRef.current < order.length - 1) return;
+    toppingUp.current = true;
+    fetchRadio(order[order.length - 1], order.slice(-100)).then(more => {
+      toppingUp.current = false;
+      if (orderRef.current === order && more.length) orderRef.current = [...order, ...more]; // dropped if the queue was edited meanwhile
+    });
+  }, [fetchRadio]);
+
   const playTrack = useCallback((track: Track, context: Track[]) => {
     buildOrder(context, track);
     loadAndPlay(track);
-  }, [buildOrder, loadAndPlay]);
+    topUpQueue();
+  }, [buildOrder, loadAndPlay, topUpQueue]);
 
   const advance = useCallback((manual: boolean) => {
     const order = orderRef.current;
@@ -760,7 +776,8 @@ export default function App() {
     }
     posRef.current = next;
     loadAndPlay(order[next]);
-  }, [loadAndPlay]);
+    topUpQueue();
+  }, [loadAndPlay, topUpQueue]);
 
   const playPrev = useCallback(() => {
     const order = orderRef.current;
@@ -915,17 +932,10 @@ export default function App() {
     flashToast("Added to queue");
   }, [playTrack, flashToast]);
 
-  const startMix = useCallback(async (track: Track) => {
+  const startMix = useCallback((track: Track) => {
     playTrack(track, [track]);
-    flashToast("Memulai mix...");
-    try {
-      const related = (await searchSongs(track.artist)).filter((t) => t.videoId !== track.videoId);
-      const order = [track, ...shuffleArray(related)];
-      orderRef.current = order;
-      contextRef.current = order;
-      posRef.current = 0;
-    } catch { }
-  }, [playTrack, searchSongs, flashToast]);
+    flashToast("Starting a radio for this song");
+  }, [playTrack, flashToast]);
 
   const goToArtist = useCallback((artist: string) => { openArtist({ name: artist }); }, [openArtist]);
   const subscribeFromCtx = useCallback(async (track: Track) => {
@@ -1222,7 +1232,7 @@ export default function App() {
     : null;
 
   const renderAlbumCard = (track: Track, context: Track[]) => (
-    <div key={track.videoId} className="album-card glass-card" onClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context)}>
+    <div key={track.videoId} className="album-card glass-card" onClick={() => playTrack(track, [track])} onContextMenu={(e) => openCtx(e, track, context)}>
       <div className="album-art-wrap">
         <img src={track.artwork} alt={track.title} className="album-artwork" loading="lazy" />
       </div>
@@ -1233,13 +1243,14 @@ export default function App() {
     </div>
   );
 
-  const renderTrackRow = (track: Track, context: Track[], index: number, playlistId?: string) => {
+  /** `radio`: play the song on its own so what follows matches its mood, not the list it sits in. */
+  const renderTrackRow = (track: Track, context: Track[], index: number, playlistId?: string, radio = false) => {
     const playing = currentTrack?.videoId === track.videoId;
     return (
-      <div key={track.videoId} className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, context)} onContextMenu={(e) => openCtx(e, track, context, playlistId)}>
+      <div key={track.videoId} className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, radio ? [track] : context)} onContextMenu={(e) => openCtx(e, track, context, playlistId)}>
         <div className="track-row-index">
           <span className="track-num">{index + 1}</span>
-          <Button className="track-row-play" onClick={() => playTrack(track, context)}>
+          <Button className="track-row-play" onClick={() => playTrack(track, radio ? [track] : context)}>
             {playing && streamLoading ? <RefreshCw size={14} className="spin" /> : playing && isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
           </Button>
         </div>
@@ -1401,14 +1412,14 @@ export default function App() {
               </div>
               <div className="hero-wheel">
                 {quickPicks.length >= 3
-                  ? <WorksWheel label="Daily Mix" items={wheelItems} onPlay={i => playTrack(quickPicks[i], quickPicks)} />
+                  ? <WorksWheel label="Daily Mix" items={wheelItems} onPlay={i => playTrack(quickPicks[i], [quickPicks[i]])} />
                   : <div className="hero-dot-cover" aria-hidden="true"><MusicVenueMark className="hero-dot-mark" field /></div>}
               </div>
             </section>
             {quickPicks.length > 0 && (
               <section className="shelf">
                 <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}</p></div></div>
-                <div className="track-grid">{quickPicks.map((t, i) => renderTrackRow(t, quickPicks, i))}</div>
+                <div className="track-grid">{quickPicks.map((t, i) => renderTrackRow(t, quickPicks, i, undefined, true))}</div>
               </section>
             )}
             {homeShelvesState.map((s) => renderShelf(s.id, s.title, s.subtitle))}
@@ -1766,7 +1777,7 @@ export default function App() {
             <motion.aside className="queue-panel" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}>
               <div className="queue-head"><h3>Playing Next</h3><Button variant="ghost" size="icon" aria-label="Close queue" onClick={() => setShowQueue(false)}><X size={18} /></Button></div>
               {currentTrack && <div className="queue-now"><img src={currentTrack.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{currentTrack.title}</span><span className="track-row-artist">Now Playing</span></div></div>}
-              <div className="queue-list">{upNext.length ? upNext.map((t, i) => <div key={t.videoId + i} className="queue-item" onClick={() => { const idx = orderRef.current.findIndex((x) => x.videoId === t.videoId); if (idx >= 0) { posRef.current = idx; loadAndPlay(t); } }} onContextMenu={(e) => openCtx(e, t, orderRef.current)}><img src={t.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{t.title}</span><span className="track-row-artist">{t.artist}</span></div></div>) : <p className="lyric-status">Antrean kosong.</p>}</div>
+              <div className="queue-list">{upNext.length ? upNext.map((t, i) => <div key={t.videoId + i} className="queue-item" onClick={() => { const idx = orderRef.current.findIndex((x) => x.videoId === t.videoId); if (idx >= 0) { posRef.current = idx; loadAndPlay(t); topUpQueue(); } }} onContextMenu={(e) => openCtx(e, t, orderRef.current)}><img src={t.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{t.title}</span><span className="track-row-artist">{t.artist}</span></div></div>) : <p className="lyric-status">Antrean kosong.</p>}</div>
             </motion.aside>
           </>
         )}
