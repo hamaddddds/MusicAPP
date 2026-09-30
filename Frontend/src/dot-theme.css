@@ -131,7 +131,7 @@
 
 /* ── Liquid glass over the dots. Blur lives on panels; cards inside get tinted glass without their own blur. ── */
 :root, :root[data-theme] {
-  --sidebar-bg: rgba(14,14,14,.34); --player-bg: rgba(18,18,18,.6); --panel-bg: rgba(22,22,22,.82);
+  --sidebar-bg: rgba(14,14,14,.3); --player-bg: rgba(18,18,18,.6); --panel-bg: rgba(22,22,22,.82);
   --lg-fill: linear-gradient(160deg, rgba(255,255,255,.09), rgba(255,255,255,.02) 50%, rgba(255,255,255,.045));
   --lg-edge: rgba(255,255,255,.12);
   --lg-lift: 0 18px 48px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(255,255,255,.03);
@@ -139,7 +139,7 @@
 :root[data-theme="amoled"] { --sidebar-bg: rgba(0,0,0,.55); --player-bg: rgba(6,6,6,.72); }
 .dot-field { position: fixed; inset: 0; z-index: -1; pointer-events: none; } /* behind every panel, so glass blurs it instead of dots landing on top */
 .dot-field .dotted-surface { display: block; width: 100%; height: 100%; }
-.sidebar { margin-bottom: 96px; background: var(--lg-fill), var(--sidebar-bg); border: 1px solid var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(8px) saturate(1.5); -webkit-backdrop-filter: blur(8px) saturate(1.5); }
+.sidebar { margin-bottom: 96px; background: var(--lg-fill), var(--sidebar-bg); border: 1px solid var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(4px) saturate(1.5); -webkit-backdrop-filter: blur(4px) saturate(1.5); }
 .header { background: linear-gradient(#080808d0, #08080838); border-bottom: 0; backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); }
 .player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .eq-popover { background: var(--lg-fill), var(--player-bg); border-color: var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(40px) saturate(1.7); -webkit-backdrop-filter: blur(40px) saturate(1.7); }
 .player-bar::after, .lyrics-dock::after, .glass-menu::after, .ctx-menu::after, .search-dropdown::after, .eq-popover::after, .listen-hero::after { opacity: .55; }
@@ -154,8 +154,9 @@
 .search-box:focus-within { background: var(--lg-fill), rgba(255,255,255,.07); border-color: rgba(255,255,255,.28); box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 0 0 4px rgba(255,255,255,.04), 0 10px 28px rgba(0,0,0,.3); }
 .window-controls { border-radius: 999px; background: var(--lg-fill), rgba(255,255,255,.03); border: 1px solid var(--lg-edge); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
 .win-btn { border-radius: 50%; }
-.listen-hero, .shelf, .setting-block, .artist-page-head, .top-result-card, .profile-hero { background: var(--lg-fill), rgba(12,12,12,.3); border: 1px solid var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(7px) saturate(1.5); -webkit-backdrop-filter: blur(7px) saturate(1.5); }
-.profile-hero { background: radial-gradient(circle, #ffffff12 .8px, transparent 1px) 0 0 / 18px 18px, var(--lg-fill), rgba(12,12,12,.3); }
+/* Acrylic, not smoked glass: a 4px blur keeps the 1–3px dots behind readable as soft specks. */
+.listen-hero, .shelf, .setting-block, .artist-page-head, .top-result-card, .profile-hero { background: var(--lg-fill), rgba(12,12,12,.26); border: 1px solid var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(4px) saturate(1.5); -webkit-backdrop-filter: blur(4px) saturate(1.5); }
+.profile-hero { background: radial-gradient(circle, #ffffff12 .8px, transparent 1px) 0 0 / 18px 18px, var(--lg-fill), rgba(12,12,12,.26); }
 .shelf { padding: 22px 24px 18px; border-radius: 26px; }
 .shelf-scroll { padding-bottom: 6px; }
 .album-card.glass-card { padding: 10px 10px 14px; border-radius: 20px; background: var(--lg-fill), rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.09); box-shadow: 0 12px 30px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.1); transition: translate .3s cubic-bezier(.2,.8,.2,1), background .25s, border-color .25s, box-shadow .3s; }
