@@ -1,16 +1,8 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use tauri::Manager;
-use tauri::Emitter;
 use tauri_plugin_shell::ShellExt;
-mod discord_ipc;
-use discord_ipc::CustomIpc;
-use std::sync::Mutex;
-use once_cell::sync::Lazy;
-use std::net::TcpListener;
-use std::io::{Read, Write};
 
-static DISCORD_IPC: Lazy<Mutex<Option<CustomIpc>>> = Lazy::new(|| Mutex::new(None));
 
 extern "C" {
     fn GetAppVersion() -> *const c_char;
@@ -109,131 +101,6 @@ fn show_main_window(app: tauri::AppHandle) {
 }
 
 // ============================
-// DISCORD RPC COMMANDS
-// ============================
-
-#[tauri::command]
-fn connect_rpc(client_id: String) -> Result<(), String> {
-    let mut client = CustomIpc::connect(&client_id)
-    
-    .map_err(|e| format!("Gagal terhubung ke Discord RPC: {:?}", e))?;
-    
-    let mut guard = DISCORD_IPC.lock().unwrap();
-    *guard = Some(client);
-    Ok(())
-}
-
-#[tauri::command]
-fn disconnect_rpc() -> Result<(), String> {
-    let mut guard = DISCORD_IPC.lock().unwrap();
-    let _ = guard.take();
-    Ok(())
-}
-
-#[tauri::command]
-fn set_rpc_activity(
-    activity_name: Option<String>,
-    activity_type: Option<u8>,
-    details: Option<String>, 
-    state: Option<String>, 
-    large_image: Option<String>, 
-    large_text: Option<String>,
-    small_image: Option<String>,
-    small_text: Option<String>,
-    button1_label: Option<String>,
-    button1_url: Option<String>,
-    button2_label: Option<String>,
-    button2_url: Option<String>,
-    start_time: Option<i64>,
-    end_time: Option<i64>
-) -> Result<(), String> {
-    let mut guard = DISCORD_IPC.lock().unwrap();
-    if let Some(client) = guard.as_mut() {
-        let mut assets = serde_json::json!({});
-        if let Some(l_i) = large_image { assets["large_image"] = serde_json::json!(l_i); }
-        if let Some(l_t) = large_text { assets["large_text"] = serde_json::json!(l_t); }
-        if let Some(s_i) = small_image { assets["small_image"] = serde_json::json!(s_i); }
-        if let Some(s_t) = small_text { assets["small_text"] = serde_json::json!(s_t); }
-
-        let mut activity = serde_json::json!({
-            "type": activity_type.unwrap_or(2)
-        });
-        
-        if let Some(n) = activity_name { activity["name"] = serde_json::json!(n); }
-        if let Some(d) = details { activity["details"] = serde_json::json!(d); }
-        if let Some(s) = state { activity["state"] = serde_json::json!(s); }
-        
-        let assets_obj = assets.as_object().unwrap();
-        if !assets_obj.is_empty() {
-            activity["assets"] = assets;
-        }
-
-        let mut buttons = Vec::new();
-        if let (Some(l1), Some(u1)) = (button1_label, button1_url) {
-            buttons.push(serde_json::json!({"label": l1, "url": u1}));
-        }
-        if let (Some(l2), Some(u2)) = (button2_label, button2_url) {
-            buttons.push(serde_json::json!({"label": l2, "url": u2}));
-        }
-        if !buttons.is_empty() {
-            activity["buttons"] = serde_json::json!(buttons);
-        }
-
-        if start_time.is_some() || end_time.is_some() {
-            let mut timestamps = serde_json::json!({});
-            if let Some(s) = start_time { timestamps["start"] = serde_json::json!(s * 1000); }
-            if let Some(e) = end_time { timestamps["end"] = serde_json::json!(e * 1000); }
-            activity["timestamps"] = timestamps;
-        }
-
-        client.set_activity(activity).map_err(|e| format!("Gagal set activity: {}", e))?;
-    }
-    Ok(())
-}
-
-// ============================
-// OAUTH DEV SERVER
-// ============================
-
-#[tauri::command]
-fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
-    // Bind to any available ephemeral port
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
-    let port = listener.local_addr().unwrap().port();
-    
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            if let Ok(mut stream) = stream {
-                let mut buffer = [0; 4096];
-                if stream.read(&mut buffer).is_ok() {
-                    let req = String::from_utf8_lossy(&buffer);
-                    if let Some(line) = req.lines().next() {
-                        if line.starts_with("GET /") {
-                            // Extract payload query string parameter
-                            if let Some(start) = line.find("payload=") {
-                                let payload_part = &line[start + 8..];
-                                let end = payload_part.find(' ').unwrap_or(payload_part.len());
-                                let payload = &payload_part[..end];
-                                
-                                // Emit to frontend
-                                let _ = app.emit("oauth-payload", payload);
-                                
-                                // Send response and close window
-                                let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE html><html><body><h2 style='font-family:sans-serif;text-align:center;margin-top:20%'>Berhasil! Anda bisa menutup jendela ini.</h2><script>window.close();</script></body></html>";
-                                let _ = stream.write_all(response.as_bytes());
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    });
-    
-    Ok(port)
-}
-
-// ============================
 // FS HELPERS
 // ============================
 
@@ -268,10 +135,6 @@ pub fn run() {
             resolve_audio_url,
             download_track,
             show_main_window,
-            connect_rpc,
-            disconnect_rpc,
-            set_rpc_activity,
-            start_oauth_server,
             save_image_to_disk
         ])
         .on_window_event(|_window, event| match event {

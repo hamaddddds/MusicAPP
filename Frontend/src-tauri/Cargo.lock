@@ -3867,7 +3867,6 @@ name = "tauri-app"
 version = "0.1.0"
 dependencies = [
  "cc",
- "once_cell",
  "serde",
  "serde_json",
  "souvlaki",
