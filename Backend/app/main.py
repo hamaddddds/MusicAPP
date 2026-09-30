@@ -7,7 +7,7 @@ import os
 import httpx
 from ytmusicapi.auth.oauth.credentials import OAuthCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from app.config import settings
 from app.services import metadata
@@ -43,6 +43,35 @@ def _call(fn, *args, **kwargs):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------
+# Spotify login landing. The app runs the PKCE flow itself; Spotify only
+# needs a loopback page (http://127.0.0.1:8000/spotify/callback) to hand
+# the authorization code back, which the app then collects once.
+# ---------------------------------------------------------------------
+
+_spotify_codes: dict = {}
+
+_SPOTIFY_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Music Venue</title>
+<style>body{margin:0;height:100vh;display:grid;place-items:center;background:#080808;color:#eee;
+font:15px system-ui,sans-serif;background-image:radial-gradient(#ffffff18 1px,transparent 1.2px);
+background-size:18px 18px}main{text-align:center}h1{font-size:22px;margin:0 0 8px}p{color:#999;margin:0}</style>
+</head><body><main><h1>{title}</h1><p>You can close this tab and go back to Music Venue.</p></main></body></html>"""
+
+
+@app.get("/spotify/callback", response_class=HTMLResponse)
+def spotify_callback(state: str = "", code: str = "", error: str = ""):
+    if state:
+        _spotify_codes[state] = {"code": code, "error": error}
+    title = "Spotify connected" if code and not error else "Spotify login cancelled"
+    return _SPOTIFY_PAGE.replace("{title}", title)
+
+
+@app.get("/spotify/pending/{state}")
+def spotify_pending(state: str):
+    """Polled by the app after it opens the login page; each code is handed out once."""
+    return _spotify_codes.pop(state, {})
 
 
 

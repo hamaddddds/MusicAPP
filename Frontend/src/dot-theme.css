@@ -211,3 +211,25 @@
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
 @media (max-width: 1100px) { .player-viz { display: none; } }
 @media (max-width: 640px) { .player-art { width: 45px; height: 45px; } .player-like { display: none; } }
+
+/* Profile banner: the picture can be dragged into place, and the name sits on glass so it reads over any photo. */
+.profile-hero.has-banner { min-height: 280px; }
+.profile-hero.has-banner .profile-banner-btn { cursor: grab; }
+.profile-hero.has-banner .profile-banner-btn:active { cursor: grabbing; }
+.profile-hero.has-banner .profile-hero-info { flex: 0 1 auto; padding: 14px 22px 16px; border-radius: 20px; background: rgba(8,8,8,.45); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5); box-shadow: 0 12px 34px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12); }
+.profile-hero.has-banner .profile-name-input { field-sizing: content; width: auto; min-width: 4ch; max-width: min(560px, 55vw); }
+.profile-hero.has-banner .profile-hero-info .glass-text { color: rgba(255,255,255,.78) !important; }
+
+/* Spotify link */
+.spotify-connect { display: flex; gap: 10px; align-items: center; }
+.spotify-connect input { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 12px; }
+.spotify-btn { flex-shrink: 0; border: 0; border-radius: 999px; padding: 0 18px; height: 38px; background: #1ed760; color: #000; font-weight: 700; }
+.spotify-btn:hover { background: #3be477; }
+.spotify-btn:disabled { opacity: .6; }
+.spotify-linked { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+.spotify-linked img, .spotify-linked-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.spotify-linked-avatar { display: grid; place-items: center; background: #1ed760; color: #000; font-weight: 800; }
+.spotify-linked-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.spotify-linked-text strong { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spotify-linked-text small { font-size: 12px; color: var(--text-secondary); }
+.spotify-unlink { flex-shrink: 0; border-radius: 999px; }

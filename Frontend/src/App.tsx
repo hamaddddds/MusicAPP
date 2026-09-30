@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import GlassSelect from "./components/GlassSelect";
+import { connectSpotify, fetchTaste, type SpotifySession, type SpotifyTaste } from "./lib/spotify";
 
 // ... Types ...
 interface Track { videoId: string; title: string; artist: string; artwork: string; duration?: number; }
@@ -247,8 +248,12 @@ export default function App() {
 
   const [theme, setTheme] = useState<string>(() => load<string>("mv:theme", "dark") === 'amoled' ? 'amoled' : 'dark');
   const [dotTheme, setDotTheme] = useState<DotMode>(() => load<DotMode>("mv:dot-theme", "wave"));
+  const [spotifyClientId, setSpotifyClientId] = useState<string>(() => load("mv:spotify-client", ""));
+  const [spotify, setSpotify] = useState<SpotifySession | null>(() => load("mv:spotify", null));
+  const [spotifyTaste, setSpotifyTaste] = useState<SpotifyTaste | null>(() => load("mv:spotify-taste", null));
+  const [spotifyBusy, setSpotifyBusy] = useState(false);
   const [pageTransition, setPageTransition] = useState<string>(() => load("mv:page-transition", "fade"));
-  const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
+  const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; bannerY?: number; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   // Account UI is gone (private app); an already-linked GitHub token keeps backing up state to its gist.
   const [accounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null; access_token?: string }[]>(() => load("mv:accounts", []));
   const [subscribedArtists, setSubscribedArtists] = useState<SubscribedArtist[]>(() => load("mv:subscribedArtists", []));
@@ -335,6 +340,9 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:blocked", JSON.stringify(blocked)); }, [blocked]);
   useEffect(() => { localStorage.setItem("mv:searches", JSON.stringify(searchHistory)); }, [searchHistory]);
   useEffect(() => { localStorage.setItem("mv:profile", JSON.stringify(profile)); }, [profile]);
+  useEffect(() => { localStorage.setItem("mv:spotify-client", JSON.stringify(spotifyClientId.trim())); }, [spotifyClientId]);
+  useEffect(() => { localStorage.setItem("mv:spotify", JSON.stringify(spotify)); }, [spotify]);
+  useEffect(() => { localStorage.setItem("mv:spotify-taste", JSON.stringify(spotifyTaste)); }, [spotifyTaste]);
   useEffect(() => { localStorage.setItem("mv:accounts", JSON.stringify(accounts)); }, [accounts]);
   useEffect(() => { localStorage.setItem("mv:subscribedArtists", JSON.stringify(subscribedArtists)); }, [subscribedArtists]);
   useEffect(() => { localStorage.setItem("mv:custom-playlists", JSON.stringify(playlists)); }, [playlists]);
@@ -407,6 +415,7 @@ export default function App() {
   }, []);
 
   const bannerInput = useRef<HTMLInputElement>(null);
+  const bannerDrag = useRef<{ y: number; from: number; to: number; moved: boolean } | null>(null);
   const avatarInput = useRef<HTMLInputElement>(null);
   const pickProfileImage = (field: "avatar" | "banner") => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -553,9 +562,32 @@ export default function App() {
     setArtistLoading(false);
   }, []);
 
+  // Refresh what Spotify says you play most twice a day (and right after linking).
+  useEffect(() => {
+    if (!spotify || (spotifyTaste && Date.now() - spotifyTaste.at < 12 * 3600_000)) return;
+    fetchTaste(spotify, setSpotify).then(setSpotifyTaste).catch(e => flashToast(e instanceof Error ? e.message : "Couldn't read your Spotify taste."));
+  }, [spotify, spotifyTaste, flashToast]);
+
+  const linkSpotify = async () => {
+    const id = spotifyClientId.trim();
+    if (!/^[0-9a-f]{32}$/i.test(id)) { flashToast("Paste the Client ID from your Spotify app first."); return; }
+    setSpotifyBusy(true);
+    try {
+      const open = isTauri ? (await import("@tauri-apps/plugin-opener")).openUrl : async (url: string) => { window.open(url, "_blank"); };
+      setSpotify(await connectSpotify(id, API_URL, open));
+      flashToast("Spotify connected. Tuning your picks…");
+    } catch (e) {
+      flashToast(e instanceof Error ? e.message : "Spotify login failed.");
+    } finally {
+      setSpotifyBusy(false);
+    }
+  };
+  const unlinkSpotify = () => { setSpotify(null); setSpotifyTaste(null); };
+
   const buildQuickPicks = useCallback(async () => {
     const cache = load("mv:quickpicks", null as any);
-    const fresh = cache && cache.v === 4 && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
+    const tasteAt = spotifyTaste?.at ?? 0; // a new Spotify taste rebuilds the picks
+    const fresh = cache && cache.v === 4 && cache.taste === tasteAt && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
     if (fresh) { setQuickPicks(cache.tracks); return; }
     const blockedSet = new Set(blocked);
     // What's popular where you are (YouTube Music's daily chart for the country YouTube detects from
@@ -563,9 +595,14 @@ export default function App() {
     const charts = await getJson("/charts");
     const daily = charts?.videos?.find((v: any) => /daily/i.test(v.title)) ?? charts?.videos?.[0];
     const chart = daily?.playlistId ? (await getJson(`/playlist/${daily.playlistId}?limit=50`))?.tracks : null;
-    const artists = artistScores(history).filter(([artist]) => artist !== "Unknown Artist").slice(0, 3).map(([artist]) => artist.split(",")[0].trim());
+    const played = artistScores(history).filter(([artist]) => artist !== "Unknown Artist").map(([artist]) => artist.split(",")[0].trim());
+    // With Spotify linked, its top artists lead and its most-played songs (matched on YouTube Music) join in.
+    const artists = [...new Set([...(spotifyTaste?.artists.slice(0, 3) ?? []), ...played])].slice(0, spotifyTaste ? 4 : 3);
+    const favourites = spotifyTaste ? (await Promise.all(spotifyTaste.tracks.slice(0, 10).map(t =>
+      getJson(`/search?q=${encodeURIComponent(`${t.title} ${t.artist}`)}&filter=songs&limit=5`).then(r => mapTracks(r)[0])))).filter((t): t is Track => !!t) : [];
     const searches = await Promise.all(artists.map((a) => getJson(`/search?q=${encodeURIComponent(a)}&filter=songs&limit=20`)));
-    const groups = [popularTracks(chart, true), ...searches.map((s, i) => popularTracks(s).filter(t => t.artist.split(",")[0].trim() === artists[i]))];
+    // Favourites fill two lanes so familiar songs make up about a third of the picks.
+    const groups = [favourites.filter((_, i) => i % 2 === 0), favourites.filter((_, i) => i % 2 === 1), popularTracks(chart, true), ...searches.map((s, i) => popularTracks(s).filter(t => t.artist.split(",")[0].trim() === artists[i]))];
     const merged: Track[] = [];
     const seen = new Set<string>();
     for (let round = 0; round < 12 && merged.length < 12; round++) {
@@ -576,8 +613,8 @@ export default function App() {
     }
     const picks = merged.slice(0, 12);
     setQuickPicks(picks);
-    localStorage.setItem("mv:quickpicks", JSON.stringify({ v: 4, at: Date.now(), tracks: picks }));
-  }, [history, blocked]);
+    localStorage.setItem("mv:quickpicks", JSON.stringify({ v: 4, at: Date.now(), taste: tasteAt, tracks: picks }));
+  }, [history, blocked, spotifyTaste]);
 
   const reshuffleHome = useCallback(async () => {
     flashToast("Menyusun ulang...");
@@ -1525,10 +1562,26 @@ export default function App() {
           )}
         {activeTab === "profile" && (
           <motion.div key="profile" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page profile-page">
-            <div className="profile-hero" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
+            <div className={`profile-hero ${profile.banner ? "has-banner" : ""}`} style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: `center ${profile.bannerY ?? 50}%` } : {}}>
               <input ref={bannerInput} hidden type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={pickProfileImage("banner")} />
               <input ref={avatarInput} hidden type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={pickProfileImage("avatar")} />
-              <button type="button" className="profile-banner-btn" onClick={() => bannerInput.current?.click()}><span><Upload size={13} /> Change banner</span></button>
+              {/* Drag the banner up or down to choose which part shows; a plain click picks a new one. */}
+              <button type="button" className="profile-banner-btn"
+                onPointerDown={(e) => { bannerDrag.current = { y: e.clientY, from: profile.bannerY ?? 50, to: profile.bannerY ?? 50, moved: false }; }}
+                onPointerMove={(e) => {
+                  const d = bannerDrag.current;
+                  if (!d || !profile.banner || (!d.moved && Math.abs(e.clientY - d.y) < 4)) return;
+                  if (!d.moved) { d.moved = true; e.currentTarget.setPointerCapture(e.pointerId); }
+                  d.to = Math.min(100, Math.max(0, d.from - (e.clientY - d.y) * 0.35));
+                  // Styled directly while dragging: saving the profile rewrites the whole banner image to storage.
+                  (e.currentTarget.parentElement as HTMLElement).style.backgroundPosition = `center ${d.to}%`;
+                }}
+                onClick={() => {
+                  const d = bannerDrag.current;
+                  bannerDrag.current = null;
+                  if (d?.moved) setProfile(p => ({ ...p, bannerY: d.to }));
+                  else bannerInput.current?.click();
+                }}><span><Upload size={13} /> {profile.banner ? "Drag to reposition · click to change" : "Change banner"}</span></button>
               <button type="button" className="profile-avatar-edit" aria-label="Change photo" onClick={() => avatarInput.current?.click()}>
                 {profile.avatar ? <img src={profile.avatar} alt="" className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
                 <span className="profile-avatar-hint"><Upload size={20} /></span>
@@ -1575,6 +1628,22 @@ export default function App() {
                       </Button>
                     ))}
                   </div>
+                </div>
+
+                <div className="setting-block spotify-block">
+                  <h3>Spotify</h3><p className="setting-desc">Link your account so Quick Picks and Daily Mix learn from what you play most on Spotify. Songs still play from YouTube Music.</p>
+                  {spotify ? (
+                    <div className="spotify-linked">
+                      {spotifyTaste?.image ? <img src={spotifyTaste.image} alt="" /> : <span className="spotify-linked-avatar">{(spotifyTaste?.name ?? "S").charAt(0).toUpperCase()}</span>}
+                      <div className="spotify-linked-text"><strong>{spotifyTaste?.name ?? "Connected"}</strong><small>{spotifyTaste ? `${spotifyTaste.tracks.length} favourite tracks · ${spotifyTaste.artists.length} top artists` : "Reading your taste…"}</small></div>
+                      <Button className="spotify-unlink" onClick={unlinkSpotify}>Disconnect</Button>
+                    </div>
+                  ) : (
+                    <div className="spotify-connect">
+                      <Input aria-label="Spotify Client ID" placeholder="Spotify Client ID" spellCheck={false} value={spotifyClientId} onChange={(e) => setSpotifyClientId(e.target.value)} />
+                      <Button className="spotify-btn" disabled={spotifyBusy} onClick={linkSpotify}>{spotifyBusy ? "Waiting for Spotify…" : "Connect Spotify"}</Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
