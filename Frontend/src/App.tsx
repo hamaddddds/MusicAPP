@@ -283,7 +283,6 @@ export default function App() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const eqBandsRef = useRef<BiquadFilterNode[]>([]);
   const visualizerCanvasRef = useRef<HTMLCanvasElement>(null);
-  const islandRef = useRef<HTMLDivElement>(null);
   const beatRef = useRef(0);
   const mainRef = useRef<HTMLElement>(null);
   const reqFrameRef = useRef<number>(0);
@@ -755,51 +754,62 @@ export default function App() {
     const analyser = analyserRef.current;
     if (!analyser) return;
     const data = new Uint8Array(analyser.frequencyBinCount);
-    const BARS = 24;
+    // A 9×9 dot matrix in the player's artwork slot: one column per band, lit outward from the middle row.
+    const COLS = 9, ROWS = 9, MID = (ROWS - 1) / 2;
     const binHz = analyser.context.sampleRate / analyser.fftSize;
-    // Log-spaced bands (45 Hz – 14 kHz): linear bins give bass one bar and cymbals twenty.
-    const edges = Array.from({ length: BARS + 1 }, (_, i) => Math.round(45 * (14000 / 45) ** (i / BARS) / binHz));
-    const levels = new Float32Array(BARS);
-    let beat = 0;
+    // Log-spaced bands (45 Hz – 14 kHz): linear bins give bass one column and cymbals twenty.
+    const edges = Array.from({ length: COLS + 1 }, (_, i) => Math.round(45 * (14000 / 45) ** (i / COLS) / binHz));
+    const levels = new Float32Array(COLS), peaks = new Float32Array(COLS);
+    const RANGE = 100; // ≈31 dB of the analyser's byte scale shown below the loudest band
+    let beat = 0, top = 0;
 
     const draw = (now: number) => {
       reqFrameRef.current = requestAnimationFrame(draw);
       analyser.getByteFrequencyData(data);
-      for (let i = 0; i < BARS; i++) {
+      let loudest = 0;
+      for (let i = 0; i < COLS; i++) {
         let peak = 0;
         for (let j = edges[i]; j <= Math.max(edges[i], edges[i + 1] - 1); j++) peak = Math.max(peak, data[j]);
-        // Treble carries far less energy than bass; tilt it up so the whole row dances.
-        const target = Math.min(1, (peak / 255) ** 2.2 * (1 + 0.9 * i / BARS));
-        levels[i] += (target - levels[i]) * (target > levels[i] ? 0.5 : 0.1);
+        // Treble carries far less energy than bass; tilt it up about 2 dB a column so the whole row dances.
+        peaks[i] = peak + i * 6;
+        loudest = Math.max(loudest, peaks[i]);
       }
-      beat += ((levels[0] + levels[1] + levels[2] + levels[3]) / 4 - beat) * 0.3;
+      // Auto-gain: the window follows the loudest band, so quiet ballads and brickwalled rock both move.
+      // The floor keeps silence dark instead of stretching noise to full height.
+      top = Math.max(loudest, top - 0.25, 150);
+      for (let i = 0; i < COLS; i++) {
+        const target = Math.max(0, (peaks[i] - top + RANGE) / RANGE) ** 1.6;
+        levels[i] += (target - levels[i]) * (target > levels[i] ? 0.5 : 0.16);
+      }
+      beat += ((levels[0] + levels[1]) / 2 - beat) * 0.3;
       beatRef.current = beat; // the home Dotted Surface swells with the bass
-      islandRef.current?.style.setProperty("--beat", beat.toFixed(3));
 
       const canvas = visualizerCanvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx) return;
+      canvas.style.setProperty("--beat", beat.toFixed(3));
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.clientWidth, h = canvas.clientHeight;
       if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      const slot = w / BARS, bar = slot * 0.52;
-      const fill = ctx.createLinearGradient(0, 0, w, 0);
-      fill.addColorStop(0, "#ffffff");
-      fill.addColorStop(0.5, "#bcbcbc");
-      fill.addColorStop(1, "#9b7bff");
-      ctx.fillStyle = fill;
-      ctx.shadowColor = "rgba(255, 255, 255, 0.15)";
-      ctx.shadowBlur = 8;
-      for (let i = 0; i < BARS; i++) {
-        const ripple = 1 + Math.sin(now / 260 + i * 0.55); // a soft wave stays alive through quiet intros
-        const height = Math.max(bar + ripple, levels[i] * h);
-        ctx.beginPath();
-        ctx.roundRect(i * slot + (slot - bar) / 2, (h - height) / 2, bar, height, bar / 2);
-        ctx.fill();
+      // The dim grid is the canvas's CSS background; only lit dots are drawn on top.
+      const pitch = w / COLS;
+      ctx.fillStyle = "#fff";
+      for (let i = 0; i < COLS; i++) {
+        // A soft ripple keeps the middle row breathing through quiet intros and pauses.
+        const reach = Math.max(levels[i], 0.07 + 0.05 * Math.sin(now / 320 + i * 0.7)) * (MID + 1);
+        for (let j = 0; j < ROWS; j++) {
+          const lit = Math.min(1, reach - Math.abs(j - MID));
+          if (lit <= 0) continue;
+          ctx.globalAlpha = lit;
+          ctx.beginPath();
+          ctx.arc((i + 0.5) * pitch, (j + 0.5) * pitch, pitch * (0.26 + 0.08 * lit), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
+      ctx.globalAlpha = 1;
     };
     reqFrameRef.current = requestAnimationFrame(draw);
   }, []);
@@ -823,6 +833,9 @@ export default function App() {
 
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
+      // The default -30 dB ceiling clips loud masters, so every band reads full; leave headroom.
+      analyser.minDecibels = -90;
+      analyser.maxDecibels = -10;
 
       source.connect(bands[0]);
       for (let i = 0; i < bands.length - 1; i++) {
@@ -1703,8 +1716,8 @@ export default function App() {
         <div className="player-info" onClick={() => currentTrack && setNowPlayingOpen(true)}>
           {currentTrack ? (
             <>
-              <img src={currentTrack.artwork} alt="" className="player-artwork" />
-              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span></div>
+              <canvas ref={visualizerCanvasRef} className="player-viz" aria-hidden="true" />
+              <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span>{upNext[0] && <span className="player-next">Next · {upNext[0].title}</span>}</div>
               <Button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></Button>
             </>
           ) : <div className="player-text idle">Not Playing</div>}
@@ -1841,35 +1854,6 @@ export default function App() {
         </div>
       )}
 
-      <AnimatePresence>
-        {isPlaying && currentTrack && !nowPlayingOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            ref={islandRef}
-            className="np-island"
-            onClick={() => setNowPlayingOpen(true)}
-            style={{ top: isTauri ? '90px' : '24px' }}
-          >
-            <img src={currentTrack.artwork || ""} style={{ width: 44, height: 44, borderRadius: '12px', objectFit: 'cover', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} alt="" />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'rgba(255,255,255,0.9)' }}>
-                  {currentTrack.title}
-                </span>
-                <canvas ref={visualizerCanvasRef} className="visualizer-canvas" />
-              </div>
-              {orderRef.current[posRef.current + 1] && (
-                <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.5)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Next: {orderRef.current[posRef.current + 1].title}
-                </span>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       <AnimatePresence>
         {shareLyricOpen && (
           <ShareLyricModal

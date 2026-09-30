@@ -201,9 +201,9 @@ braccato-lyrics { display: block; color: #fff; }
 .sidebar, .main-content { position: relative; }
 .sidebar { margin: 10px 0 112px 10px; padding-bottom: 14px; border: 1px solid var(--glass-border); border-radius: 24px; background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02)), var(--sidebar-bg); backdrop-filter: blur(44px) saturate(1.9); -webkit-backdrop-filter: blur(44px) saturate(1.9); box-shadow: 0 18px 50px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.18), inset 1px 0 0 rgba(255,255,255,.05); }
 .header { background: color-mix(in srgb, var(--bg) 30%, transparent); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); }
-.player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .np-island, .eq-popover { background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.025)), var(--player-bg); backdrop-filter: blur(44px) saturate(1.9); -webkit-backdrop-filter: blur(44px) saturate(1.9); border: 1px solid rgba(255,255,255,.08); box-shadow: 0 22px 60px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.16); }
+.player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .eq-popover { background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.025)), var(--player-bg); backdrop-filter: blur(44px) saturate(1.9); -webkit-backdrop-filter: blur(44px) saturate(1.9); border: 1px solid rgba(255,255,255,.08); box-shadow: 0 22px 60px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.16); }
 /* Specular rim: bright where light hits the top-left edge, fading around the sides. */
-.player-bar::after, .lyrics-dock::after, .glass-menu::after, .ctx-menu::after, .search-dropdown::after, .np-island::after, .eq-popover::after, .listen-hero::after {
+.player-bar::after, .lyrics-dock::after, .glass-menu::after, .ctx-menu::after, .search-dropdown::after, .eq-popover::after, .listen-hero::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
   background: linear-gradient(150deg, rgba(255,255,255,.5), rgba(255,255,255,.08) 28%, transparent 55%, rgba(255,255,255,.18));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
@@ -236,8 +236,5 @@ braccato-lyrics { display: block; color: #fff; }
 .glass-menu-check { display: grid; color: var(--accent); }
 
 /* ── Now-playing island + visualizer ── */
-.np-island { position: fixed; right: 24px; z-index: 9999; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 22px; cursor: pointer; color: #fff; box-shadow: 0 22px 60px rgba(0,0,0,.45), 0 0 calc(6px + var(--beat, 0) * 40px) rgba(255,73,103, calc(var(--beat, 0) * .5)), inset 0 1px 0 rgba(255,255,255,.16); }
-.np-island img { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; box-shadow: 0 4px 12px rgba(0,0,0,.3); transform: scale(calc(1 + var(--beat, 0) * .06)); }
-.visualizer-canvas { display: block; width: 96px; height: 26px; margin: 0; opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }

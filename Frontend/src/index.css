@@ -1096,14 +1096,6 @@ button { font-family: inherit; }
   background: rgba(255, 255, 255, 0.15) !important;
 }
 /* --- ADVANCED FEATURES --- */
-.visualizer-canvas {
-  width: 80px;
-  height: 24px;
-  margin-right: 12px;
-  opacity: 0.8;
-  pointer-events: none;
-}
-
 .eq-popover {
   position: absolute;
   bottom: calc(100% + 12px);

@@ -28,8 +28,8 @@
 .app-container { background: var(--bg); }
 .sidebar { background: var(--sidebar-bg); box-shadow: inset 0 1px 0 #ffffff05; }
 .header { background: #080808ea; }
-.player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .np-island, .eq-popover { background: linear-gradient(#ffffff04, transparent), var(--player-bg); border-color: #ffffff20; box-shadow: 0 16px 40px #0005, inset 0 1px 0 #ffffff0a; }
-.player-bar::after, .lyrics-dock::after, .glass-menu::after, .ctx-menu::after, .search-dropdown::after, .np-island::after, .eq-popover::after, .listen-hero::after { opacity: .25; }
+.player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .eq-popover { background: linear-gradient(#ffffff04, transparent), var(--player-bg); border-color: #ffffff20; box-shadow: 0 16px 40px #0005, inset 0 1px 0 #ffffff0a; }
+.player-bar::after, .lyrics-dock::after, .glass-menu::after, .ctx-menu::after, .search-dropdown::after, .eq-popover::after, .listen-hero::after { opacity: .25; }
 .nav-pill { background: #ffffff09; border-color: #ffffff16; box-shadow: inset 0 1px 0 #ffffff04; }
 .sidebar-brand { gap: 9px; letter-spacing: -.7px; font-size: 20px; }
 .sidebar-brand .mv-mark { width: 32px; height: 32px; flex-shrink: 0; color: #f2f2f2; }
@@ -150,8 +150,8 @@
 .home-surface .dotted-surface { display: block; width: 100%; height: 100%; }
 .sidebar { margin-bottom: 96px; background: var(--lg-fill), var(--sidebar-bg); border: 1px solid var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(40px) saturate(1.6); -webkit-backdrop-filter: blur(40px) saturate(1.6); }
 .header { background: linear-gradient(#080808d0, #08080838); border-bottom: 0; backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); }
-.player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .np-island, .eq-popover { background: var(--lg-fill), var(--player-bg); border-color: var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(40px) saturate(1.7); -webkit-backdrop-filter: blur(40px) saturate(1.7); }
-.player-bar::after, .lyrics-dock::after, .glass-menu::after, .ctx-menu::after, .search-dropdown::after, .np-island::after, .eq-popover::after, .listen-hero::after { opacity: .55; }
+.player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .eq-popover { background: var(--lg-fill), var(--player-bg); border-color: var(--lg-edge); box-shadow: var(--lg-lift); backdrop-filter: blur(40px) saturate(1.7); -webkit-backdrop-filter: blur(40px) saturate(1.7); }
+.player-bar::after, .lyrics-dock::after, .glass-menu::after, .ctx-menu::after, .search-dropdown::after, .eq-popover::after, .listen-hero::after { opacity: .55; }
 /* Docked to the window's bottom edge: nothing scrolls underneath it. */
 .player-bar { bottom: 0; left: 0; right: 0; height: 88px; border-bottom: 0; border-radius: 26px 26px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.14); }
 .main-content { padding-bottom: 104px; }
@@ -205,3 +205,14 @@
 .wheel-index button:hover { color: #bbb; }
 .wheel-index button.on { color: #f2f2f2; font-weight: 600; }
 @container (max-width: 620px) { .wheel-index { display: none; } .wheel-stage, .wheel-title { right: 0; } }
+
+/* Dot visualizer in the player's artwork slot: the dim 9×9 grid is painted here, the canvas lights it up. */
+.player-viz { --pitch: 6px; flex-shrink: 0; width: calc(var(--pitch) * 9); height: calc(var(--pitch) * 9); border-radius: 14px;
+  background: radial-gradient(circle, rgba(255,255,255,.16) 1.2px, transparent 1.7px) 0 0 / var(--pitch) var(--pitch), rgba(255,255,255,.035);
+  box-shadow: 0 0 calc(var(--beat, 0) * 22px) rgba(255,255,255, calc(var(--beat, 0) * .22)), inset 0 0 0 1px rgba(255,255,255,.1), inset 0 1px 0 rgba(255,255,255,.12); }
+.player-info { flex: 0 1 30%; min-width: 0; }
+.player-title { font-size: clamp(12.5px, .45vw + 7.5px, 15px); }
+.player-artist { font-size: clamp(11px, .3vw + 7.5px, 12.5px); }
+.player-next { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) { .player-next { display: none; } }
+@media (max-width: 640px) { .player-viz { --pitch: 5px; border-radius: 11px; } .player-like { display: none; } }
