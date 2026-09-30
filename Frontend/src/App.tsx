@@ -19,6 +19,9 @@ import TrackActions from "./components/TrackActions";
 import MusicVenueMark from "./components/MusicVenueMark";
 import DottedSurface, { type DotMode } from "./components/DottedSurface";
 import WorksWheel from "./components/WorksWheel";
+import IdleCrowd from "./components/IdleCrowd";
+import { useIdle } from "./lib/useIdle";
+import { pickArtwork, sanitizeStoredArtwork, videoArtwork } from "./lib/artwork";
 import SyncedLyrics from "./components/SyncedLyrics";
 import { fetchLyrics, type Lyrics } from "./lib/lyrics";
 import { Button } from "@/components/ui/button";
@@ -43,32 +46,11 @@ const getJson = (path: string) => fetch(`${API_URL}${path}`).then(r => r.ok ? r.
 
 // ... localStorage helpers ...
 const load = <T,>(k: string, fallback: T): T => {
-  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
+  try { const v = localStorage.getItem(k); return v ? sanitizeStoredArtwork(JSON.parse(v)) : fallback; }
   catch { return fallback; }
 };
 
 // ... Track mapping / algorithms ...
-// YouTube Music serves tiny thumbnails (60...120px). Google's image CDN lets us
-// request a bigger size by rewriting the URL params, so artwork stays crisp.
-function hiResThumb(url: string, size = 512): string {
-  if (!url) return url;
-  // i.ytimg video thumbnails: use the clean hqdefault (480px), drop crop query.
-  const m = url.match(/i\.ytimg\.com\/vi\/([^/]+)\//);
-  if (m) return `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg`;
-  // Google CDN album/artist art: request a larger size via the URL params.
-  if (/googleusercontent\.com|ggpht\.com/.test(url)) {
-    if (/=w\d+-h\d+/.test(url)) return url.replace(/=w\d+-h\d+[^=]*$/i, `=w${size}-h${size}-l90-rj`);
-    if (/=s\d+/.test(url)) return url.replace(/=s\d+[^=]*$/i, `=s${size}`);
-    return url + `=w${size}-h${size}-l90-rj`;
-  }
-  return url;
-}
-
-function pickArtwork(thumbnails: any[]): string {
-  const url = thumbnails?.[thumbnails.length - 1]?.url || thumbnails?.[0]?.url;
-  return url ? hiResThumb(url) : "https://picsum.photos/300";
-}
-
 function mapTracks(data: any): Track[] {
   if (!Array.isArray(data)) return [];
   return data
@@ -78,7 +60,7 @@ function mapTracks(data: any): Track[] {
       title: item.title || item.name || "Unknown Title",
       artist: item.artists?.map((a: any) => a.name).filter(Boolean).join(", ") || item.artist || item.author?.name || "Unknown Artist",
       duration: Number.isFinite(item.duration_seconds) ? item.duration_seconds : undefined,
-      artwork: pickArtwork(item.thumbnails),
+      artwork: pickArtwork(item, item.videoId),
     }));
 }
 
@@ -207,6 +189,10 @@ const navSpring = { type: "spring", stiffness: 520, damping: 40, mass: 0.8 } as 
 const NavPill = () => <motion.span layoutId="nav-pill" className="nav-pill" transition={navSpring} />;
 
 export default function App() {
+  const idle = useIdle();
+  // Local preview keeps the idle scene visible while inspecting it.
+  const heroIdle = idle || (import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'idle');
+  const [topResultLoading, setTopResultLoading] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(() => load("mv:last-track", null));
@@ -230,6 +216,8 @@ export default function App() {
   
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchRequestRef = useRef(0);
 
   const [shelves, setShelves] = useState<Record<string, Track[]>>({});
   const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
@@ -369,6 +357,33 @@ export default function App() {
     })();
   }, []); // once per launch; the backend no longer produces these
 
+  // Recover covers in legacy history/queues by exact video id. A late response
+  // may repair that song's cache, but must never overwrite a newer playing song.
+  useEffect(() => {
+    const track = currentTrack;
+    if (!track || track.artwork !== videoArtwork(track.videoId)) return;
+    const controller = new AbortController();
+    fetch(`${API_URL}/watch/${encodeURIComponent(track.videoId)}?limit=1`, { signal: controller.signal })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (controller.signal.aborted) return;
+        const match = data?.tracks?.find((t: any) => t.videoId === track.videoId);
+        if (!match) return;
+        const artwork = pickArtwork(match, track.videoId);
+        if (artwork === track.artwork) return;
+        const fix = <T extends Track>(t: T): T => t.videoId === track.videoId ? { ...t, artwork } : t;
+        setCurrentTrack(prev => prev && fix(prev));
+        setHistory(prev => Object.fromEntries(Object.entries(prev).map(([id, t]) => [id, fix(t)])));
+        setFavorites(prev => prev.map(fix));
+        setPlaylists(prev => prev.map(p => ({ ...p, tracks: p.tracks.map(fix) })));
+        setQuickPicks(prev => prev.map(fix));
+        setShelves(prev => Object.fromEntries(Object.entries(prev).map(([id, tracks]) => [id, tracks.map(fix)])));
+        orderRef.current = orderRef.current.map(fix);
+        contextRef.current = contextRef.current.map(fix);
+      }).catch(() => {});
+    return () => controller.abort();
+  }, [currentTrack?.videoId, currentTrack?.artwork]);
+
   // Snapshot every mv:* local key into the GitHub gist (debounced) so a
   // reinstall + GitHub login restores the entire app state (home personalization,
   // likes, blocked artists, playlists, subscriptions).
@@ -485,12 +500,14 @@ export default function App() {
   }, [history, blocked]);
 
   const runSearch = useCallback(async (query: string) => {
-    setLoading(true);
+    const request = ++searchRequestRef.current;
+    setSearchLoading(true);
     setShowSuggest(false);
     setSearchHistory((prev) => [query, ...prev.filter((x) => x !== query)].slice(0, 8));
     try {
       const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
       const d = await res.json();
+      if (request !== searchRequestRef.current) return;
       if (!Array.isArray(d)) throw new Error();
 
       let topResult = null;
@@ -507,9 +524,10 @@ export default function App() {
       setSearchSongsResults(mapTracks(songs));
       setSearchVideos(mapTracks(videos));
     } catch {
+      if (request !== searchRequestRef.current) return;
       setSearchTopResult(null); setSearchAlbums([]); setSearchSongsResults([]); setSearchVideos([]);
     }
-    setLoading(false);
+    if (request === searchRequestRef.current) setSearchLoading(false);
   }, []);
 
   const fetchSuggestions = useCallback((q: string) => {
@@ -722,6 +740,7 @@ export default function App() {
   const loadAndPlay = useCallback((track: Track) => {
     triedDownloadRef.current = false;
     freshTrackRef.current = true; // brand-new track → start from 0, not resume
+    track = sanitizeStoredArtwork(track);
     setCurrentTrack(track);
     currentTrackRef.current = track;
     recordPlay(track);
@@ -1227,9 +1246,33 @@ export default function App() {
       videoId: searchTopResult.videoId,
       title: searchTopResult.title || searchTopResult.name || "Unknown",
       artist: searchTopResult.artists?.[0]?.name || searchTopResult.artist || "Unknown",
-      artwork: hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)
+      artwork: pickArtwork(searchTopResult, searchTopResult.videoId)
     }
     : null;
+
+  const topResultIsArtist = searchTopResult?.resultType === 'artist';
+  const topResultName = topResultIsArtist
+    ? searchTopResult.artists?.[0]?.name || searchTopResult.artist || searchTopResult.name || searchTopResult.title
+    : searchTopResult?.title || searchTopResult?.name || 'Top Result';
+  const topArtistId = searchTopResult?.browseId || searchTopResult?.artists?.[0]?.id;
+  const playTopResult = async (mix = false) => {
+    if (topResultTrack) { playTrack(topResultTrack, [topResultTrack]); return; }
+    if (!topResultIsArtist || topResultLoading) return;
+    setTopResultLoading(true);
+    const requestAt = playRequestRef.current;
+    try {
+      let songs = searchSongsResults;
+      if (topArtistId) {
+        const artist = await getJson(`/artist/${encodeURIComponent(topArtistId)}`);
+        const found = mapTracks(artist?.songs?.results);
+        if (found.length) songs = found;
+      }
+      if (requestAt !== playRequestRef.current) return;
+      if (!songs.length) { flashToast('No playable songs found for this artist.'); return; }
+      const order = mix ? [songs[Math.floor(Math.random() * songs.length)]] : shuffleArray(songs);
+      playTrack(order[0], order);
+    } finally { setTopResultLoading(false); }
+  };
 
   const renderAlbumCard = (track: Track, context: Track[]) => (
     <div key={track.videoId} className="album-card glass-card" onClick={() => playTrack(track, [track])} onContextMenu={(e) => openCtx(e, track, context)}>
@@ -1250,7 +1293,7 @@ export default function App() {
       <div key={track.videoId} className={`track-row ${playing ? "playing" : ""}`} onDoubleClick={() => playTrack(track, radio ? [track] : context)} onContextMenu={(e) => openCtx(e, track, context, playlistId)}>
         <div className="track-row-index">
           <span className="track-num">{index + 1}</span>
-          <Button className="track-row-play" onClick={() => playTrack(track, radio ? [track] : context)}>
+          <Button size="icon" className="track-row-play" aria-label={`${playing && isPlaying ? "Pause" : "Play"} ${track.title}`} onClick={() => playing ? setIsPlaying(p => !p) : playTrack(track, radio ? [track] : context)}>
             {playing && streamLoading ? <RefreshCw size={14} className="spin" /> : playing && isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
           </Button>
         </div>
@@ -1395,7 +1438,8 @@ export default function App() {
         <AnimatePresence mode="wait" custom={pageTransition} onExitComplete={() => mainRef.current?.scrollTo(0, 0)}>
         {activeTab === "home" && (
           <motion.div key="home" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
-            <section className="listen-hero">
+            <section className={`listen-hero ${heroIdle ? "is-idle" : ""}`}>
+              {heroIdle ? <IdleCrowd /> : <>
               <div className="listen-hero-copy">
                 <span className="eyebrow"><span className="mono-status-dot" /> MUSIC VENUE / DAILY MIX</span>
                 <h2>A space for<br />your music.</h2>
@@ -1415,6 +1459,7 @@ export default function App() {
                   ? <WorksWheel label="Daily Mix" items={wheelItems} onPlay={i => playTrack(quickPicks[i], [quickPicks[i]])} />
                   : <div className="hero-dot-cover" aria-hidden="true"><MusicVenueMark className="hero-dot-mark" field /></div>}
               </div>
+              </>}
             </section>
             {quickPicks.length > 0 && (
               <section className="shelf">
@@ -1518,33 +1563,32 @@ export default function App() {
         )}
         {(activeTab === "search" || activeTab === "radio") && (
           <motion.div key={activeTab} custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
-            {loading ? (
+            {searchLoading ? (
               <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div>
             ) : searchTopResult || searchSongsResults.length || searchVideos.length || searchAlbums.length ? (
               <>
                 {searchTopResult && (
-                  <div className={`top-result-card ${searchTopResult.resultType === 'artist' ? 'is-artist' : ''}`} onClick={() => {
-                    if (searchTopResult.resultType === 'artist') {
-                      openArtist({ artistId: searchTopResult.browseId || searchTopResult.artists?.[0]?.id, name: searchTopResult.artist });
-                    } else if (topResultTrack) {
-                      playTrack(topResultTrack, [topResultTrack]);
-                    }
-                  }} onContextMenu={(e) => {
-                    if (topResultTrack) openCtx(e, topResultTrack, [topResultTrack]);
-                  }}>
-                    <div className="top-result-media">
-                      <img src={hiResThumb(pickArtwork(searchTopResult.thumbnails), 900)} alt="Top Result" className="top-result-img" />
-                    </div>
-                    <div className="top-result-info">
-                      <div className="top-result-text">
-                        <span className="section-badge">Top Result</span>
-                        <h2>{searchTopResult.title || searchTopResult.artist || searchTopResult.name || "Top Result"}</h2>
-                        <p className="top-result-artist">{searchTopResult.artists?.[0]?.name || searchTopResult.artist || searchTopResult.resultType || "Result"}</p>
-                      </div>
-                      <div className="top-result-actions">
-                        <Button className="top-result-more" onClick={(e) => { e.stopPropagation(); if (topResultTrack) openCtx(e, topResultTrack, [topResultTrack]); }}><MoreHorizontal size={18} /></Button>
-                        <div className="top-result-play" onClick={(e) => { e.stopPropagation(); if (topResultTrack) playTrack(topResultTrack, [topResultTrack]); }}><Play size={18} fill="currentColor" /></div>
-                      </div>
+                  <div className={`top-result-card ${topResultIsArtist ? 'is-artist' : ''}`}>
+                    <button className="top-result-main" onClick={() => topResultIsArtist
+                      ? openArtist({ artistId: topArtistId, name: topResultName })
+                      : playTopResult()} aria-label={topResultIsArtist ? `Open ${topResultName}` : `Play ${topResultName}`}>
+                      <img src={pickArtwork(searchTopResult, searchTopResult.videoId)} alt="" className="top-result-img" />
+                      <span className="top-result-text">
+                        <span className="section-badge">Top result</span>
+                        <strong className="top-result-name">{topResultName}</strong>
+                        <span className="top-result-artist">{topResultIsArtist ? 'Artist' : searchTopResult.resultType || 'Song'}
+                          {topResultIsArtist ? (searchTopResult.subscribers ? ` · ${searchTopResult.subscribers}` : '') : ` · ${topResultTrack?.artist || ''}`}
+                        </span>
+                      </span>
+                    </button>
+                    <div className="top-result-actions">
+                      <button className="top-result-primary" disabled={topResultLoading} onClick={() => playTopResult()}>
+                        {topResultLoading ? <RefreshCw size={18} className="spin" /> : topResultIsArtist ? <Shuffle size={18} /> : <Play size={18} fill="currentColor" />}
+                        {topResultIsArtist ? 'Shuffle' : 'Play'}
+                      </button>
+                      {topResultIsArtist
+                        ? <><button className="top-result-mix" disabled={topResultLoading} onClick={() => playTopResult(true)}><Radio size={18} /> Mix</button><button className="top-result-open" aria-label={`View ${topResultName}`} onClick={() => openArtist({ artistId: topArtistId, name: topResultName })}><ChevronRight size={22} /></button></>
+                        : <Button size="icon" className="top-result-more" aria-label={`More options for ${topResultName}`} onClick={e => { if (topResultTrack) openCtx(e, topResultTrack, [topResultTrack]); }}><MoreHorizontal size={18} /></Button>}
                     </div>
                   </div>
                 )}
@@ -1750,7 +1794,7 @@ export default function App() {
             <Button aria-label="Close now playing" className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></Button>
             <div className="np-body">
               <div className="np-left">
-                <NowPlayingArtwork artwork={currentTrack.artwork} title={currentTrack.title} liked={isFavorite(currentTrack.videoId)} queueOpen={showQueue} onLike={() => toggleFavorite(currentTrack)} onShare={() => setShareLyricOpen(true)} onQueue={() => setShowQueue(o => !o)} />
+                <NowPlayingArtwork key={currentTrack.videoId} artwork={currentTrack.artwork} title={currentTrack.title} liked={isFavorite(currentTrack.videoId)} queueOpen={showQueue} onLike={() => toggleFavorite(currentTrack)} onShare={() => setShareLyricOpen(true)} onQueue={() => setShowQueue(o => !o)} />
                 <div className="np-meta"><span className="np-eyebrow">NOW PLAYING</span><h2>{currentTrack.title}</h2><p>{currentTrack.artist}</p></div>
                 <div className="np-progress">
                   <span>{formatTime(currentTime)}</span>
@@ -1786,7 +1830,7 @@ export default function App() {
         <div className="player-info" onClick={() => currentTrack && setNowPlayingOpen(true)}>
           {currentTrack ? (
             <>
-              <span className="player-art"><img src={currentTrack.artwork} alt="" aria-hidden="true" className="player-art-glow" /><img src={currentTrack.artwork} alt="" className="player-artwork" /></span>
+              <span key={currentTrack.videoId} className="player-art"><img src={currentTrack.artwork} alt="" aria-hidden="true" className="player-art-glow" /><img src={currentTrack.artwork} alt={`${currentTrack.title} cover`} className="player-artwork" /></span>
               <div className="player-text"><span className="player-title">{currentTrack.title}</span><span className="player-artist">{currentTrack.artist}</span></div>
               <canvas ref={visualizerCanvasRef} className="player-viz" aria-hidden="true" />
               <Button className={`player-like ${isFavorite(currentTrack.videoId) ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(currentTrack); }}><Heart size={16} fill={isFavorite(currentTrack.videoId) ? "currentColor" : "none"} /></Button>

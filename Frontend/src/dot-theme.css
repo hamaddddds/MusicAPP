@@ -172,7 +172,7 @@
 .hero-wheel { position: relative; min-height: 380px; container-type: inline-size; }
 .wheel { position: absolute; inset: 0; overflow: hidden; }
 /* The tracklist owns the right edge; the ring and its title center in what is left. */
-.wheel-stage, .wheel-title { position: absolute; inset: 0 190px 0 0; }
+.wheel-stage, .wheel-title { position: absolute; inset: 0; }
 .wheel-stage { cursor: grab; touch-action: pan-x; outline: none; }
 .wheel-stage:active { cursor: grabbing; }
 .wheel-stage:focus-visible { outline: 1px solid #ffffff50; outline-offset: -10px; border-radius: 22px; }
@@ -189,14 +189,10 @@
 .wheel-title small, .wheel-caption small { display: block; font: 9px ui-monospace, 'Cascadia Code', monospace; letter-spacing: 1.6px; text-transform: uppercase; color: #777; }
 .wheel-title small { margin-top: 7px; }
 .wheel-title .wheel-hint { margin-top: 3px; color: #555; }
-.wheel-caption { position: absolute; top: 50%; left: 24px; translate: 0 -50%; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
-.wheel-caption strong { font-size: 18px; font-weight: 650; letter-spacing: -.4px; line-height: 1.2; overflow-wrap: anywhere; }
-.wheel-caption span { font-size: 12px; color: #999; }
-.wheel-index { position: absolute; top: 50%; right: 24px; translate: 0 -50%; list-style: none; text-align: right; font-size: 11px; line-height: 1.9; }
-.wheel-index button { display: inline-block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; border: 0; background: none; color: #666; font: inherit; cursor: pointer; transition: color .2s; }
-.wheel-index button:hover { color: #bbb; }
-.wheel-index button.on { color: #f2f2f2; font-weight: 600; }
-@container (max-width: 620px) { .wheel-index { display: none; } .wheel-stage, .wheel-title { right: 0; } }
+.wheel-caption { position: absolute; top: 50%; left: 20px; translate: 0 -50%; display: flex; flex-direction: column; gap: 12px; pointer-events: none; padding: 20px 0 20px 16px; border-left: 2px solid #ffffff35; }
+.wheel-caption strong { font-size: clamp(21px, 3.8cqw, 30px); font-weight: 650; letter-spacing: -.8px; line-height: 1.12; overflow-wrap: anywhere; text-wrap: balance; }
+.wheel-caption span { font-size: 13px; line-height: 1.5; color: #aaa; }
+.wheel-caption small { color: #aaa; letter-spacing: 2px; }
 
 .player-info { flex: 0 1 30%; min-width: 0; gap: 14px; }
 /* The cover sits on a blurred copy of itself that breathes with the bass. */
@@ -232,3 +228,54 @@
 .spotify-linked-text strong { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spotify-linked-text small { font-size: 12px; color: var(--text-secondary); }
 .spotify-unlink { flex-shrink: 0; border-radius: 999px; }
+/* Artwork / search / idle hero refinements */
+.track-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); }
+.track-row { gap: 12px; padding-inline: 12px; }
+.track-row-index { flex: 0 0 32px; width: 32px; height: 36px; display: grid; place-items: center; }
+.track-row-play { width: 32px; height: 36px; padding: 0; border-radius: 10px; }
+.track-row-play:hover { background: #ffffff12; }
+.track-row.playing .track-num, .track-row:focus-within .track-num { opacity: 0; }
+.track-row.playing .track-row-play, .track-row:focus-within .track-row-play { display: flex; }
+.track-row-like, .track-row-more { padding: 0; flex: 0 0 32px; width: 32px; height: 36px; }
+.control-buttons { gap: clamp(16px, 2vw, 28px); }
+.control-buttons button, .np-controls button { padding: 0; flex-shrink: 0; }
+.top-result-card { margin: 4px 34px 26px; width: calc(100% - 68px); min-width: 0; max-width: none; padding: 22px 26px; gap: 28px; border-radius: 22px; cursor: default; }
+.top-result-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 24px; background: none; border: 0; color: inherit; text-align: left; padding: 0; cursor: pointer; }
+.top-result-main .top-result-img { width: 110px; height: 110px; flex-shrink: 0; }
+.top-result-card.is-artist .top-result-img { border-radius: 50%; }
+.top-result-name { font-size: clamp(24px, 2.5vw, 36px); line-height: 1.15; font-weight: 650; letter-spacing: -.9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-result-text .section-badge { background: none; padding: 0; color: #999; text-transform: uppercase; letter-spacing: 1.8px; font-size: 9px; margin-bottom: 5px; }
+.top-result-artist { font-size: 14px; font-weight: 400; text-transform: capitalize; }
+.top-result-actions { gap: 14px; }
+.top-result-primary, .top-result-mix { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 120px; height: 44px; padding: 0 24px; border-radius: 999px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .2s, transform .2s; }
+.top-result-primary { background: #f3f3f3; color: #111; border: 1px solid #fff; }
+.top-result-mix { color: #eee; background: #ffffff06; border: 1px solid #ffffff30; }
+.top-result-primary:hover { background: #fff; transform: translateY(-2px); }
+.top-result-mix:hover { background: #ffffff14; transform: translateY(-2px); }
+.top-result-open { background: none; border: 0; padding: 10px; color: #aaa; cursor: pointer; }
+.top-result-primary:disabled, .top-result-mix:disabled { opacity: .5; cursor: wait; }
+.listen-hero.is-idle { display: block; padding: 0; min-height: 380px; }
+.idle-crowd { position: relative; height: 380px; overflow: hidden; background: radial-gradient(ellipse at 50% 110%, #ffffff13, transparent 70%); animation: crowd-arrive .8s ease both; }
+.idle-crowd canvas { position: absolute; inset: 0; width: 100%; height: 100%; filter: invert(1); mask-image: linear-gradient(#000 85%, #0005); }
+.idle-crowd-heading { position: relative; z-index: 1; padding: 35px 24px; text-align: center; pointer-events: none; }
+.listen-hero .idle-crowd h2 { font-size: clamp(24px, 3vw, 40px); margin: 12px 0 10px; letter-spacing: -1.4px; }
+.idle-crowd-credit { position: absolute; bottom: 12px; right: 20px; z-index: 1; font-size: 9px; color: #999; text-decoration: none; background: #111c; padding: 5px 8px; border-radius: 6px; }
+@keyframes crowd-arrive { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 1100px) {
+  .top-result-card { gap: 16px; padding: 20px; }
+  .top-result-primary, .top-result-mix { min-width: 90px; padding: 0 16px; }
+  .top-result-main { gap: 18px; }
+  .top-result-main .top-result-img { width: 88px; height: 88px; }
+}
+@media (max-width: 800px) {
+  .top-result-card { flex-wrap: wrap; margin-inline: 20px; width: calc(100% - 40px); }
+  .top-result-main { flex-basis: 100%; }
+  .top-result-actions { width: 100%; justify-content: flex-end; }
+  .top-result-name { font-size: 26px; }
+}
+@media (prefers-reduced-motion: reduce) { .idle-crowd { animation: none; } }
+.idle-crowd-heading .eyebrow { justify-content: center; }
+@container (max-width: 420px) {
+  .wheel-caption { top: auto; bottom: 16px; left: 20px; right: 20px; translate: none; max-width: none !important; padding: 10px 12px; gap: 6px; background: #111d; border-radius: 0 10px 10px 0; }
+  .wheel-caption strong { font-size: 20px; }
+}

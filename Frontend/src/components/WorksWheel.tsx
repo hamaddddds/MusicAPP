@@ -132,13 +132,11 @@ export default function WorksWheel({ items, label, onPlay }: { items: WheelItem[
       </div>
     </div>
     <div ref={title} className="wheel-title"><strong>{label}</strong><small>{String(count).padStart(2, "0")} tracks</small><small className="wheel-hint">scroll to spin</small></div>
-    <div ref={caption} className="wheel-caption" style={{ opacity: 0, maxWidth: Math.max(90, size.w / 2 - card / 2 - 48) }}>
+    <div ref={caption} className="wheel-caption" style={{ opacity: 0, maxWidth: Math.max(110, size.w / 2 - card / 2 - 32) }}>
       <small>{String(active + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}</small>
       <strong>{item?.title}</strong>
       <span>{item?.subtitle}</span>
     </div>
-    <ol className="wheel-index">
-      {items.map((it, i) => <li key={it.id}><button type="button" className={i === active ? "on" : ""} onClick={() => go(i + 1)}>{it.title}</button></li>)}
-    </ol>
+
   </section>;
 }
