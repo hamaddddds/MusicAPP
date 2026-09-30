@@ -120,7 +120,7 @@ def suggest(q: str = Query(..., min_length=1)):
 
 @app.get("/charts")
 def charts(
-    country: str = Query("ZZ", description="ISO country code, e.g. 'US', 'ID'. 'ZZ' = global"),
+    country: str = Query("", description="ISO country code, e.g. 'US', 'ID'. 'ZZ' = global; empty = the country YouTube detects for this IP"),
 ):
     return _call(metadata.get_charts, country)
 

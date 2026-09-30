@@ -48,7 +48,6 @@ interface Track { videoId: string; title: string; artist: string; artwork: strin
 type RepeatMode = "off" | "all" | "one";
 type ShuffleMode = "off" | "random" | "smart";
 interface HistEntry extends Track { count: number; last: number; }
-interface Region { country: string | null; countryCode: string | null; city: string | null; }
 interface CtxMenu { x: number; y: number; track: Track; context: Track[]; playlistId?: string; }
 interface UpdateInfo { version: string; obj: any; }
 interface ArtistHead { artistId?: string; channelId?: string; name: string; thumbnails: any[]; subscribers?: string | null; }
@@ -263,7 +262,6 @@ export default function App() {
   const [favorites, setFavorites] = useState<Track[]>(() => load("mv:favorites", []));
   const [history, setHistory] = useState<Record<string, HistEntry>>(() => load("mv:history", {}));
   const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
-  const [region, setRegion] = useState<Region | null>(() => load("mv:region", null));
 
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [pageTransition, setPageTransition] = useState<string>(() => load("mv:page-transition", "fade"));
@@ -576,13 +574,14 @@ export default function App() {
     setArtistLoading(false);
   }, []);
 
-  const buildQuickPicks = useCallback(async (reg: Region | null) => {
+  const buildQuickPicks = useCallback(async () => {
     const cache = load("mv:quickpicks", null as any);
-    const fresh = cache && cache.v === 3 && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
+    const fresh = cache && cache.v === 4 && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
     if (fresh) { setQuickPicks(cache.tracks); return; }
     const blockedSet = new Set(blocked);
-    // What's popular where you are (YouTube Music's daily chart), mixed with the biggest songs of your most-played artists.
-    const charts = await getJson(`/charts?country=${reg?.countryCode || "ZZ"}`) ?? await getJson("/charts?country=ZZ");
+    // What's popular where you are (YouTube Music's daily chart for the country YouTube detects from
+    // your IP), mixed with the biggest songs of your most-played artists.
+    const charts = await getJson("/charts");
     const daily = charts?.videos?.find((v: any) => /daily/i.test(v.title)) ?? charts?.videos?.[0];
     const chart = daily?.playlistId ? (await getJson(`/playlist/${daily.playlistId}?limit=50`))?.tracks : null;
     const artists = artistScores(history).filter(([artist]) => artist !== "Unknown Artist").slice(0, 3).map(([artist]) => artist.split(",")[0].trim());
@@ -598,7 +597,7 @@ export default function App() {
     }
     const picks = merged.slice(0, 12);
     setQuickPicks(picks);
-    localStorage.setItem("mv:quickpicks", JSON.stringify({ v: 3, at: Date.now(), tracks: picks }));
+    localStorage.setItem("mv:quickpicks", JSON.stringify({ v: 4, at: Date.now(), tracks: picks }));
   }, [history, blocked]);
 
   const reshuffleHome = useCallback(async () => {
@@ -606,8 +605,8 @@ export default function App() {
     setShelves((prev) => { const n: Record<string, Track[]> = {}; for (const k in prev) n[k] = shuffleArray(prev[k]); return n; });
     localStorage.removeItem("mv:quickpicks");
     await loadHome();
-    buildQuickPicks(region);
-  }, [loadHome, buildQuickPicks, region, flashToast]);
+    buildQuickPicks();
+  }, [loadHome, buildQuickPicks, flashToast]);
 
   const checkForUpdate = useCallback(async () => {
     try {
@@ -632,19 +631,7 @@ export default function App() {
 
   useEffect(() => {
     loadHome();
-    (async () => {
-      let reg = load<Region | null>("mv:region", null);
-      try {
-        if (!reg) {
-          const res = await fetch("https://ipapi.co/json/");
-          const data = await res.json();
-          reg = { country: data.country_name, countryCode: data.country_code, city: data.city };
-          localStorage.setItem("mv:region", JSON.stringify(reg));
-          setRegion(reg);
-        }
-      } catch { }
-      buildQuickPicks(reg);
-    })();
+    buildQuickPicks();
   }, [loadHome, buildQuickPicks]);
 
   useEffect(() => {
@@ -1382,7 +1369,7 @@ export default function App() {
             </section>
             {quickPicks.length > 0 && (
               <section className="shelf">
-                <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}{region?.city ? ` ... ${region.city}` : ""}</p></div></div>
+                <div className="shelf-head"><div><h2>Quick Picks <ChevronRight size={20} /></h2><p>{history && Object.keys(history).length ? "Based on what you play frequently" : "Popular near you"}</p></div></div>
                 <div className="track-grid">{quickPicks.map((t, i) => renderTrackRow(t, quickPicks, i))}</div>
               </section>
             )}

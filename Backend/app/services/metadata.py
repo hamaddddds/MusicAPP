@@ -64,10 +64,10 @@ def get_search_suggestions(query: str):
     return get_yt().get_search_suggestions(query)
 
 
-def get_charts(country: str = "ZZ"):
-    """country: ISO 3166-1 alpha-2 code (e.g. 'US', 'ID', 'KR').
-    'ZZ' returns the global chart. This is the 'global vs local' data
-    the user asked for.
+def get_charts(country: str = ""):
+    """country: ISO 3166-1 alpha-2 code (e.g. 'US', 'ID', 'KR'). 'ZZ' returns
+    the global chart; empty lets YouTube pick the country it detects for the
+    caller's IP (the sidecar runs on the user's machine, so that is theirs).
     """
     return get_yt().get_charts(country=country)
 
