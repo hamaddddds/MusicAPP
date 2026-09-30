@@ -8,6 +8,7 @@ import "@braccato/core/styles/lyrics.css";
 import "@braccato/core/styles/instrumental.css";
 import theme from "./eblp.css?raw";
 import { translateLines, type Lyrics } from "../lib/lyrics";
+import GlassSelect, { type GlassOption } from "./GlassSelect";
 
 interface Props {
   sources: Lyrics[] | null;
@@ -18,7 +19,8 @@ interface Props {
   onOffsetChange: Dispatch<SetStateAction<number>>;
 }
 
-const LANGUAGES: [string, string][] = [["en", "English"], ["id", "Indonesia"], ["ja", "日本語"], ["ko", "한국어"], ["zh-CN", "中文"], ["es", "Español"], ["pt", "Português"], ["fr", "Français"], ["de", "Deutsch"], ["ar", "العربية"], ["hi", "हिन्दी"], ["th", "ไทย"], ["vi", "Tiếng Việt"], ["ru", "Русский"]];
+const LANGUAGES: GlassOption[] = [["en", "English", ""], ["id", "Bahasa Indonesia", "Indonesian"], ["ja", "日本語", "Japanese"], ["ko", "한국어", "Korean"], ["zh-CN", "中文", "Chinese"], ["es", "Español", "Spanish"], ["pt", "Português", "Portuguese"], ["fr", "Français", "French"], ["de", "Deutsch", "German"], ["ar", "العربية", "Arabic"], ["hi", "हिन्दी", "Hindi"], ["th", "ไทย", "Thai"], ["vi", "Tiếng Việt", "Vietnamese"], ["ru", "Русский", "Russian"]]
+  .map(([value, label, hint]) => ({ value, label, hint }));
 const saved = <T,>(key: string, fallback: T): T => { try { const value = localStorage.getItem(key); return value === null ? fallback : JSON.parse(value); } catch { return fallback; } };
 
 /** Better Lyrics' own renderer (@braccato/core) with the Even Better Lyrics Plus theme and its lyrics dock. */
@@ -101,9 +103,7 @@ export default function SyncedLyrics({ sources, loading, audioRef, offset, onOff
       <span className="dock-sep" />
       {hasRomanization && <button className={`dock-btn ${romanize ? "on" : ""}`} onClick={() => setRomanize(!romanize)} aria-pressed={romanize} title="Romanization">Aa</button>}
       <button className={`dock-btn ${translate ? "on" : ""}`} onClick={() => setTranslate(!translate)} aria-pressed={translate} title="Translate lyrics"><Languages size={15} /></button>
-      {translate && <select className="dock-select" value={language} onChange={e => setLanguage(e.target.value)} aria-label="Translation language">
-        {LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-      </select>}
+      {translate && <GlassSelect value={language} onChange={setLanguage} options={LANGUAGES} label="Translate to" side="top" className="dock-select" />}
       <span className="dock-sep" />
       <Clock size={14} className="dock-icon" aria-hidden />
       <button className="dock-btn" aria-label="Show lyrics earlier" title="Earlier (Shift: 1s)" onClick={e => nudge(e.shiftKey ? -1 : -0.1)}><Minus size={14} /></button>

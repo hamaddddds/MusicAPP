@@ -1,47 +1,28 @@
 import { useEffect, useState, useRef, useCallback, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import {
   Play, Pause, SkipForward, SkipBack,
   Volume2, Volume1, VolumeX, Search, Home, Heart, Radio, Clock,
   X, Minus, Square, Maximize, Repeat, Repeat1, Shuffle,
-  ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
+  ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
-  Settings, Sun, Moon, Monitor, Upload, Check,
+  Settings, Moon, Upload, Check,
   UserCircle, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
 } from "lucide-react";
 import { SubscribedArtist, syncAppStateToGist, Playlist } from "./lib/github";
 import SplashIntro from "./components/SplashIntro";
 import ShareLyricModal from "./components/ShareLyricModal";
+import NowPlayingArtwork from "./components/NowPlayingArtwork";
+import TrackActions from "./components/TrackActions";
+import MusicVenueMark from "./components/MusicVenueMark";
 import SyncedLyrics from "./components/SyncedLyrics";
 import { fetchLyrics, type Lyrics } from "./lib/lyrics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-
-
-const CustomSelect = ({ value, onChange, options }: { value: string | number, onChange: (v: string) => void, options: { label: string, value: string | number }[] }) => {
-  const selectedLabel = options.find(o => o.value == value)?.label || "Select...";
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button className="flex w-full items-center justify-between rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-white/20">
-          {selectedLabel}
-          <ChevronDown className="h-4 w-4 opacity-50" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="z-[9999] w-full min-w-[200px] bg-[#1a1a1a] text-white border-white/10 shadow-xl" align="start">
-        {options.map(opt => (
-          <DropdownMenuItem key={opt.value} onClick={() => onChange(String(opt.value))} className="text-left cursor-pointer focus:bg-white/10">
-            {opt.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-};
+import GlassSelect from "./components/GlassSelect";
 
 // ... Types ...
 interface Track { videoId: string; title: string; artist: string; artwork: string; duration?: number; }
@@ -164,6 +145,7 @@ function CtrlButton({
   label,
   className = "",
   children,
+  title: _title,
   ...rest
 }: Omit<React.ComponentPropsWithoutRef<typeof motion.button>, "children"> & { label: string; children?: React.ReactNode }) {
   return (
@@ -171,14 +153,13 @@ function CtrlButton({
       <motion.button
         aria-label={label}
         className={`ctrl-btn ${className}`}
-        whileHover={{ scale: 1.12, y: -2 }}
+        whileHover={{ scale: 1.06 }}
         whileTap={{ scale: 0.9 }}
         transition={{ type: "spring", stiffness: 420, damping: 18 }}
         {...rest}
       >
         {children}
       </motion.button>
-      <span className="ctrl-tooltip">{label}</span>
     </span>
   );
 }
@@ -204,23 +185,23 @@ const EqPctLabel = memo(({ gain }: { gain: number }) => {
 });
 EqPctLabel.displayName = 'EqPctLabel';
 
-const pageVariants = {
+// Leave fast, arrive on a long ease-out: with mode="wait" the old page's exit is pure latency.
+const pageVariants: Variants = {
   initial: (transition: string) => {
-    if (transition === "slide") return { opacity: 0, x: 20 };
-    if (transition === "zoom") return { opacity: 0, scale: 0.95 };
-    return { opacity: 0 };
+    if (transition === "slide") return { opacity: 0, x: 28 };
+    if (transition === "zoom") return { opacity: 0, scale: 0.97 };
+    return { opacity: 0, y: 10 };
   },
-  in: {
-    opacity: 1,
-    x: 0,
-    scale: 1
-  },
-  out: (transition: string) => {
-    if (transition === "slide") return { opacity: 0, x: -20 };
-    if (transition === "zoom") return { opacity: 0, scale: 1.05 };
-    return { opacity: 0 };
-  }
+  in: { opacity: 1, x: 0, y: 0, scale: 1, transition: { duration: 0.42, ease: [0.16, 1, 0.3, 1] } },
+  out: (transition: string) => ({
+    opacity: 0,
+    ...(transition === "slide" ? { x: -14 } : transition === "zoom" ? { scale: 1.01 } : {}),
+    transition: { duration: 0.1, ease: "easeIn" },
+  }),
 };
+const navSpring = { type: "spring", stiffness: 520, damping: 40, mass: 0.8 } as const;
+/** Apple-style selection pill that glides to whichever nav item is active. */
+const NavPill = () => <motion.span layoutId="nav-pill" className="nav-pill" transition={navSpring} />;
 
 export default function App() {
   const [showIntro, setShowIntro] = useState(true);
@@ -242,7 +223,6 @@ export default function App() {
 
 
   // Hover and Share Lyric states
-  const [isHoveringArt, setIsHoveringArt] = useState(false);
   const [shareLyricOpen, setShareLyricOpen] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -263,7 +243,8 @@ export default function App() {
   const [history, setHistory] = useState<Record<string, HistEntry>>(() => load("mv:history", {}));
   const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
 
-  const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
+  const [theme, setTheme] = useState<string>(() => load<string>("mv:theme", "dark") === 'amoled' ? 'amoled' : 'dark');
+  const [dotTheme, setDotTheme] = useState<string>(() => load<string>("mv:dot-theme", "grid"));
   const [pageTransition, setPageTransition] = useState<string>(() => load("mv:page-transition", "fade"));
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
   // Account UI is gone (private app); an already-linked GitHub token keeps backing up state to its gist.
@@ -300,6 +281,8 @@ export default function App() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const eqBandsRef = useRef<BiquadFilterNode[]>([]);
   const visualizerCanvasRef = useRef<HTMLCanvasElement>(null);
+  const islandRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const reqFrameRef = useRef<number>(0);
 
   const eqPresets: Record<string, number[]> = {
@@ -407,19 +390,14 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    document.documentElement.dataset.dotTheme = dotTheme;
+    localStorage.setItem("mv:dot-theme", JSON.stringify(dotTheme));
+  }, [dotTheme]);
+
+  useEffect(() => {
     localStorage.setItem("mv:page-transition", JSON.stringify(pageTransition));
   }, [pageTransition]);
 
-  // "System" theme follows the OS color scheme.
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-      if (theme === "system") document.documentElement.dataset.theme = mq.matches ? "dark" : "light";
-    };
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, [theme]);
 
   const flashToast = useCallback((msg: string) => {
     setToast(msg);
@@ -771,59 +749,52 @@ export default function App() {
   }, [advance]);
 
   const startVisualizer = useCallback(() => {
-    if (!analyserRef.current) return;
-
     const analyser = analyserRef.current;
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
+    if (!analyser) return;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const BARS = 24;
+    const binHz = analyser.context.sampleRate / analyser.fftSize;
+    // Log-spaced bands (45 Hz – 14 kHz): linear bins give bass one bar and cymbals twenty.
+    const edges = Array.from({ length: BARS + 1 }, (_, i) => Math.round(45 * (14000 / 45) ** (i / BARS) / binHz));
+    const levels = new Float32Array(BARS);
+    let beat = 0;
 
-    const draw = () => {
+    const draw = (now: number) => {
       reqFrameRef.current = requestAnimationFrame(draw);
-
       const canvas = visualizerCanvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      analyser.getByteFrequencyData(data);
 
-      analyser.getByteFrequencyData(dataArray);
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const barWidth = 3;
-      const barGap = 2;
-      const numBars = Math.floor(canvas.width / (barWidth + barGap));
-
-      // Focus on the lower/mid frequencies for better visual movement
-      const step = Math.floor((bufferLength * 0.5) / numBars);
-
-      let x = 0;
-      for (let i = 0; i < numBars; i++) {
-        let sum = 0;
-        for (let j = 0; j < step; j++) {
-          sum += dataArray[i * step + j];
-        }
-        const avg = sum / step;
-
-        // Scale height smoothly
-        const barHeight = Math.max(2, (avg / 255) * canvas.height);
-
-        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-
-        // Center the bars vertically
-        const y = (canvas.height - barHeight) / 2;
-
+      const slot = w / BARS, bar = slot * 0.52;
+      const fill = ctx.createLinearGradient(0, 0, w, 0);
+      fill.addColorStop(0, "#ffffff");
+      fill.addColorStop(0.5, "#bcbcbc");
+      fill.addColorStop(1, "#9b7bff");
+      ctx.fillStyle = fill;
+      ctx.shadowColor = "rgba(255, 255, 255, 0.15)";
+      ctx.shadowBlur = 8;
+      for (let i = 0; i < BARS; i++) {
+        let peak = 0;
+        for (let j = edges[i]; j <= Math.max(edges[i], edges[i + 1] - 1); j++) peak = Math.max(peak, data[j]);
+        // Treble carries far less energy than bass; tilt it up so the whole row dances.
+        const target = Math.min(1, (peak / 255) ** 2.2 * (1 + 0.9 * i / BARS));
+        levels[i] += (target - levels[i]) * (target > levels[i] ? 0.5 : 0.1);
+        const ripple = 1 + Math.sin(now / 260 + i * 0.55); // a soft wave stays alive through quiet intros
+        const height = Math.max(bar + ripple, levels[i] * h);
         ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(x, y, barWidth, barHeight, 2);
-        } else {
-          ctx.rect(x, y, barWidth, barHeight);
-        }
+        ctx.roundRect(i * slot + (slot - bar) / 2, (h - height) / 2, bar, height, bar / 2);
         ctx.fill();
-
-        x += barWidth + barGap;
       }
+      beat += ((levels[0] + levels[1] + levels[2] + levels[3]) / 4 - beat) * 0.3;
+      islandRef.current?.style.setProperty("--beat", beat.toFixed(3));
     };
-    draw();
+    reqFrameRef.current = requestAnimationFrame(draw);
   }, []);
 
   const initAudioContext = useCallback(() => {
@@ -844,7 +815,7 @@ export default function App() {
       });
 
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 2048;
 
       source.connect(bands[0]);
       for (let i = 0; i < bands.length - 1; i++) {
@@ -1010,7 +981,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (e.defaultPrevented || el?.closest('[role="dialog"], [role="menu"]') || (e.code !== 'Escape' && el?.closest('button, [role="slider"]')) || (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable))) return;
       switch (e.code) {
         case "Space": e.preventDefault(); togglePlay(); break;
         case "ArrowRight": if (audioRef.current) audioRef.current.currentTime = Math.min(durationRef.current, audioRef.current.currentTime + 5); break;
@@ -1032,9 +1003,12 @@ export default function App() {
 
   useEffect(() => {
     if (!ctxMenu) return;
-    const close = () => setCtxMenu(null);
-    window.addEventListener("click", close); window.addEventListener("scroll", close, true); window.addEventListener("resize", close);
-    return () => { window.removeEventListener("click", close); window.removeEventListener("scroll", close, true); window.removeEventListener("resize", close); };
+    const close = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('.ctx-menu')) return;
+      setCtxMenu(null);
+    };
+    window.addEventListener("pointerdown", close); window.addEventListener("scroll", close, true); window.addEventListener("resize", close);
+    return () => { window.removeEventListener("pointerdown", close); window.removeEventListener("scroll", close, true); window.removeEventListener("resize", close); };
   }, [ctxMenu]);
 
   useEffect(() => {
@@ -1046,9 +1020,10 @@ export default function App() {
 
   const openCtx = (e: React.MouseEvent, track: Track, context: Track[], playlistId?: string) => {
     e.preventDefault();
-    const menuW = 232, menuH = 372;
-    const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
-    const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+    e.stopPropagation();
+    const anchor = e.currentTarget.getBoundingClientRect();
+    const x = e.detail === 0 && e.type === 'click' ? anchor.left : e.clientX;
+    const y = e.detail === 0 && e.type === 'click' ? anchor.bottom + 6 : e.clientY;
     setCtxMenu({ x: Math.max(8, x), y: Math.max(8, y), track, context, playlistId });
   };
 
@@ -1219,7 +1194,7 @@ export default function App() {
         <img src={track.artwork} alt="" className="track-row-art" loading="lazy" />
         <div className="track-row-text"><span className="track-row-title">{track.title}</span><span className="track-row-artist">{track.artist}</span></div>
         <Button className={`track-row-like ${isFavorite(track.videoId) ? "active" : ""}`} onClick={() => toggleFavorite(track)}><Heart size={16} fill={isFavorite(track.videoId) ? "currentColor" : "none"} /></Button>
-        <Button className="track-row-more" onClick={(e) => openCtx(e, track, context)}><MoreHorizontal size={16} /></Button>
+        <Button className="track-row-more" aria-label={`More options for ${track.title}`} aria-haspopup="dialog" onClick={(e) => openCtx(e, track, context, playlistId)}><MoreHorizontal size={16} /></Button>
       </div>
     );
   };
@@ -1264,13 +1239,14 @@ export default function App() {
       <audio ref={audioRef} src={playerUrl || undefined} crossOrigin="anonymous" onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)} onLoadedMetadata={(e) => {
         if (pendingResume.current > 0) { e.currentTarget.currentTime = Math.min(pendingResume.current, Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : pendingResume.current); pendingResume.current = 0; }
       }} onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onWaiting={() => setStreamLoading(true)} onCanPlay={() => setStreamLoading(false)} onPlaying={() => setStreamLoading(false)} onPause={(e) => { if (e.currentTarget.readyState >= 2 && !streamLoading) setIsPlaying(false); }} />
+      <div className="dot-backdrop" aria-hidden="true" />
       <aside className="sidebar">
         <div className="drag-region" onMouseDown={handleDrag} />
-        <div className="sidebar-brand"><Sparkles size={20} /> Music Venue</div>
+        <div className="sidebar-brand"><MusicVenueMark /><span>Music Venue</span></div>
         <div className="sidebar-section">
-          <div className={`nav-item ${activeTab === "home" ? "active" : ""}`} onClick={() => handleTabClick("home")}><Home size={20} /> Listen Now</div>
-          <div className={`nav-item ${activeTab === "search" ? "active" : ""}`} onClick={() => setActiveTab("search")}><Search size={20} /> Search</div>
-          <div className={`nav-item ${activeTab === "radio" ? "active" : ""}`} onClick={() => handleTabClick("radio")}><Radio size={20} /> Radio</div>
+          <div className={`nav-item ${activeTab === "home" ? "active" : ""}`} onClick={() => handleTabClick("home")}>{activeTab === "home" && <NavPill />}<Home size={20} /> Listen Now</div>
+          <div className={`nav-item ${activeTab === "search" ? "active" : ""}`} onClick={() => setActiveTab("search")}>{activeTab === "search" && <NavPill />}<Search size={20} /> Search</div>
+          <div className={`nav-item ${activeTab === "radio" ? "active" : ""}`} onClick={() => handleTabClick("radio")}>{activeTab === "radio" && <NavPill />}<Radio size={20} /> Radio</div>
         </div>
         <div className="sidebar-section">
           <div className="nav-item" onClick={() => setLibraryOpen(!libraryOpen)} style={{ fontWeight: 600 }}>
@@ -1279,10 +1255,10 @@ export default function App() {
           </div>
           {libraryOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 8 }}>
-              <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}><Heart size={18} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}</div>
+              <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}>{activeTab === "favorites" && <NavPill />}<Heart size={18} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}</div>
               {playlists.map(pl => (
                 <div key={pl.id} className={`nav-item ${activeTab === "playlistDetail" && activePlaylistId === pl.id ? "active" : ""}`} onClick={() => { setActivePlaylistId(pl.id); setActiveTab("playlistDetail"); }}>
-                  <ListMusic size={18} /> {pl.name}
+                  {activeTab === "playlistDetail" && activePlaylistId === pl.id && <NavPill />}<ListMusic size={18} /> {pl.name}
                 </div>
               ))}
               <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={18} /> Queue</div>
@@ -1300,7 +1276,7 @@ export default function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 8 }}>
                 {subscribedArtists.map(a => (
                   <div key={a.artistId} className={`nav-item ${activeTab === "artist" && artistView?.artist?.artistId === a.artistId ? "active" : ""}`} onClick={() => openArtist({ artistId: a.artistId, name: a.name })}>
-                    <img src={a.thumbnails?.[0]?.url || ""} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
+                    {activeTab === "artist" && artistView?.artist?.artistId === a.artistId && <NavPill />}<img src={a.thumbnails?.[0]?.url || ""} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
                     <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
                   </div>
                 ))}
@@ -1316,7 +1292,7 @@ export default function App() {
           </Button>
         </div>
       </aside>
-      <main className="main-content">
+      <main className="main-content" ref={mainRef}>
         <header className="header">
           <div className="header-drag" onMouseDown={handleDrag}><h1>{getPageTitle()}</h1></div>
           <div className="header-center">
@@ -1348,23 +1324,22 @@ export default function App() {
             )}
           </div>
         </header>
-        <AnimatePresence mode="wait" custom={pageTransition}>
+        <AnimatePresence mode="wait" custom={pageTransition} onExitComplete={() => mainRef.current?.scrollTo(0, 0)}>
         {activeTab === "home" && (
-          <motion.div key="home" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
+          <motion.div key="home" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
             <section className="listen-hero">
               <div className="listen-hero-copy">
-                <span className="eyebrow"><Sparkles size={13} /> YOUR DAILY SOUNDTRACK</span>
-                <h2>A little more<br />you. A lot more music.</h2>
-                <p>Old favorites. New obsessions. All in one place.</p>
+                <span className="eyebrow"><span className="mono-status-dot" /> MUSIC VENUE / DAILY MIX</span>
+                <h2>A space for<br />your music.</h2>
+                <p>Your favorites, and what comes next.</p>
                 <div className="hero-actions">
                   <button className="hero-play" onClick={() => quickPicks.length ? playTrack(quickPicks[0], quickPicks) : setActiveTab("search")}><Play size={16} fill="currentColor" /> {quickPicks.length ? "Play your mix" : "Find your music"}</button>
                   <button className="hero-secondary" onClick={() => setActiveTab("favorites")}><Heart size={16} /> Your collection</button>
                 </div>
               </div>
-              <div className="hero-art-stack" aria-hidden="true">
-                {quickPicks.slice(0, 3).map((track, i) => <img key={track.videoId} src={track.artwork} alt="" className={`hero-cover hero-cover-${i}`} />)}
-                {!quickPicks.length && <div className="hero-art-placeholder"><ListMusic size={90} strokeWidth={1} /></div>}
-                <span className="hero-glass-tag"><span className="live-dot" /> Made for your everyday</span>
+              <div className="hero-dot-cover" aria-hidden="true">
+                <MusicVenueMark className="hero-dot-mark" field />
+                <span className="hero-dot-caption">SOUND IN EVERY DOT.</span>
               </div>
             </section>
             {quickPicks.length > 0 && (
@@ -1381,12 +1356,12 @@ export default function App() {
           </motion.div>
         )}
         {activeTab === "favorites" && (
-          <motion.div key="favorites" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
+          <motion.div key="favorites" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
             {favorites.length ? <div className="track-grid wide">{favorites.map((t, i) => renderTrackRow(t, favorites, i))}</div> : <div className="empty-state big"><Heart size={44} /><p>Liked Music is empty</p><span>All songs you mark with ♥ will appear here.</span></div>}
           </motion.div>
         )}
         {activeTab === "playlistDetail" && activePlaylistId && (
-          <motion.div key="playlistDetail" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
+          <motion.div key="playlistDetail" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
             {(() => {
               const pl = playlists.find(p => p.id === activePlaylistId);
               if (!pl) return <div className="empty-state big"><p>Playlist not found</p></div>;
@@ -1441,7 +1416,7 @@ export default function App() {
           </motion.div>
         )}
         {activeTab === "artist" && (
-          <motion.div key="artist" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
+          <motion.div key="artist" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
             {artistLoading ? <div className="artist-page-head"><div className="artist-avatar sk-avatar" /><div className="artist-page-meta"><div className="sk-line" /><div className="sk-line short" /></div></div> : artistView?.artist ? (
               <>
                 <div className="artist-page-head">
@@ -1468,7 +1443,7 @@ export default function App() {
           </motion.div>
         )}
         {(activeTab === "search" || activeTab === "radio") && (
-          <motion.div key={activeTab} custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
+          <motion.div key={activeTab} custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
             {loading ? (
               <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div>
             ) : searchTopResult || searchSongsResults.length || searchVideos.length || searchAlbums.length ? (
@@ -1508,7 +1483,7 @@ export default function App() {
           </motion.div>
         )}
         {activeTab === "shelf" && activeShelf && (
-          <motion.div key="shelf" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page">
+          <motion.div key="shelf" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
             <div className="section-head" style={{ marginTop: 20 }}>
               <h2>{homeShelvesState.find(s => s.id === activeShelf)?.title || "Playlist"}</h2>
               <span className="section-badge muted">{homeShelvesState.find(s => s.id === activeShelf)?.subtitle}</span>
@@ -1519,7 +1494,7 @@ export default function App() {
             </motion.div>
           )}
         {activeTab === "profile" && (
-          <motion.div key="profile" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page profile-page">
+          <motion.div key="profile" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page profile-page">
             <div className="profile-hero" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
               <input ref={bannerInput} hidden type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={pickProfileImage("banner")} />
               <input ref={avatarInput} hidden type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={pickProfileImage("avatar")} />
@@ -1538,13 +1513,23 @@ export default function App() {
             <div className="profile-content">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
                 <div className="setting-block">
-                  <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
-                  <div className="theme-grid">
-                    {[{ id: "system", label: "System", Icon: Monitor }, { id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }].map((tOpt) => (
+                  <h3>Appearance</h3><p className="setting-desc">A quieter space for your music.</p>
+                  <div className="theme-grid mono-theme-grid">
+                    {[{ id: "dark", label: "Dot Black", Icon: MusicVenueMark }, { id: "amoled", label: "Pure Black", Icon: Moon }].map((tOpt) => (
                       <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
                         <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
-                        <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
+                        <div className="theme-card-label"><tOpt.Icon /> {tOpt.label}</div>
                         {theme === tOpt.id && <Check size={16} className="theme-check" />}
+                      </Button>
+                    ))}
+                  </div>
+                  <h3 className="dot-theme-heading">Dot motion</h3><p className="setting-desc">Choose how the dots move behind the interface.</p>
+                  <div className="theme-grid dot-theme-grid">
+                    {[{ id: "grid", label: "Quiet Grid" }, { id: "flow", label: "Dot Flow" }, { id: "wave", label: "Dotted Wave" }, { id: "orbit", label: "Orbit Field" }].map((tOpt) => (
+                      <Button key={tOpt.id} className={`theme-card ${dotTheme === tOpt.id ? "active" : ""}`} onClick={() => setDotTheme(tOpt.id)}>
+                        <span className={`theme-swatch dot-swatch dot-swatch-${tOpt.id}`}><span className="tsw-bar" /></span>
+                        <div className="theme-card-label">{tOpt.label}</div>
+                        {dotTheme === tOpt.id && <Check size={16} className="theme-check" />}
                       </Button>
                     ))}
                   </div>
@@ -1568,7 +1553,7 @@ export default function App() {
           </AnimatePresence>
       </main>
       {ctxMenu && (
-        <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={(e) => e.stopPropagation()}>
+        <TrackActions x={ctxMenu.x} y={ctxMenu.y} title={ctxMenu.track.title} onClose={() => setCtxMenu(null)}>
           {ctxMenu.playlistId ? (
             <>
               <Button className="ctx-item" onClick={() => { playTrack(ctxMenu.track, ctxMenu.context); setCtxMenu(null); }}><Play size={17} /> Start from here</Button>
@@ -1597,7 +1582,7 @@ export default function App() {
               <Button className="ctx-item danger" onClick={() => { notInterested(ctxMenu.track); setCtxMenu(null); }}><Ban size={17} /> Don't recommend artist</Button>
             </>
           )}
-        </div>
+        </TrackActions>
       )}
       {justUpdatedChangelog && (
         <div className="update-modal-overlay" style={{ zIndex: 10000 }}>
@@ -1658,26 +1643,11 @@ export default function App() {
       <AnimatePresence>
         {nowPlayingOpen && currentTrack && (
           <motion.div className="now-playing" initial={{ y: "100%", opacity: 1 }} animate={{ y: 0, opacity: 1 }} exit={{ y: "100%", opacity: 1 }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}>
-            <div className="np-bg" style={{ backgroundImage: `url(${currentTrack.artwork})` }} />
+            <div className="np-dot-bg" aria-hidden="true" />
             <Button aria-label="Close now playing" className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></Button>
             <div className="np-body">
               <div className="np-left">
-                <div className="np-art-wrapper" onMouseEnter={() => setIsHoveringArt(true)} onMouseLeave={() => setIsHoveringArt(false)}>
-                  <img src={currentTrack.artwork} alt="" className="np-art" />
-                  <AnimatePresence>
-                    {isHoveringArt && (
-                      <motion.div className="np-art-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <div className="np-overlay-top">
-                          <Button className="overlay-btn" onClick={() => setShareLyricOpen(true)}><Share2 size={24} /></Button>
-                          <Button className="overlay-btn" onClick={() => setShowQueue(!showQueue)}><ListMusic size={24} /></Button>
-                        </div>
-                        <motion.button className="overlay-btn heart-btn" onClick={() => toggleFavorite(currentTrack)} whileTap={{ scale: 0.8 }} animate={{ scale: isFavorite(currentTrack.videoId) ? [1, 1.2, 1] : 1 }}>
-                          <Heart size={48} fill={isFavorite(currentTrack.videoId) ? "var(--primary)" : "none"} color={isFavorite(currentTrack.videoId) ? "var(--primary)" : "currentColor"} />
-                        </motion.button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                <NowPlayingArtwork artwork={currentTrack.artwork} title={currentTrack.title} liked={isFavorite(currentTrack.videoId)} queueOpen={showQueue} onLike={() => toggleFavorite(currentTrack)} onShare={() => setShareLyricOpen(true)} onQueue={() => setShowQueue(o => !o)} />
                 <div className="np-meta"><span className="np-eyebrow">NOW PLAYING</span><h2>{currentTrack.title}</h2><p>{currentTrack.artist}</p></div>
                 <div className="np-progress">
                   <span>{formatTime(currentTime)}</span>
@@ -1702,7 +1672,7 @@ export default function App() {
           <>
             <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowQueue(false)} />
             <motion.aside className="queue-panel" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.35 }}>
-              <div className="queue-head"><h3>Playing Next</h3><Button variant="ghost" size="icon" className="" onClick={() => setShowQueue(false)}><X size={18} /></Button></div>
+              <div className="queue-head"><h3>Playing Next</h3><Button variant="ghost" size="icon" aria-label="Close queue" onClick={() => setShowQueue(false)}><X size={18} /></Button></div>
               {currentTrack && <div className="queue-now"><img src={currentTrack.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{currentTrack.title}</span><span className="track-row-artist">Now Playing</span></div></div>}
               <div className="queue-list">{upNext.length ? upNext.map((t, i) => <div key={t.videoId + i} className="queue-item" onClick={() => { const idx = orderRef.current.findIndex((x) => x.videoId === t.videoId); if (idx >= 0) { posRef.current = idx; loadAndPlay(t); } }} onContextMenu={(e) => openCtx(e, t, orderRef.current)}><img src={t.artwork} alt="" /><div className="track-row-text"><span className="track-row-title">{t.title}</span><span className="track-row-artist">{t.artist}</span></div></div>) : <p className="lyric-status">Antrean kosong.</p>}</div>
             </motion.aside>
@@ -1747,11 +1717,11 @@ export default function App() {
 
       <AnimatePresence>
         {showEQ && (
-          <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }} className="eq-popover glass" onClick={(e) => e.stopPropagation()} style={{ position: 'fixed', transformOrigin: 'bottom right', bottom: '110px', right: '30px', zIndex: 9999, background: 'rgba(25, 25, 25, 0.45)', backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.15)', padding: '24px', borderRadius: '24px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', width: 320 }}>
+          <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} transition={{ duration: 0.2, ease: "easeOut" }} className="eq-popover" onClick={(e) => e.stopPropagation()} style={{ position: 'fixed', transformOrigin: 'bottom right', bottom: '110px', right: '30px', zIndex: 9999, padding: '24px', borderRadius: '24px', width: 320 }}>
             <div className="eq-header" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
               <span style={{ fontWeight: 600, fontSize: '15px' }}>Equalizer</span>
               <div style={{ flex: 1 }}>
-                <CustomSelect value={activeEqPreset} onChange={(v) => { setActiveEqPreset(v); setEqGains(eqPresets[v] || eqPresets["Flat"]); }} options={Object.keys(eqPresets).map(k => ({ label: k, value: k }))} />
+                <GlassSelect value={activeEqPreset} onChange={(v) => { setActiveEqPreset(v); setEqGains(eqPresets[v] || eqPresets["Flat"]); }} options={Object.keys(eqPresets).map(k => ({ label: k, value: k }))} label="Preset" className="wide" />
               </div>
             </div>
             <div className="eq-sliders" style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '0 16px' }}>
@@ -1858,25 +1828,10 @@ export default function App() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="glass"
+            ref={islandRef}
+            className="np-island"
             onClick={() => setNowPlayingOpen(true)}
-            style={{
-              position: 'fixed',
-              top: isTauri ? '90px' : '24px',
-              right: '24px',
-              zIndex: 9999,
-              background: 'rgba(25, 25, 25, 0.45)',
-              backdropFilter: 'blur(40px)',
-              WebkitBackdropFilter: 'blur(40px)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              padding: '12px 16px',
-              borderRadius: '20px',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              cursor: 'pointer'
-            }}
+            style={{ top: isTauri ? '90px' : '24px' }}
           >
             <img src={currentTrack.artwork || ""} style={{ width: 44, height: 44, borderRadius: '12px', objectFit: 'cover', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} alt="" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1884,7 +1839,7 @@ export default function App() {
                 <span style={{ fontSize: 14, fontWeight: 600, maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'rgba(255,255,255,0.9)' }}>
                   {currentTrack.title}
                 </span>
-                <canvas ref={visualizerCanvasRef} width={80} height={16} className="visualizer-canvas" style={{ display: 'block', opacity: 0.8 }} />
+                <canvas ref={visualizerCanvasRef} className="visualizer-canvas" />
               </div>
               {orderRef.current[posRef.current + 1] && (
                 <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.5)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

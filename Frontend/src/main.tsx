@@ -1,11 +1,14 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { MotionConfig } from "framer-motion";
 import App from "./App";
 import "./index.css";
 import "./glass.css";
+import "./polish.css";
+import "./dot-theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <MotionConfig reducedMotion="user"><App /></MotionConfig>
   </React.StrictMode>,
 );

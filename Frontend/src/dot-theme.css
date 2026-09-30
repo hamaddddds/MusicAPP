@@ -1,0 +1,142 @@
+/* Music Venue / DOT. Neutral surfaces, precise dots, album art in its own color. */
+:root, :root[data-theme] {
+  color-scheme: dark;
+  --bg: #080808; --bg-elev: #101010; --bg-surface: #171717;
+  --surface: rgba(255,255,255,.035); --sidebar-bg: rgba(16,16,16,.94);
+  --player-bg: rgba(22,22,22,.96); --panel-bg: #171717;
+  --input-bg: #141414; --text-primary: #f2f2f2; --text-secondary: #999; --text-tertiary: #707070;
+  --accent: #eee; --accent-soft: rgba(255,255,255,.075); --on-accent: #111;
+  --border: #ffffff12; --glass-border: #ffffff19; --glass-shine: #ffffff08;
+  --glass-shadow: 0 12px 32px #0003, inset 0 1px 0 #ffffff05;
+  --hover: #ffffff09; --track-bg: #ffffff12; --btn-play-bg: #eee; --btn-play-fg: #111;
+  --background: 0 0% 3%; --foreground: 0 0% 95%; --primary: 0 0% 92%; --primary-foreground: 0 0% 7%;
+  --secondary: 0 0% 12%; --secondary-foreground: 0 0% 92%; --ring: 0 0% 50%;
+  --muted: 0 0% 13%; --muted-foreground: 0 0% 58%; --popover: 0 0% 8%; --popover-foreground: 0 0% 95%;
+}
+:root[data-theme="amoled"] { --bg: #000; --sidebar-bg: #080808f5; --player-bg: #101010f5; }
+.dot-backdrop, .np-dot-bg { position: fixed; inset: 0; pointer-events: none; background-image: radial-gradient(circle, #ffffff18 .8px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(#0009, #0003 75%, transparent); }
+.np-dot-bg { position: absolute; opacity: .5; }
+.dot-backdrop { animation: dot-drift 28s linear infinite; }
+@keyframes dot-drift { to { background-position: 22px 22px; } }
+:root[data-dot-theme="flow"] .dot-backdrop { background-size: 18px 18px; animation: dot-flow 12s ease-in-out infinite alternate; mask-image: radial-gradient(ellipse at 50% 45%, #000b, transparent 82%); }
+:root[data-dot-theme="flow"] .dot-backdrop::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle, #fff2 1px, transparent 1.3px) 8px 6px / 29px 29px; transform: skewY(-4deg); opacity: .8; }
+@keyframes dot-flow { to { background-position: 0 38px; transform: skewY(2deg) scale(1.03); } }
+:root[data-dot-theme="wave"] .dot-backdrop { background-image: radial-gradient(circle, #ffffff28 1px, transparent 1.2px); background-size: 16px 16px; mask-image: linear-gradient(170deg, transparent 5%, #000 42%, transparent 94%); animation: dot-wave 9s ease-in-out infinite alternate; }
+@keyframes dot-wave { to { background-position: 36px -20px; transform: rotate(-1deg) scale(1.06); } }
+:root[data-dot-theme="orbit"] .dot-backdrop { background-image: radial-gradient(circle at 50% 50%, transparent 0 12%, #ffffff16 12.1% 12.3%, transparent 12.4% 25%, #ffffff14 25.1% 25.3%, transparent 25.4% 40%, #ffffff12 40.1% 40.3%, transparent 40.4%), radial-gradient(circle, #ffffff24 .8px, transparent 1px); background-size: 100% 100%, 20px 20px; animation: dot-orbit 20s linear infinite; }
+@keyframes dot-orbit { to { background-position: 0 0, 20px 20px; transform: rotate(4deg) scale(1.05); } }
+.app-container { background: var(--bg); }
+.sidebar { background: var(--sidebar-bg); box-shadow: inset 0 1px 0 #ffffff05; }
+.header { background: #080808ea; }
+.player-bar, .lyrics-dock, .glass-menu, .ctx-menu, .search-dropdown, .queue-panel, .np-island, .eq-popover { background: linear-gradient(#ffffff04, transparent), var(--player-bg); border-color: #ffffff20; box-shadow: 0 16px 40px #0005, inset 0 1px 0 #ffffff0a; }
+.player-bar::after, .lyrics-dock::after, .glass-menu::after, .ctx-menu::after, .search-dropdown::after, .np-island::after, .eq-popover::after, .listen-hero::after { opacity: .25; }
+.nav-pill { background: #ffffff09; border-color: #ffffff16; box-shadow: inset 0 1px 0 #ffffff04; }
+.sidebar-brand { gap: 9px; letter-spacing: -.7px; font-size: 20px; }
+.sidebar-brand .mv-mark { width: 32px; height: 32px; flex-shrink: 0; color: #f2f2f2; }
+.mv-mark { display: block; }
+.mark-space { opacity: .09; }
+.splash-dot-mark { width: 86px; height: 86px; color: white; }
+.splash-dot-mark .mark-dot { animation: dot-breathe 3s ease-in-out infinite; animation-delay: var(--dot-delay); }
+.avatar, .profile-hero-avatar { background: #252525 !important; color: #eee; border: 1px solid #ffffff15; }
+.sidebar-profile { background: #ffffff03; }
+.profile-hero { background: radial-gradient(circle, #ffffff12 .8px, transparent 1px) 0 0 / 18px 18px, #101010; }
+.profile-avatar-hint { background: #0009; }
+.setting-block { background: #101010d9; }
+.mono-theme-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+.dot-theme-heading { margin-top: 26px; }
+.dot-theme-grid { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.dot-theme-grid .theme-card { min-width: 0; padding-inline: 7px; }
+.dot-theme-grid .theme-card-label { font-size: 10px; white-space: nowrap; }
+.dot-swatch { position: relative; overflow: hidden; border: 1px solid #ffffff12; }
+.dot-swatch-grid { background: radial-gradient(circle, #fff7 1px, transparent 1.2px) 0 0 / 8px 8px, #101010; }
+.dot-swatch-flow { background: radial-gradient(circle, #fff8 1px, transparent 1.2px) 2px 0 / 7px 7px, #101010; transform: skewY(-4deg); }
+.dot-swatch-wave { background: radial-gradient(circle, #fff9 1px, transparent 1.2px) 0 0 / 5px 5px, #181818; mask-image: linear-gradient(170deg, transparent 0, #000 50%, transparent 100%); }
+.dot-swatch-orbit { background: radial-gradient(circle at 50% 50%, transparent 0 20%, #fff4 21% 22%, transparent 23% 45%, #fff3 46% 47%, transparent 48%), #101010; }
+.theme-card-label svg { width: 16px; height: 16px; }
+.mono-theme-grid .theme-swatch { height: 46px; }
+.th-dark { background: radial-gradient(circle, #ffffff38 1px, transparent 1.2px) 0 0 / 9px 9px, #0e0e0e; }
+.th-amoled { background: #000; }
+.th-dark .tsw-bar, .th-amoled .tsw-bar { background: #202020; }
+.search-box { background: #ffffff05; border: 1px solid #ffffff19; }
+.search-box:focus-within { background: #ffffff07; border-color: #ffffff38; box-shadow: none; }
+.search-box input, .search-box input:focus, .search-box input:focus-visible { border: 0; outline: none; box-shadow: none !important; --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000; background: transparent; }
+.ctrl-tooltip { display: none !important; }
+.listen-hero { min-height: 290px; grid-template-columns: 1fr .8fr; padding: 36px 40px; border-radius: 22px; background: #0c0c0c; box-shadow: none; }
+.listen-hero::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle, #ffffff24 .9px, transparent 1.1px) 0 0 / 18px 18px; mask-image: linear-gradient(90deg, transparent 18%, #0004 55%, #000 95%); }
+.listen-hero h2 { font-size: clamp(32px, 3.8vw, 53px); letter-spacing: -2px; font-weight: 650; margin: 18px 0 14px; }
+.listen-hero .eyebrow { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 9px; letter-spacing: 1.6px; color: #898989; }
+.mono-status-dot { width: 4px; height: 4px; border-radius: 50%; background: #d8d8d8; }
+.hero-actions { margin-top: 24px; }
+.hero-play, .btn-primary { background: #ededed; color: #111; box-shadow: none; }
+.hero-play:hover { background: #fff; box-shadow: 0 3px 14px #0004; }
+.hero-secondary { background: #ffffff03; border-color: #ffffff19; color: #aaa; }
+.hero-dot-cover { position: relative; align-self: stretch; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 20px; }
+.hero-dot-mark { width: clamp(140px, 17vw, 240px); color: #d8d8d8; }
+.hero-dot-mark .mark-dot { animation: dot-breathe 7s ease-in-out infinite; animation-delay: var(--dot-delay); }
+@keyframes dot-breathe { 0%, 45%, 100% { opacity: .9; } 65% { opacity: .4; } 80% { opacity: 1; } }
+.hero-dot-caption { font: 8px ui-monospace, monospace; letter-spacing: 2.4px; color: #606060; margin-top: 16px; }
+.track-row.playing { background: #ffffff06; }
+.track-row-like.active svg { filter: none; }
+.np-island { box-shadow: 0 12px 35px #0007, inset 0 1px 0 #ffffff12; }
+.now-playing { background: #080808; }
+.np-action.is-liked { color: white; background: #ffffff12; }
+.np-action-dock { background: linear-gradient(160deg, #ffffff09, #ffffff03), #121212; box-shadow: inset 0 1px 0 #ffffff0a; }
+.np-art-frame { border-color: #ffffff1a; box-shadow: 0 20px 55px #0006; }
+.lyric-studio-scrim { background: #000b; }
+.lyric-studio { background: #111111f7; border-color: #ffffff20; }
+.studio-title-icon { color: #ddd; }
+.studio-header p, .studio-help, .studio-caption > span, .studio-save-note, .studio-preview-hint { color: #888; }
+.studio-preview { background: radial-gradient(circle, #ffffff18 .8px, transparent 1px) 0 0 / 18px 18px, #0a0a0a; }
+.studio-preview-label { color: #808080; }
+.studio-theme { color: #aaa; }
+.swatch-glass { background: radial-gradient(circle, #ffffff55 1px, transparent 1.2px) 0 0 / 7px 7px, #353535; }
+.swatch-base { background: linear-gradient(130deg, #242424, #0a0a0a); }
+.studio-lines-heading h3 span { color: #ddd; background: #ffffff0b; }
+.studio-lines-heading > button, .studio-line-select { color: #aaa; }
+.studio-lines { background: #0a0a0a; }
+.studio-line.selected { background: #ffffff09; border-color: #ffffff25; }
+.selected .studio-line-check { background: #dedede; color: #111; }
+.studio-line-check, .studio-line-style button { color: #888; }
+.studio-caption input:focus { border-color: #ffffff50; box-shadow: 0 0 0 2px #ffffff06; }
+.studio-save { background: #e8e8e8; color: #111; box-shadow: none; }
+.studio-save:hover:not(:disabled) { background: #fff; box-shadow: none; }
+.poster-glass { background: radial-gradient(circle, #ffffff1d .8px, transparent 1px) 0 0 / 12px 12px, linear-gradient(145deg, #292929, #131313); }
+.poster-glass .poster-art-bg { display: none; }
+.poster-base { background: #0b0b0b; }
+.poster-cover { background: #111; }
+.poster-cover::before { background: linear-gradient(180deg, #0007, #000e); }
+.poster-footer strong span { color: white; }
+.poster-footer strong { display: flex; align-items: center; gap: 5px; }
+.poster-footer .mv-mark { width: 18px; height: 18px; }
+@media (max-width: 1100px) { .sidebar-brand { font-size: 17px; gap: 6px; } .sidebar-brand .mv-mark { width: 28px; height: 28px; } }
+@media (max-width: 850px) { .listen-hero { grid-template-columns: 1fr .65fr; padding: 28px; } .hero-dot-mark { width: 135px; } .hero-dot-caption { font-size: 7px; letter-spacing: 1px; } .sidebar-brand { font-size: 15px; } }
+@media (max-width: 640px) { .sidebar-brand > span { display: none; } .sidebar-brand { padding: 0; } .listen-hero { display: block; padding: 25px; min-height: 270px; } .hero-dot-cover { position: absolute; right: 8px; top: 10px; opacity: .13; padding: 0; pointer-events: none; } .hero-dot-mark { width: 145px; } .hero-dot-caption { display: none; } .listen-hero-copy { position: relative; } .listen-hero h2 { font-size: 34px; } }
+@media (max-width: 700px) { .dot-theme-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (prefers-reduced-motion: reduce) { .hero-dot-mark .mark-dot, .splash-dot-mark .mark-dot { animation: none; } }
+
+/* Dot-based entry sequence, shared with the logo instead of a progress bar. */
+.dot-splash { position: fixed; inset: 0; z-index: 99999; display: grid; place-items: center; background: #080808; color: #f0f0f0; }
+.dot-splash::before { content: ''; position: absolute; inset: 0; opacity: .42; background: radial-gradient(circle, #fff2 1px, transparent 1.2px) 0 0 / 22px 22px; mask-image: radial-gradient(ellipse at center, #000, transparent 70%); animation: dot-drift 16s linear infinite; }
+.dot-splash-inner { position: relative; display: flex; flex-direction: column; align-items: center; }
+.dot-splash-logo { display: grid; place-items: center; width: 130px; height: 130px; border: 1px solid #ffffff17; border-radius: 36px; background: #ffffff04; box-shadow: 0 25px 70px #0008, inset 0 1px 0 #ffffff12; }
+.dot-splash-logo::after { content: ''; position: absolute; width: 174px; height: 174px; border: 1px solid #ffffff12; border-radius: 48px; animation: splash-ring 2.4s ease-in-out infinite; }
+@keyframes splash-ring { 50% { transform: scale(1.08); opacity: .32; } }
+.dot-splash-logo .splash-dot-mark { width: 82px; height: 82px; }
+.dot-splash-surface { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .75; }
+.dot-splash-logo { position: relative; }
+.dot-splash-logo .splash-dot-mark { position: absolute; inset: 22px; width: 86px; height: 86px; opacity: .13; }
+.dot-splash-core { position: relative; z-index: 2; width: 64px; height: 64px; color: #f2f2f2; filter: drop-shadow(0 0 14px #fff4); }
+.dot-splash-core .mark-dot { animation: dot-core-pulse 1.65s ease-in-out infinite; animation-delay: var(--dot-delay); }
+@keyframes dot-core-pulse { 0%, 100% { opacity: .45; transform: scale(.82); transform-origin: center; } 50% { opacity: 1; transform: scale(1.06); transform-origin: center; } }
+.dot-splash-ring { position: absolute; z-index: 1; inset: 21px; border: 1px solid #ffffff35; border-radius: 50%; animation: splash-orbit 3.8s linear infinite; }
+.dot-splash-ring::before, .dot-splash-ring::after { content: ''; position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #eee; box-shadow: 0 0 12px #fff8; }
+.dot-splash-ring::before { left: 50%; top: -3px; } .dot-splash-ring::after { right: 6%; bottom: 12%; opacity: .5; }
+.ring-two { inset: 12px; border-style: dotted; opacity: .32; animation-direction: reverse; animation-duration: 6s; }
+@keyframes splash-orbit { to { transform: rotate(360deg); } }
+.dot-splash-logo .mark-dot { animation: dot-breathe 1.7s ease-in-out infinite; animation-delay: var(--dot-delay); }
+.dot-splash-wordmark { margin-top: 25px; font-size: 25px; font-weight: 650; letter-spacing: -1px; }
+.dot-loader { display: grid; grid-template-columns: repeat(7, 5px); gap: 5px; margin-top: 34px; }
+.dot-loader i { width: 5px; height: 5px; display: block; border-radius: 50%; background: #ddd; opacity: .18; animation: loader-dot 1.2s ease-in-out infinite; animation-delay: var(--loader-delay); }
+@keyframes loader-dot { 0%, 100% { opacity: .15; transform: scale(.75); } 45% { opacity: 1; transform: scale(1.45); } }
+.dot-splash-status { margin-top: 16px; font: 10px ui-monospace, 'Cascadia Code', monospace; letter-spacing: 1.5px; text-transform: uppercase; color: #777; }
+@media (prefers-reduced-motion: reduce) { .dot-backdrop, .dot-splash::before, .dot-splash-logo::after, .dot-loader i, .dot-splash-ring, .dot-splash-core .mark-dot { animation: none; } }
