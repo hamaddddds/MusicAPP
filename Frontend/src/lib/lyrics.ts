@@ -23,10 +23,34 @@ function fromYtm(data: any, durationMs: number): Lyric[] {
 }
 
 const isSynced = (lines: Lyric[]) => lines.some(line => line.startTimeMs > 0);
-const cache = new Map<string, Lyrics>();
 
-/** Better Lyrics' provider order: rich (syllable) TTML, then word/line synced, then unsynced. */
-export async function fetchLyrics(track: Track, api: string, signal: AbortSignal, duration?: number): Promise<Lyrics | null> {
+/**
+ * Line-synced sources (YouTube Music, LRCLib) only say when a line starts, so the whole line
+ * would light at once. Spread the line over its words by length so every source sweeps word
+ * by word, like rich-synced lyrics do.
+ */
+export function withWordTiming(lines: Lyric[]): Lyric[] {
+  return lines.map(line => {
+    const words = line.words.trim().split(/\s+/).filter(Boolean);
+    const timed = (line.parts ?? []).filter(part => part.durationMs > 0 && part.words.trim());
+    if (timed.length || line.isInstrumental || !words.length || line.durationMs <= 0) return line;
+    const chars = words.reduce((total, word) => total + word.length, 0);
+    // ponytail: ~11 chars/s singing pace; lines held longer than that finish early instead of crawling.
+    const span = Math.min(line.durationMs, Math.max(800, chars * 90));
+    let at = line.startTimeMs;
+    const parts: LyricPart[] = words.flatMap((word, i) => {
+      const part = { startTimeMs: at, durationMs: span * word.length / chars, words: word };
+      at += part.durationMs;
+      return i < words.length - 1 ? [part, { startTimeMs: at, durationMs: 0, words: " " }] : [part];
+    });
+    return { ...line, parts };
+  });
+}
+
+const cache = new Map<string, Lyrics[]>();
+
+/** Every source that has this song, in Better Lyrics' order: rich (syllable) TTML, word/line synced, unsynced. */
+export async function fetchLyrics(track: Track, api: string, signal: AbortSignal, duration?: number): Promise<Lyrics[]> {
   const seconds = duration && Number.isFinite(duration) ? Math.max(1, Math.round(duration)) : 0;
   const key = `${track.videoId}:${seconds}`;
   if (cache.has(key)) return cache.get(key)!;
@@ -35,7 +59,7 @@ export async function fetchLyrics(track: Track, api: string, signal: AbortSignal
     try { return await load(); } catch (error) { if (signal.aborted) throw error; return null; }
   };
 
-  const better = await attempt(async () => {
+  const better = attempt(async () => {
     const query = new URLSearchParams({ title: track.title, artist: track.artist });
     if (seconds) query.set("duration", String(seconds));
     const response = await get(`${api}/lyrics/better?${query}`);
@@ -46,14 +70,14 @@ export async function fetchLyrics(track: Track, api: string, signal: AbortSignal
     return parsed.lyrics.length ? { lines: parsed.lyrics, source: "Better Lyrics", synced: true, language: parsed.language, songwriters: TTMLParser.metadata(data.ttml).songwriters } : null;
   });
 
-  const ytm = better ?? await attempt(async () => {
+  const ytm = attempt(async () => {
     const response = await get(`${api}/lyrics/${encodeURIComponent(track.videoId)}/auto`);
     if (!response.ok) return null;
     const lines = fromYtm(await response.json(), seconds * 1000);
     return lines.length ? { lines, source: "YouTube Music", synced: isSynced(lines) } : null;
   });
 
-  const lrclib = ytm?.synced || !seconds ? null : await attempt(async () => {
+  const lrclib = !seconds ? null : attempt(async () => {
     const query = new URLSearchParams({ track_name: track.title, artist_name: track.artist, duration: String(seconds) });
     const response = await get(`https://lrclib.net/api/get?${query}`);
     if (!response.ok) return null;
@@ -62,12 +86,14 @@ export async function fetchLyrics(track: Track, api: string, signal: AbortSignal
     return lines.length ? { lines, source: "LRCLib", synced: true } : null;
   });
 
-  const result = lrclib ?? ytm;
-  if (result) {
+  const found = (await Promise.all([better, ytm, lrclib])).filter((result): result is Lyrics => result !== null)
+    .map(result => ({ ...result, lines: withWordTiming(result.lines) }));
+  const results = [...found.filter(result => result.synced), ...found.filter(result => !result.synced)];
+  if (results.length) {
     if (cache.size >= 50) cache.delete(cache.keys().next().value!);
-    cache.set(key, result);
+    cache.set(key, results);
   }
-  return result;
+  return results;
 }
 
 const translations = new Map<string, string | null>();

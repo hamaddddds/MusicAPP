@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useCallback, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen } from "@tauri-apps/api/event";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, Pause, SkipForward, SkipBack,
@@ -9,12 +8,10 @@ import {
   X, Minus, Square, Maximize, Repeat, Repeat1, Shuffle,
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal, Sparkles,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
-  Settings, Sun, Moon, Monitor, Upload, Check, LogIn, Mail,
-  UserCircle, Gamepad2, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
+  Settings, Sun, Moon, Monitor, Upload, Check,
+  UserCircle, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
 } from "lucide-react";
-import { SubscribedArtist, fetchAppStateFromGist, syncAppStateToGist, fetchPlaylistsFromGist, Playlist } from "./lib/github";
-import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { SubscribedArtist, syncAppStateToGist, Playlist } from "./lib/github";
 import SplashIntro from "./components/SplashIntro";
 import ShareLyricModal from "./components/ShareLyricModal";
 import SyncedLyrics from "./components/SyncedLyrics";
@@ -22,7 +19,6 @@ import { fetchLyrics, type Lyrics } from "./lib/lyrics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 
@@ -58,37 +54,9 @@ interface UpdateInfo { version: string; obj: any; }
 interface ArtistHead { artistId?: string; channelId?: string; name: string; thumbnails: any[]; subscribers?: string | null; }
 interface ArtistPage { artist: ArtistHead | null; songs: Track[]; albums: any[]; singles: any[]; }
 
-export interface RpcSettings {
-  enableCustom: boolean;
-  activityName: "artist" | "album" | "song" | "custom";
-  activityNameCustom: string;
-  detail: "artist" | "album" | "song" | "custom";
-  detailCustom: string;
-  stateStr: "artist" | "album" | "song" | "custom";
-  stateCustom: string;
-  type: number;
-  largeImage: "album" | "artist" | "app" | "none" | "custom";
-  largeImageCustom: string;
-  smallImage: "album" | "artist" | "app" | "none" | "custom";
-  smallImageCustom: string;
-  enableButton1: boolean;
-  button1Label: string;
-  button1Source: "song" | "artist" | "album" | "custom";
-  button1CustomUrl: string;
-  enableButton2: boolean;
-  button2Label: string;
-  button2Source: "song" | "artist" | "album" | "custom";
-  button2CustomUrl: string;
-}
-
 const isTauri = "__TAURI_INTERNALS__" in window;
 const API_URL = "http://127.0.0.1:8000";
-const PROVIDERS = [
-  { id: "google", label: "Google", Icon: LogIn },
-  { id: "github", label: "GitHub", Icon: LogIn },
-  { id: "email", label: "Email", Icon: Mail },
-  { id: "discord", label: "Discord", Icon: Gamepad2, ChevronLeft },
-];
+const getJson = (path: string) => fetch(`${API_URL}${path}`).then(r => r.ok ? r.json() : null).catch(() => null);
 
 // ... localStorage helpers ...
 const load = <T,>(k: string, fallback: T): T => {
@@ -130,6 +98,25 @@ function mapTracks(data: any): Track[] {
       artwork: pickArtwork(item.thumbnails),
     }));
 }
+
+// Recommendations keep official releases (YTM "ATV" audio / "OMV" music video) and drop
+// user uploads, compilations and loops such as "Top Hits 2026 Best Of".
+const JUNK_TITLE = /\b(top \d+|top hits|best of|playlist|full album|non ?stop|compilation|kumpulan|mashup|karaoke|8d|slowed|sped up|1 hour)\b/i;
+const parseCount = (v?: string) => {
+  const m = /^([\d.]+)\s*([KMB])?/i.exec(v || "");
+  return m ? parseFloat(m[1]) * ({ K: 1e3, M: 1e6, B: 1e9 }[(m[2] || "").toUpperCase() as "K" | "M" | "B"] ?? 1) : 0;
+};
+const parseLength = (v?: string) => (v || "").split(":").reduce((total, part) => total * 60 + Number(part), 0);
+/** Charts omit view counts (they are popular by definition); radio and search must prove ≥1M plays. */
+function popularTracks(items: any, fromChart = false): Track[] {
+  return mapTracks((Array.isArray(items) ? items : []).filter((it: any) =>
+    (it.videoType === "MUSIC_VIDEO_TYPE_ATV" || it.videoType === "MUSIC_VIDEO_TYPE_OMV")
+    && !JUNK_TITLE.test(it.title || "")
+    && (it.duration_seconds ?? parseLength(it.length ?? it.duration)) <= 480
+    && (fromChart && !it.views ? true : parseCount(it.views) >= 1e6)));
+}
+/** One entry per song: the audio and music-video uploads of a song share a title and lead artist. */
+const songKey = (t: Track) => `${t.title.toLowerCase().replace(/\s*[([].*?[)\]]/g, "").trim()}|${t.artist.split(",")[0].trim().toLowerCase()}`;
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -218,29 +205,6 @@ const EqPctLabel = memo(({ gain }: { gain: number }) => {
 });
 EqPctLabel.displayName = 'EqPctLabel';
 
-const defaultRpcSettings: RpcSettings = {
-  enableCustom: false,
-  activityName: "custom",
-  activityNameCustom: "Music Venue",
-  detail: "song",
-  detailCustom: "",
-  stateStr: "artist",
-  stateCustom: "",
-  type: 2,
-  largeImage: "album",
-  largeImageCustom: "",
-  smallImage: "none",
-  smallImageCustom: "",
-  enableButton1: false,
-  button1Label: "",
-  button1Source: "song",
-  button1CustomUrl: "",
-  enableButton2: false,
-  button2Label: "",
-  button2Source: "custom",
-  button2CustomUrl: ""
-};
-
 const pageVariants = {
   initial: (transition: string) => {
     if (transition === "slide") return { opacity: 0, x: 20 };
@@ -277,15 +241,11 @@ export default function App() {
   const [isEditPlaylistOpen, setIsEditPlaylistOpen] = useState(false);
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
 
-  const [isAuth, setIsAuth] = useState<boolean>(false);
-  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
-  const [loginData, setLoginData] = useState<{ user_code: string, verification_url: string, device_code: string } | null>(null);
 
   // Hover and Share Lyric states
   const [isHoveringArt, setIsHoveringArt] = useState(false);
   const [shareLyricOpen, setShareLyricOpen] = useState(false);
   
-  const [isPolling, setIsPolling] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -297,7 +257,6 @@ export default function App() {
   const [searchAlbums, setSearchAlbums] = useState<any[]>([]);
   const [artistView, setArtistView] = useState<ArtistPage | null>(null);
   const [artistLoading, setArtistLoading] = useState(false);
-  const [rpcSettings, setRpcSettings] = useState<RpcSettings>(() => load("mv:rpc_settings", defaultRpcSettings));
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggest, setShowSuggest] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>(() => load("mv:searches", []));
@@ -308,15 +267,10 @@ export default function App() {
 
   const [theme, setTheme] = useState<string>(() => load("mv:theme", "dark"));
   const [pageTransition, setPageTransition] = useState<string>(() => load("mv:page-transition", "fade"));
-  const [profileTab, setProfileTab] = useState("general");
   const [profile, setProfile] = useState<{ name: string; color: string; avatar?: string | null; banner?: string | null; username?: string | null; bio?: string | null; accent_color?: string | null }>(() => load("mv:profile", { name: "Guest", color: "#fa243c" }));
-  const [accounts, setAccounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null; access_token?: string }[]>(() => load("mv:accounts", []));
+  // Account UI is gone (private app); an already-linked GitHub token keeps backing up state to its gist.
+  const [accounts] = useState<{ provider: string; label: string; id: string; avatar?: string | null; username?: string | null; bio?: string | null; banner?: string | null; access_token?: string }[]>(() => load("mv:accounts", []));
   const [subscribedArtists, setSubscribedArtists] = useState<SubscribedArtist[]>(() => load("mv:subscribedArtists", []));
-  const rpcClientId = "1527667258552352848";
-  const [rpcEnabled, setRpcEnabled] = useState<boolean>(() => load("mv:rpc-enabled", false));
-  const [rpcStatus, setRpcStatus] = useState<"off" | "connecting" | "on" | "error">("off");
-  const [updateStatus, setUpdateStatus] = useState<string>("");
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(() => parseFloat(localStorage.getItem("mv:last-time") || "0"));
   const [duration, setDuration] = useState(0);
@@ -340,7 +294,7 @@ export default function App() {
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [followingOpen, setFollowingOpen] = useState(true);
 
-  const [lyrics, setLyrics] = useState<Lyrics | null>(null);
+  const [lyrics, setLyrics] = useState<Lyrics[] | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -379,7 +333,6 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const suggestTimer = useRef<number | undefined>(undefined);
   const searchBoxRef = useRef<HTMLDivElement>(null);
-  const rpcStatusRef = useRef<"off" | "connecting" | "on" | "error">("off");
 
   useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
@@ -418,36 +371,6 @@ export default function App() {
     const timer = window.setTimeout(syncAllState, 1500);
     return () => window.clearTimeout(timer);
   }, [favorites, history, blocked, searchHistory, subscribedArtists, playlists, accounts, syncAllState]);
-  useEffect(() => { localStorage.setItem("mv:rpc_settings", JSON.stringify(rpcSettings)); }, [rpcSettings]);
-  useEffect(() => { rpcStatusRef.current = rpcStatus; }, [rpcStatus]);
-
-  useEffect(() => {
-    const githubAccount = accounts.find(a => a.provider === "github");
-    if (githubAccount && githubAccount.access_token) {
-      // Restore the full app-state snapshot from the gist into localStorage,
-      // then reload so every state initializer picks it up. Same flow as a
-      // manual config import.
-      const gistToken = githubAccount.access_token;
-      fetchAppStateFromGist(gistToken).then(state => {
-        if (!state?.data) return;
-        for (const k in state.data) if (k.startsWith("mv:")) localStorage.setItem(k, state.data[k]);
-        // Backstop: if the all-state snapshot lost the playlists (they were empty
-        // in an older sync), fall back to the legacy playlists gist.
-        const saved = state.data["mv:custom-playlists"];
-        const empty = !saved || (Array.isArray(saved) && saved.length === 0)
-          || saved === "[]";
-        if (empty) {
-          fetchPlaylistsFromGist(gistToken).then(pl => {
-            if (pl.length) {
-              localStorage.setItem("mv:custom-playlists", JSON.stringify(pl));
-            }
-          }).finally(() => window.location.reload());
-        } else {
-          window.location.reload();
-        }
-      });
-    }
-  }, [accounts]);
 
   const toggleSubscribe = useCallback((artistId: string, name: string, thumbnails: any[]) => {
     setSubscribedArtists(prev => {
@@ -455,33 +378,6 @@ export default function App() {
       return isSubbed ? prev.filter(a => a.artistId !== artistId) : [...prev, { artistId, name, thumbnails }];
     });
   }, []);
-
-  const handleAuthPayload = useCallback((base64Payload: string) => {
-    try {
-      const payloadStr = atob(base64Payload);
-      const data = JSON.parse(payloadStr);
-      setProfile((p) => ({ ...p, name: data.name || p.name, avatar: data.avatar || p.avatar || null, banner: data.banner || p.banner || null, username: data.username || p.username || null, bio: data.bio || p.bio || null, accent_color: data.accent_color || p.accent_color || null }));
-      setAccounts((prev) => {
-        const filtered = prev.filter(a => a.provider !== data.provider);
-        return [...filtered, { provider: data.provider, label: data.name, id: String(data.id), avatar: data.avatar || null, username: data.username || null, bio: data.bio || null, banner: data.banner || null, access_token: data.access_token }];
-      });
-      flashToast(`Successfully logged in with ${data.provider}`);
-    } catch (e) {
-      console.error("Failed to parse auth payload", e);
-      flashToast("Gagal memproses data login.");
-    }
-  }, []);
-
-  useEffect(() => {
-    const handleMessage = (e: MessageEvent) => {
-      if (e.data && e.data.type === "MUSICVENUE_AUTH") {
-        if (e.data.error) console.error("Auth error:", e.data.error);
-        else if (e.data.payload) handleAuthPayload(e.data.payload);
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [handleAuthPayload]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -503,19 +399,23 @@ export default function App() {
     return () => mq.removeEventListener("change", apply);
   }, [theme]);
 
-  useEffect(() => { localStorage.setItem("mv:rpc-clientid", JSON.stringify(rpcClientId)); }, [rpcClientId]);
-  useEffect(() => { localStorage.setItem("mv:rpc-enabled", JSON.stringify(rpcEnabled)); }, [rpcEnabled]);
-
   const flashToast = useCallback((msg: string) => {
     setToast(msg);
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   }, []);
 
-  const searchTracks = useCallback(async (query: string): Promise<Track[]> => {
-    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&filter=songs`);
-    return mapTracks(await res.json());
-  }, []);
+  const bannerInput = useRef<HTMLInputElement>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const pickProfileImage = (field: "avatar" | "banner") => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // picking the same file again should still fire
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { flashToast("Choose an image smaller than 2 MB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => setProfile(p => ({ ...p, [field]: String(reader.result) }));
+    reader.readAsDataURL(file);
+  };
 
   const searchSongs = useCallback(async (query: string): Promise<Track[]> => {
     const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&filter=songs`);
@@ -523,108 +423,9 @@ export default function App() {
   }, []);
 
 
-  const handleLoginClick = async () => {
-    try {
-      setShowLoginModal(true);
-      setLoginData(null);
-      const res = await fetch(`${API_URL}/auth/login`);
-      const data = await res.json();
-      setLoginData(data);
-    } catch (err) {
-      console.error(err);
-      setShowLoginModal(false);
-    }
-  };
-
-  const startPolling = async () => {
-    if (!loginData || isPolling) return;
-    setIsPolling(true);
-    try {
-      const res = await fetch(`${API_URL}/auth/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ device_code: loginData.device_code })
-      });
-      if (res.ok) {
-        setIsAuth(true);
-        setShowLoginModal(false);
-        setLoginData(null);
-        loadHome();
-      } else {
-        console.error("Token polling failed");
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsPolling(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await fetch(`${API_URL}/auth/logout`, { method: "POST" });
-      setIsAuth(false);
-      loadHome(); // refresh home
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const loadHome = useCallback(async () => {
     setLoading(true);
     const blockedSet = new Set(blocked);
-
-    // Check if authenticated
-    if (isAuth) {
-      try {
-        const homeData = await fetch(`${API_URL}/home`).then(res => res.json());
-        const dynamicShelves: any[] = [];
-        const map: Record<string, Track[]> = {};
-
-        homeData.forEach((shelf: any, i: number) => {
-          if (shelf.contents && shelf.contents.length > 0) {
-            const id = `auth_shelf_${i}`;
-            dynamicShelves.push({ id, title: shelf.title, subtitle: shelf.subtitle || "" });
-
-            // transform contents to Track[]
-            const tracks: Track[] = shelf.contents.map((c: any) => {
-              let artistStr = "";
-              if (c.artists && Array.isArray(c.artists)) artistStr = c.artists.map((a: any) => a.name).join(", ");
-              else if (c.artist) artistStr = c.artist;
-              return {
-                videoId: c.videoId,
-                title: c.title,
-                artist: artistStr,
-                artists: c.artists,
-                album: c.album,
-                thumbnails: c.thumbnails,
-                artwork: c.thumbnails?.[c.thumbnails.length - 1]?.url || "",
-                duration_seconds: null,
-              };
-            }).filter((c: any) => {
-              if (!c.videoId) return false;
-              if (c.artists && Array.isArray(c.artists)) {
-                for (const a of c.artists) {
-                  if (blockedSet.has(a.name)) return false;
-                }
-              }
-              if (c.artist && blockedSet.has(c.artist)) return false;
-              return true;
-            });
-
-            if (tracks.length > 0) map[id] = tracks;
-          }
-        });
-
-        setHomeShelvesState(dynamicShelves);
-        setShelves(map);
-        setLoading(false);
-        return;
-      } catch (e) {
-        console.error("Failed to load authenticated home", e);
-        // fallback to history
-      }
-    }
 
     // history is Record<string, HistEntry>
     const historyList = Object.values(history).sort((a, b) => b.last - a.last);
@@ -632,16 +433,24 @@ export default function App() {
     const olderHistory = historyList.slice(15, 30);
 
     let similarArtist = "The Weeknd";
+    let seed: HistEntry | undefined;
     if (historyList.length > 0) {
       const validHistory = historyList.filter(h => h.artist && h.artist !== "Unknown Artist" && !blockedSet.has(h.artist));
       if (validHistory.length > 0) {
-        const randomIdx = Math.floor(Math.random() * Math.min(validHistory.length, 10));
-        similarArtist = validHistory[randomIdx].artist;
+        seed = validHistory[Math.floor(Math.random() * Math.min(validHistory.length, 10))];
+        similarArtist = seed.artist;
       }
     }
 
-    const similarTracks = await searchTracks(similarArtist).catch(() => [] as Track[]);
-    const filteredSimilar = similarTracks.filter(t => !blockedSet.has(t.artist));
+    // YouTube Music's radio for a song you played: popular songs in the same lane. Radio
+    // seeded from "Topic" audio carries no play counts, so fall back to the artist's biggest songs.
+    let similar = seed ? popularTracks((await getJson(`/watch/${seed.videoId}?radio=true&limit=30`))?.tracks) : [];
+    if (similar.length < 6) {
+      const lead = similarArtist.split(",")[0].trim();
+      similar = popularTracks(await getJson(`/search?q=${encodeURIComponent(lead)}&filter=songs&limit=20`)).filter(t => t.artist.split(",")[0].trim() === lead);
+    }
+    const keys = new Set<string>();
+    const filteredSimilar = similar.filter(t => t.videoId !== seed?.videoId && !blockedSet.has(t.artist) && !keys.has(songKey(t)) && !!keys.add(songKey(t)));
 
     const dynamicShelves = [];
     const map: Record<string, Track[]> = {};
@@ -671,7 +480,7 @@ export default function App() {
     setHomeShelvesState(dynamicShelves);
     setShelves(map);
     setLoading(false);
-  }, [searchTracks, history, isAuth, blocked]);
+  }, [history, blocked]);
 
   const runSearch = useCallback(async (query: string) => {
     setLoading(true);
@@ -745,25 +554,28 @@ export default function App() {
 
   const buildQuickPicks = useCallback(async (reg: Region | null) => {
     const cache = load("mv:quickpicks", null as any);
-    const fresh = cache && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
+    const fresh = cache && cache.v === 3 && Date.now() - cache.at < 3 * 3600_000 && cache.tracks?.length;
     if (fresh) { setQuickPicks(cache.tracks); return; }
     const blockedSet = new Set(blocked);
-    const topArtists = artistScores(history).slice(0, 4).map((a) => a[0]);
-    const regionQuery = reg?.country ? `top songs ${reg.country}` : "top songs 2026";
-    const queries = topArtists.length ? [...topArtists, regionQuery] : [regionQuery, "popular songs 2026", "top hits 2026"];
-    const groups = await Promise.all(queries.map((q) => searchSongs(q).catch(() => [] as Track[])));
+    // What's popular where you are (YouTube Music's daily chart), mixed with the biggest songs of your most-played artists.
+    const charts = await getJson(`/charts?country=${reg?.countryCode || "ZZ"}`) ?? await getJson("/charts?country=ZZ");
+    const daily = charts?.videos?.find((v: any) => /daily/i.test(v.title)) ?? charts?.videos?.[0];
+    const chart = daily?.playlistId ? (await getJson(`/playlist/${daily.playlistId}?limit=50`))?.tracks : null;
+    const artists = artistScores(history).filter(([artist]) => artist !== "Unknown Artist").slice(0, 3).map(([artist]) => artist.split(",")[0].trim());
+    const searches = await Promise.all(artists.map((a) => getJson(`/search?q=${encodeURIComponent(a)}&filter=songs&limit=20`)));
+    const groups = [popularTracks(chart, true), ...searches.map((s, i) => popularTracks(s).filter(t => t.artist.split(",")[0].trim() === artists[i]))];
     const merged: Track[] = [];
     const seen = new Set<string>();
-    for (let round = 0; round < 4; round++) {
+    for (let round = 0; round < 12 && merged.length < 12; round++) {
       for (const g of groups) {
         const t = g[round];
-        if (t && !seen.has(t.videoId) && !blockedSet.has(t.artist)) { seen.add(t.videoId); merged.push(t); }
+        if (t && !seen.has(songKey(t)) && !blockedSet.has(t.artist)) { seen.add(songKey(t)); merged.push(t); }
       }
     }
     const picks = merged.slice(0, 12);
     setQuickPicks(picks);
-    localStorage.setItem("mv:quickpicks", JSON.stringify({ at: Date.now(), tracks: picks }));
-  }, [history, blocked, searchSongs]);
+    localStorage.setItem("mv:quickpicks", JSON.stringify({ v: 3, at: Date.now(), tracks: picks }));
+  }, [history, blocked]);
 
   const reshuffleHome = useCallback(async () => {
     flashToast("Menyusun ulang...");
@@ -773,166 +585,12 @@ export default function App() {
     buildQuickPicks(region);
   }, [loadHome, buildQuickPicks, region, flashToast]);
 
-  const pushRpc = useCallback(async (track: Track) => {
-    if (rpcStatusRef.current !== "on" || !isTauri) return;
-    try {
-      const audio = audioRef.current;
-      const now = Math.floor(Date.now() / 1000);
-      let startTime: number | null = null;
-      let endTime: number | null = null;
-      if (audio && !audio.paused && audio.duration) { startTime = now - Math.floor(audio.currentTime); endTime = startTime + Math.floor(audio.duration); }
-
-      const set = rpcSettings;
-      const t = track as any;
-      const getVal = (source: string, custom: string) => {
-        let val = "";
-        if (source === "song") val = track.title;
-        else if (source === "artist") val = track.artist;
-        else if (source === "album") val = t.album?.name || track.title;
-        else if (source === "custom") val = custom;
-        return val ? val.trim() : undefined;
-      };
-      const getUrl = (source: string, custom: string) => {
-        let url = "";
-        if (source === "song") url = `https://music.youtube.com/watch?v=${track.videoId}`;
-        else if (source === "artist") url = `https://music.youtube.com/search?q=${encodeURIComponent(track.artist)}`;
-        else if (source === "album") url = `https://music.youtube.com/watch?v=${track.videoId}`;
-        else if (source === "custom") url = custom.trim();
-
-        if (url && !url.startsWith("http")) url = "https://" + url;
-        return url && url.length <= 512 ? url : undefined;
-      };
-      const getImg = (source: string, custom: string) => {
-        let img = "";
-        if (source === "album" || source === "artist") img = track.artwork || "https://musicvenue.vercel.app/icon.png";
-        else if (source === "app") img = "https://musicvenue.vercel.app/icon.png";
-        else if (source === "custom") img = custom.trim();
-
-        if (img && !img.startsWith("http")) img = "https://" + img;
-        return img && img.length <= 256 ? img : undefined;
-      };
-
-      const padStr = (s: string) => (s && s.length === 1) ? s + " " : s;
-      const trunc = (s: string, max: number) => s.length > max ? s.substring(0, max - 3) + "..." : s;
-
-      let activityName = set.enableCustom ? (getVal(set.activityName, set.activityNameCustom) || "Music Venue") : "Music Venue";
-
-      let detailsRaw = set.enableCustom ? getVal(set.detail, set.detailCustom) : track.title;
-      if (!detailsRaw) detailsRaw = track.title || "Unknown";
-      let details = trunc(padStr(detailsRaw), 128);
-
-      let stateRaw = set.enableCustom ? getVal(set.stateStr, set.stateCustom) : track.artist;
-      if (!stateRaw) stateRaw = track.artist || "Unknown";
-      let state = trunc(padStr(stateRaw), 128);
-
-      let activityType = set.enableCustom ? set.type : 0; // Default to Playing (0)
-
-      let largeImage = set.enableCustom ? getImg(set.largeImage, set.largeImageCustom) : (track.artwork || "https://musicvenue.vercel.app/icon.png");
-      let largeText = trunc(set.enableCustom ? (getVal(set.detail, set.detailCustom) || detailsRaw) : "Playing on Music Venue", 128);
-      let smallImage = set.enableCustom ? getImg(set.smallImage, set.smallImageCustom) : undefined;
-      let smallText = trunc(set.enableCustom ? (getVal(set.stateStr, set.stateCustom) || stateRaw) : track.artist, 128);
-
-      let button1Label = (set.enableCustom && set.enableButton1 && set.button1Label) ? trunc(set.button1Label, 32) : undefined;
-      let button1Url = (set.enableCustom && set.enableButton1 && set.button1Label) ? getUrl(set.button1Source, set.button1CustomUrl) : undefined;
-      let button2Label = (set.enableCustom && set.enableButton2 && set.button2Label) ? trunc(set.button2Label, 32) : undefined;
-      let button2Url = (set.enableCustom && set.enableButton2 && set.button2Label) ? getUrl(set.button2Source, set.button2CustomUrl) : undefined;
-
-      await invoke("set_rpc_activity", {
-        activityName, activityType, details, state,
-        largeImage, largeText, smallImage, smallText,
-        button1Label, button1Url,
-        button2Label, button2Url,
-        startTime, endTime
-      });
-    } catch (e) { console.error("Gagal push RPC", e); }
-  }, [rpcSettings]);
-
-  const DiscordIcon = ({ size = 24 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 127.14 96.36" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-      <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14c0,0,.04-.06.05-.09h0c2.69-28.53-3.69-52.05-19.64-72.12ZM42.68,68.3c-5.72,0-10.43-5.26-10.43-11.7s4.65-11.7,10.43-11.7c5.82,0,10.51,5.3,10.43,11.7,0,6.44-4.65,11.7-10.43,11.7Zm41.72,0c-5.72,0-10.43-5.26-10.43-11.7s4.65-11.7,10.43-11.7c5.82,0,10.51,5.3,10.43,11.7,0,6.44-4.61,11.7-10.43,11.7Z" />
-    </svg>
-  );
-
   const checkForUpdate = useCallback(async () => {
-    if (!isTauri) { setUpdateStatus("Auto-update is only available on the desktop app."); return; }
-    setIsCheckingUpdate(true);
-    setUpdateStatus("Memeriksa pembaruan...");
     try {
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
-      if (update?.available) { setUpdateInfo({ version: update.version, obj: update }); setUpdateStatus(`Versi ${update.version} tersedia!`); }
-      else setUpdateStatus("You are already on the latest version.");
-    } catch (e) { console.error(e); setUpdateStatus("Gagal memeriksa pembaruan."); }
-    finally { setIsCheckingUpdate(false); }
-  }, []);
-
-  const exportConfig = useCallback(() => {
-    const cfg: Record<string, any> = {};
-    for (const k of Object.keys(localStorage)) if (k.startsWith("mv:")) cfg[k] = localStorage.getItem(k);
-    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "musicvenue-config.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    flashToast("Configuration exported");
-  }, [flashToast]);
-
-  const importConfig = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const cfg = JSON.parse(String(reader.result));
-        for (const k in cfg) if (k.startsWith("mv:")) localStorage.setItem(k, cfg[k]);
-        flashToast("Configuration imported - reloading...");
-        setTimeout(() => location.reload(), 800);
-      } catch { flashToast("Invalid configuration file."); }
-    };
-    reader.readAsText(file);
-  }, [flashToast]);
-
-  const toggleAccount = useCallback(async (p: { id: string; label: string }) => {
-    const connected = accounts.find((a) => a.provider === p.id);
-    if (connected) {
-      setAccounts((prev) => prev.filter((a) => a.provider !== p.id));
-      if (accounts.length === 1) setProfile(old => ({ ...old, avatar: null, banner: null }));
-      flashToast(`Akun ${p.label} diputus`);
-      return;
-    }
-    if (p.id === "email") { flashToast("Email login is not yet available."); return; }
-    let authUrl = `https://musicvenue.vercel.app/api/auth?action=login&provider=${p.id}`;
-    if (isTauri) {
-      try {
-        const port = await invoke<number>("start_oauth_server");
-        authUrl += `&port=${port}`;
-        await openUrl(authUrl);
-      } catch (e) { console.error(e); flashToast("Failed to open browser."); }
-    } else {
-      const w = 500; const h = 600; const left = window.screen.width / 2 - w / 2; const top = window.screen.height / 2 - h / 2;
-      window.open(authUrl, "MusicVenueAuth", `width=${w},height=${h},top=${top},left=${left}`);
-    }
-  }, [accounts, flashToast]);
-
-  const connectDiscord = useCallback(async () => {
-    setRpcStatus("connecting");
-    rpcStatusRef.current = "connecting";
-    try {
-      await invoke("connect_rpc", { clientId: rpcClientId });
-      setRpcStatus("on");
-      rpcStatusRef.current = "on";
-      setRpcEnabled(true);
-      if (currentTrackRef.current) pushRpc(currentTrackRef.current);
-    } catch (e) {
-      console.error(e);
-      setRpcStatus("error");
-      rpcStatusRef.current = "error";
-      flashToast("Failed to connect to Discord.");
-    }
-  }, [pushRpc, flashToast]);
-
-  const disconnectDiscord = useCallback(async () => {
-    try { if (isTauri) await invoke("disconnect_rpc"); } catch (e) { console.error(e); }
-    setRpcStatus("off"); rpcStatusRef.current = "off"; setRpcEnabled(false);
+      if (update?.available) setUpdateInfo({ version: update.version, obj: update });
+    } catch (e) { console.error("update check failed", e); }
   }, []);
 
   useEffect(() => {
@@ -949,25 +607,6 @@ export default function App() {
   }, [checkForUpdate]);
 
   useEffect(() => {
-    const initApp = async () => {
-      if (isTauri) {
-        try {
-          onOpenUrl((urls) => {
-            if (urls.length > 0) {
-              const url = new URL(urls[0]);
-              if (url.protocol === "musicvenue:") {
-                const payload = url.searchParams.get("payload");
-                const error = url.searchParams.get("error");
-                if (payload) handleAuthPayload(payload);
-                else if (error) flashToast(`Failed to login: ${error}`);
-              }
-            }
-          }).catch(console.error);
-          listen<string>("oauth-payload", (event) => { if (event.payload) handleAuthPayload(event.payload); });
-        } catch (e) { console.error("Tauri invoke error", e); }
-      }
-    };
-    setTimeout(initApp, 150);
     loadHome();
     (async () => {
       let reg = load<Region | null>("mv:region", null);
@@ -982,7 +621,7 @@ export default function App() {
       } catch { }
       buildQuickPicks(reg);
     })();
-  }, [handleAuthPayload, loadHome, buildQuickPicks, flashToast]);
+  }, [loadHome, buildQuickPicks]);
 
   useEffect(() => {
     if (!isTauri) return;
@@ -1357,13 +996,6 @@ export default function App() {
     navigator.mediaSession.setActionHandler("nexttrack", () => advance(true));
   }, [currentTrack, playPrev, advance]);
 
-  useEffect(() => { if (currentTrack && duration > 0) pushRpc(currentTrack); }, [currentTrack, isPlaying, duration, pushRpc]);
-  useEffect(() => {
-    if (isPlaying && rpcStatusRef.current === "off" && isTauri) {
-      connectDiscord();
-    }
-  }, [isPlaying, connectDiscord]);
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
@@ -1696,11 +1328,6 @@ export default function App() {
             </div>
           </div>
           <div className="header-right">
-            {isAuth ? (
-              <Button className="win-btn" onClick={handleLogout} title="Logout"><User size={16} style={{ color: 'var(--accent)' }} /></Button>
-            ) : (
-              <Button className="win-btn" onClick={handleLoginClick} title="Login with YouTube"><User size={16} /></Button>
-            )}
             {isTauri && (
               <div className="window-controls">
                 <Button className="win-btn" onClick={handleMinimize}><Minus size={16} /></Button>
@@ -1883,333 +1510,47 @@ export default function App() {
         {activeTab === "profile" && (
           <motion.div key="profile" custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="page profile-page">
             <div className="profile-hero" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
-              {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
+              <input ref={bannerInput} hidden type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={pickProfileImage("banner")} />
+              <input ref={avatarInput} hidden type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={pickProfileImage("avatar")} />
+              <button type="button" className="profile-banner-btn" onClick={() => bannerInput.current?.click()}><span><Upload size={13} /> Change banner</span></button>
+              <button type="button" className="profile-avatar-edit" aria-label="Change photo" onClick={() => avatarInput.current?.click()}>
+                {profile.avatar ? <img src={profile.avatar} alt="" className="profile-hero-avatar-img" /> : <span className="profile-hero-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
+                <span className="profile-avatar-hint"><Upload size={20} /></span>
+              </button>
               <div className="profile-hero-info">
                 <span className="artist-hero-label glass-text"><UserCircle size={13} /> Profile</span>
-                <h1 className="glass-text">{profile.name || "Guest"}</h1>
-                <p className="glass-text">Account connected : {accounts.length ? accounts.map(a => a.provider.charAt(0).toUpperCase() + a.provider.slice(1)).join(" - ") : "None"}</p>
+                <input className="profile-name-input" aria-label="Display name" maxLength={40} value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} />
                 <p className="glass-text">{favorites.length} liked songs · {subscribedArtists.length} artists followed</p>
-              </div>
-              <div className="profile-tabs">
-                <button type="button" className={`ptab ${profileTab === "general" ? "active" : ""}`} onClick={() => setProfileTab("general")}><Settings size={16} /> General</button>
-                <button type="button" className={`ptab ${profileTab === "accounts" ? "active" : ""}`} onClick={() => setProfileTab("accounts")}><UserCircle size={16} /> Accounts</button>
-                <button type="button" className={`ptab ${profileTab === "discord" ? "active" : ""}`} onClick={() => setProfileTab("discord")}><Gamepad2 size={16} /> Discord RPC</button>
-                <button type="button" className={`ptab ${profileTab === "about" ? "active" : ""}`} onClick={() => setProfileTab("about")}><Sparkles size={16} /> Stats</button>
               </div>
             </div>
 
             <div className="profile-content">
-              {profileTab === "general" && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
-                  <div className="setting-block profile-edit">
-                    <span className="setting-icon"><UserCircle size={21} /></span>
-                    <h3>Make it yours</h3><p className="setting-desc">Your name, your music, your space.</p>
-                    <label className="field-label" htmlFor="profile-name">Display name</label>
-                    <Input id="profile-name" maxLength={40} value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} />
-                    <label className="field-label" htmlFor="profile-bio">A few words about you</label>
-                    <Input id="profile-bio" maxLength={120} placeholder="Always looking for my next favorite song" value={profile.bio || ""} onChange={e => setProfile(p => ({ ...p, bio: e.target.value }))} />
-                    <label className="file-btn btn-ghost"><Upload size={14} /> Change photo<input hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={e => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 2 * 1024 * 1024) { flashToast("Choose a photo smaller than 2 MB."); return; }
-                      const reader = new FileReader(); reader.onload = () => setProfile(p => ({ ...p, avatar: String(reader.result) })); reader.readAsDataURL(file);
-                    }} /></label>
-                  </div>
-                  <div className="setting-block">
-                    <span className="setting-icon"><Mic2 size={21} /></span>
-                    <h3>Live lyrics</h3><p className="setting-desc">Better Lyrics timing follows your audio. Adjust the offset if your recording starts earlier or later.</p>
-                    <div className="offset-value">{lyricOffset > 0 ? "+" : ""}{lyricOffset.toFixed(1)}<span> seconds</span></div>
-                    <Slider aria-label="Lyrics timing offset" value={[lyricOffset]} min={-10} max={10} step={0.1} onValueChange={([value]) => setLyricOffset(value)} />
-                    <div className="offset-labels"><span>Delay lyrics</span><span>Advance lyrics</span></div>
-                    <button className="text-action" onClick={() => setLyricOffset(0)}>Reset timing</button>
-                    <p className="setting-hint">Word timing depends on the song. Line-only lyrics keep their original timestamps.</p>
-                  </div>
-                  <div className="setting-block">
-                    <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
-                    <div className="theme-grid">
-                      {[{ id: "system", label: "System", Icon: Monitor }, { id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }].map((tOpt) => (
-                        <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
-                          <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
-                          <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
-                          {theme === tOpt.id && <Check size={16} className="theme-check" />}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="setting-block">
-                    <h3>Page Transition</h3><p className="setting-desc">Animation when switching tabs.</p>
-                    <div className="theme-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                      {[{ id: "fade", label: "Fade" }, { id: "slide", label: "Slide" }, { id: "zoom", label: "Zoom" }].map((tOpt) => (
-                        <Button key={tOpt.id} className={`theme-card ${pageTransition === tOpt.id ? "active" : ""}`} onClick={() => setPageTransition(tOpt.id)} style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <div className="theme-card-label" style={{ marginTop: 0 }}>{tOpt.label}</div>
-                          {pageTransition === tOpt.id && <Check size={16} className="theme-check" />}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="setting-block">
-                    <h3>Profile Banner</h3><p className="setting-desc">Upload a custom banner for your profile. (GIF, PNG, JPG)</p>
-                    <div className="setting-actions">
-                      <label className="btn-primary file-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <Upload size={15} /> Add banner
-                        <input type="file" accept="image/png, image/jpeg, image/gif, image/webp" hidden onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            if (file.size > 2 * 1024 * 1024) { flashToast("Choose a banner smaller than 2 MB."); return; }
-                            const reader = new FileReader();
-                            reader.onload = (ev) => {
-                              const b64 = ev.target?.result as string;
-                              setProfile(p => ({ ...p, banner: b64 }));
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }} />
-                      </label>
-                      {profile.banner && (
-                        <Button variant="ghost" onClick={() => setProfile(p => ({ ...p, banner: null }))}>Remove</Button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="setting-block">
-                    <h3>Updates</h3><p className="setting-desc">Check for application updates.</p>
-                    <div className="setting-actions">
-                      <Button variant="default" onClick={checkForUpdate} disabled={isCheckingUpdate} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={15} className={isCheckingUpdate ? "spin" : ""} /> {isCheckingUpdate ? "Checking..." : "Check Updates"}</Button>
-                    </div>
-                    {updateStatus && <p className="setting-hint accent">{updateStatus}</p>}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+                <div className="setting-block">
+                  <h3>Themes</h3><p className="setting-desc">Change application appearance.</p>
+                  <div className="theme-grid">
+                    {[{ id: "system", label: "System", Icon: Monitor }, { id: "light", label: "Light", Icon: Sun }, { id: "dark", label: "Dark", Icon: Moon }].map((tOpt) => (
+                      <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
+                        <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
+                        <div className="theme-card-label"><tOpt.Icon size={15} /> {tOpt.label}</div>
+                        {theme === tOpt.id && <Check size={16} className="theme-check" />}
+                      </Button>
+                    ))}
                   </div>
                 </div>
-              )}
-              {profileTab === "accounts" && (
-                <>
-                  <div className="setting-block">
-                    <h3>Accounts</h3>
-                    <div className="provider-list">
-                      {PROVIDERS.map((p) => {
-                        const connected = accounts.find((a) => a.provider === p.id);
-                        return (
-                          <Button key={p.id} className={`provider-btn ${connected ? "connected" : ""}`} onClick={() => toggleAccount(p)}>
-                            {connected?.avatar ? <img src={connected.avatar} alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} /> : p.id === "discord" ? <DiscordIcon size={18} /> : <p.Icon size={18} />}
-                            <span className="prov-name">{p.label}</span>
-                            {connected ? <span className="prov-state"><Check size={14} /> {connected.label}</span> : <span className="prov-cta">Connect Account</span>}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div className="setting-block">
-                    <h3>Configuration Backup</h3><p className="setting-desc">Save all settings to a file.</p>
-                    <div className="setting-actions">
-                      <Button variant="default" onClick={exportConfig}><Download size={15} /> Export</Button>
-                      <label className="btn-ghost file-btn"><Upload size={15} /> Import<input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importConfig(e.target.files[0])} /></label>
-                    </div>
-                  </div>
-                </>
-              )}
-              {profileTab === "discord" && (
-                <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-                  <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-                    <div>
-                      <h3 style={{ fontSize: 20, marginBottom: 8 }}>Discord Rich Presence</h3>
-                      <p style={{ color: 'var(--text-secondary)' }}>Show the currently playing song on your Discord status.{!isTauri && " (only on desktop app)"}</p>
-                    </div>
 
-                    <div>
-                      {(() => {
-                        const dc = accounts.find(a => a.provider === "discord");
-                        if (dc) {
-                          return (
-                            <div className="discord-profile-card" style={{ marginBottom: 16, background: 'rgba(0,0,0,0.4)', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
-                              <div style={{ height: 100, background: dc.banner ? `url(${dc.banner}) center/cover` : (profile.accent_color || '#5865F2'), position: 'relative' }}>
-                                <div style={{ position: 'absolute', bottom: -30, left: 16 }}>
-                                  <img src={dc.avatar || ''} alt="" style={{ width: 64, height: 64, borderRadius: '50%', border: '4px solid #111', objectFit: 'cover' }} />
-                                </div>
-                              </div>
-                              <div style={{ padding: '36px 16px 16px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{dc.label}</span>
-                                </div>
-                                <span style={{ fontSize: 13, color: '#aaa' }}>@{dc.username}</span>
-                              </div>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
-
-                      <div className="setting-actions" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                        {accounts.some(a => a.provider === "discord") ? (
-                          <>
-                            {rpcStatus === "on" ?
-                              <Button variant="ghost" onClick={disconnectDiscord} style={{ background: 'rgba(88,101,242,0.2)', color: '#5865F2', border: '1px solid rgba(88,101,242,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Disconnect RPC</Button>
-                              :
-                              <Button variant="default" onClick={connectDiscord} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={16} /> Connect RPC</Button>
-                            }
-                            <Button variant="ghost" onClick={() => toggleAccount({ id: 'discord', label: 'Discord' })} style={{ color: '#f87171', borderColor: 'transparent', background: 'rgba(248, 113, 113, 0.1)' }}>Disconnect Account</Button>
-                          </>
-                        ) : (
-                          <Button variant="default" onClick={() => toggleAccount({ id: "discord", label: "Discord" })} style={{ background: '#5865F2', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><DiscordIcon size={18} /> Login Discord</Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ flex: '1 1 400px', background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)', borderRadius: 16, padding: 24, border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: 24 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Activity Content</h4>
-
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>Enable Custom RPC</span>
-                        <Switch checked={rpcSettings.enableCustom} onCheckedChange={c => setRpcSettings({ ...rpcSettings, enableCustom: c })} />
-                      </div>
-
-                      {rpcSettings.enableCustom && (
-                        <>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <label style={{ fontSize: 13 }}>Activity name</label>
-                            <CustomSelect value={rpcSettings.activityName} onChange={v => setRpcSettings({ ...rpcSettings, activityName: v as any })} options={[{ label: "Artist name", value: "artist" }, { label: "Album name", value: "album" }, { label: "Song title", value: "song" }, { label: "Custom", value: "custom" }]} />
-                            {rpcSettings.activityName === "custom" && <input type="text" value={rpcSettings.activityNameCustom} onChange={e => setRpcSettings({ ...rpcSettings, activityNameCustom: e.target.value })} placeholder="Custom Activity Name" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <label style={{ fontSize: 13 }}>Detail</label>
-                            <CustomSelect value={rpcSettings.detail} onChange={v => setRpcSettings({ ...rpcSettings, detail: v as any })} options={[{ label: "Artist name", value: "artist" }, { label: "Album name", value: "album" }, { label: "Song title", value: "song" }, { label: "Custom", value: "custom" }]} />
-                            {rpcSettings.detail === "custom" && <input type="text" value={rpcSettings.detailCustom} onChange={e => setRpcSettings({ ...rpcSettings, detailCustom: e.target.value })} placeholder="Custom Detail" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <label style={{ fontSize: 13 }}>State</label>
-                            <CustomSelect value={rpcSettings.stateStr} onChange={v => setRpcSettings({ ...rpcSettings, stateStr: v as any })} options={[{ label: "Artist name", value: "artist" }, { label: "Album name", value: "album" }, { label: "Song title", value: "song" }, { label: "Custom", value: "custom" }]} />
-                            {rpcSettings.stateStr === "custom" && <input type="text" value={rpcSettings.stateCustom} onChange={e => setRpcSettings({ ...rpcSettings, stateCustom: e.target.value })} placeholder="Custom State" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <label style={{ fontSize: 13 }}>Activity type</label>
-                            <CustomSelect value={rpcSettings.type} onChange={v => setRpcSettings({ ...rpcSettings, type: parseInt(v) })} options={[{ label: "Playing", value: 0 }, { label: "Streaming", value: 1 }, { label: "Listening", value: 2 }, { label: "Watching", value: 3 }, { label: "Competing", value: 5 }]} />
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    {rpcSettings.enableCustom && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Image Option</h4>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <label style={{ fontSize: 13 }}>Large image</label>
-                          <CustomSelect value={rpcSettings.largeImage} onChange={v => setRpcSettings({ ...rpcSettings, largeImage: v as any })} options={[{ label: "Album Artwork", value: "album" }, { label: "Artist Artwork", value: "artist" }, { label: "App icon", value: "app" }, { label: "Dont show", value: "none" }, { label: "Custom URL", value: "custom" }]} />
-                          {rpcSettings.largeImage === "custom" && <input type="text" value={rpcSettings.largeImageCustom} onChange={e => setRpcSettings({ ...rpcSettings, largeImageCustom: e.target.value })} placeholder="Image URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <label style={{ fontSize: 13 }}>Small image</label>
-                          <CustomSelect value={rpcSettings.smallImage} onChange={v => setRpcSettings({ ...rpcSettings, smallImage: v as any })} options={[{ label: "Album Artwork", value: "album" }, { label: "Artist Artwork", value: "artist" }, { label: "App icon", value: "app" }, { label: "Dont show", value: "none" }, { label: "Custom URL", value: "custom" }]} />
-                          {rpcSettings.smallImage === "custom" && <input type="text" value={rpcSettings.smallImageCustom} onChange={e => setRpcSettings({ ...rpcSettings, smallImageCustom: e.target.value })} placeholder="Image URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                        </div>
-                      </div>
-                    )}
-
-                    {rpcSettings.enableCustom && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 }}>Other</h4>
-
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span>Enable Button 1</span>
-                          <Switch checked={rpcSettings.enableButton1} onCheckedChange={c => setRpcSettings({ ...rpcSettings, enableButton1: c })} />
-                        </div>
-                        {rpcSettings.enableButton1 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                            <input type="text" value={rpcSettings.button1Label} onChange={e => setRpcSettings({ ...rpcSettings, button1Label: e.target.value })} placeholder="Button 1 Label (e.g. Listen on Music Venue)" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />
-                            <CustomSelect value={rpcSettings.button1Source} onChange={v => setRpcSettings({ ...rpcSettings, button1Source: v as any })} options={[{ label: "Song URL", value: "song" }, { label: "Artist URL", value: "artist" }, { label: "Album URL", value: "album" }, { label: "Custom URL", value: "custom" }]} />
-                            {rpcSettings.button1Source === "custom" && <input type="text" value={rpcSettings.button1CustomUrl} onChange={e => setRpcSettings({ ...rpcSettings, button1CustomUrl: e.target.value })} placeholder="Custom URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                          </div>
-                        )}
-
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span>Enable Button 2</span>
-                          <Switch checked={rpcSettings.enableButton2} onCheckedChange={c => setRpcSettings({ ...rpcSettings, enableButton2: c })} />
-                        </div>
-                        {rpcSettings.enableButton2 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                            <input type="text" value={rpcSettings.button2Label} onChange={e => setRpcSettings({ ...rpcSettings, button2Label: e.target.value })} placeholder="Button 2 Label" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />
-                            <CustomSelect value={rpcSettings.button2Source} onChange={v => setRpcSettings({ ...rpcSettings, button2Source: v as any })} options={[{ label: "Song URL", value: "song" }, { label: "Artist URL", value: "artist" }, { label: "Album URL", value: "album" }, { label: "Custom URL", value: "custom" }]} />
-                            {rpcSettings.button2Source === "custom" && <input type="text" value={rpcSettings.button2CustomUrl} onChange={e => setRpcSettings({ ...rpcSettings, button2CustomUrl: e.target.value })} placeholder="Custom URL" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 12px', borderRadius: 8 }} />}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                <div className="setting-block">
+                  <h3>Page Transition</h3><p className="setting-desc">Animation when switching tabs.</p>
+                  <div className="theme-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                    {[{ id: "fade", label: "Fade" }, { id: "slide", label: "Slide" }, { id: "zoom", label: "Zoom" }].map((tOpt) => (
+                      <Button key={tOpt.id} className={`theme-card ${pageTransition === tOpt.id ? "active" : ""}`} onClick={() => setPageTransition(tOpt.id)} style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="theme-card-label" style={{ marginTop: 0 }}>{tOpt.label}</div>
+                        {pageTransition === tOpt.id && <Check size={16} className="theme-check" />}
+                      </Button>
+                    ))}
                   </div>
                 </div>
-              )}
-
-              {profileTab === "about" && (
-                <div className="settings-card">
-                  <h2>Your Listening Stats</h2>
-                  <p className="settings-desc">Your most played tracks and artists based on your listening history.</p>
-
-                  <div className="stats-dashboard">
-                    <div className="stats-card" style={{ alignItems: 'center', justifyContent: 'center', gap: 24 }}>
-                      <h3>Top Track</h3>
-                      {(() => {
-                        const sortedTracks = Object.values(history || {}).sort((a, b) => b.count - a.count);
-                        const topTrack = sortedTracks[0];
-                        const totalPlays = sortedTracks.reduce((sum, t) => sum + t.count, 0) || 1;
-                        if (!topTrack) return <p>No listening history yet.</p>;
-                        const pct = (topTrack.count / totalPlays) * 100;
-                        const dasharray = `${(pct / 100) * 251.2} 251.2`;
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-                            <div style={{ position: 'relative', width: 200, height: 200 }}>
-                              <svg viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="8" />
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="var(--accent)" strokeWidth="8" strokeDasharray={dasharray} strokeDashoffset="0" strokeLinecap="round" />
-                              </svg>
-                              <img src={topTrack.artwork} alt="" style={{ position: 'absolute', top: 12, left: 12, width: 176, height: 176, borderRadius: '50%', objectFit: 'cover' }} />
-                            </div>
-                            <div style={{ textAlign: 'center' }}>
-                              <h4 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{topTrack.title}</h4>
-                              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, margin: '4px 0 0 0' }}>{topTrack.artist}</p>
-                            </div>
-                            <div style={{ marginTop: 8, background: 'rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: 20 }}>
-                              <span style={{ fontWeight: 600 }}>{topTrack.count}</span> <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>plays ({Math.round(pct)}% of total)</span>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="stats-card">
-                      <h3>Top Artists Graph</h3>
-                      {(() => {
-                        const rawArtistScores = Object.values(history || {}).reduce((acc, h) => {
-                          acc[h.artist] = (acc[h.artist] || 0) + h.count;
-                          return acc;
-                        }, {} as Record<string, number>);
-                        const sortedArtists = Object.entries(rawArtistScores).sort((a, b) => b[1] - a[1]).slice(0, 5);
-                        if (!sortedArtists.length) return <p>No listening history yet.</p>;
-                        const maxScore = sortedArtists[0][1];
-                        return sortedArtists.map(([artist, score], i) => {
-                          const pct = Math.max(5, (score / maxScore) * 100);
-                          return (
-                            <div key={artist} className="stat-row" onDoubleClick={() => { setSearchQuery(artist); runSearch(artist); }}>
-                              <div className="stat-rank">#{i + 1}</div>
-                              <div className="stat-info">
-                                <div className="stat-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '250px' }}>{artist}</div>
-                                <div className="stat-count">{score} plays</div>
-                                <div className="stat-bar-container">
-                                  <motion.div className="stat-bar" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1, ease: "easeOut" }} />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -2340,7 +1681,7 @@ export default function App() {
                   <CtrlButton label="Repeat" className={`btn-icon ${repeatMode !== "off" ? "on" : ""}`} onClick={cycleRepeat} title={`Repeat: ${repeatMode}`}>{repeatMode === "one" ? <Repeat1 size={20} /> : <Repeat size={20} />}</CtrlButton>
                 </div>
               </div>
-              <SyncedLyrics lyrics={lyrics} loading={lyricsLoading} audioRef={audioRef} offset={lyricOffset} />
+              <SyncedLyrics sources={lyrics} loading={lyricsLoading} audioRef={audioRef} offset={lyricOffset} onOffsetChange={setLyricOffset} />
             </div>
           </motion.div>
         )}
@@ -2499,42 +1840,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Login Modal */}
-      {showLoginModal && (
-        <div className="modal-overlay" onClick={() => setShowLoginModal(false)}>
-          <div className="modal-content glass-card" onClick={e => e.stopPropagation()} style={{ width: 400, textAlign: 'center', padding: '2rem' }}>
-            <h2 style={{ marginBottom: 10 }}>Login with Google</h2>
-            <p style={{ color: '#aaa', marginBottom: 20 }}>Connect your YouTube Music account to get personalized recommendations.</p>
-
-            {loginData ? (
-              <div>
-                <p style={{ marginBottom: 10 }}>Please go to:</p>
-                <a href={loginData.verification_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginBottom: 20, color: 'var(--accent)', fontSize: '1.1rem', textDecoration: 'none' }}>
-                  {loginData.verification_url}
-                </a>
-                <p style={{ marginBottom: 10 }}>And enter the code:</p>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', letterSpacing: '4px', background: 'rgba(255,255,255,0.1)', padding: '10px', borderRadius: '8px', marginBottom: 20 }}>
-                  {loginData.user_code}
-                </div>
-                {!isPolling ? (
-                  <button onClick={startPolling} style={{ background: 'var(--accent)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '20px', cursor: 'pointer', fontSize: '1rem' }}>
-                    I have entered the code
-                  </button>
-                ) : (
-                  <button disabled style={{ background: '#555', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '20px', cursor: 'wait', fontSize: '1rem' }}>
-                    Waiting for authorization...
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div>Loading code...</div>
-            )}
-
-            <button onClick={() => setShowLoginModal(false)} style={{ display: 'block', margin: '20px auto 0', background: 'transparent', color: '#aaa', border: 'none', cursor: 'pointer' }}>Cancel</button>
-          </div>
-        </div>
-      )}
-
       <AnimatePresence>
         {isPlaying && currentTrack && !nowPlayingOpen && (
           <motion.div
@@ -2585,7 +1890,7 @@ export default function App() {
             isOpen={shareLyricOpen}
             onClose={() => setShareLyricOpen(false)}
             track={currentTrack}
-            lyrics={lyrics}
+            lyrics={lyrics?.[0] ?? null}
           />
         )}
       </AnimatePresence>
