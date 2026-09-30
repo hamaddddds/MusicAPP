@@ -356,6 +356,30 @@ export default function App() {
   useEffect(() => { localStorage.setItem("mv:subscribedArtists", JSON.stringify(subscribedArtists)); }, [subscribedArtists]);
   useEffect(() => { localStorage.setItem("mv:custom-playlists", JSON.stringify(playlists)); }, [playlists]);
 
+  // Tracks saved before the backend filled in artist top-result cards carry "Unknown Artist".
+  // Look each one up once so history, likes, playlists and lyrics lookups get the real artist.
+  useEffect(() => {
+    const unknown = (t?: Track | null) => t?.artist === "Unknown Artist";
+    const ids = [...new Set([...Object.values(history), ...favorites, ...playlists.flatMap(p => p.tracks as Track[]), currentTrack, ...orderRef.current]
+      .filter(unknown).map(t => t!.videoId))];
+    if (!ids.length) return;
+    (async () => {
+      const found: Record<string, string> = {};
+      for (const id of ids) {
+        const name = (await getJson(`/watch/${id}?limit=1`))?.tracks?.[0]?.artists?.map((a: any) => a.name).filter(Boolean).join(", ");
+        if (name) found[id] = name;
+      }
+      if (!Object.keys(found).length) return;
+      const fix = <T extends Track>(t: T): T => unknown(t) && found[t.videoId] ? { ...t, artist: found[t.videoId] } : t;
+      setHistory(prev => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, fix(v)])));
+      setFavorites(prev => prev.map(fix));
+      setPlaylists(prev => prev.map(p => ({ ...p, tracks: p.tracks.map(fix) })));
+      setCurrentTrack(prev => prev && fix(prev));
+      orderRef.current = orderRef.current.map(fix);
+      contextRef.current = contextRef.current.map(fix);
+    })();
+  }, []); // once per launch; the backend no longer produces these
+
   // Snapshot every mv:* local key into the GitHub gist (debounced) so a
   // reinstall + GitHub login restores the entire app state (home personalization,
   // likes, blocked artists, playlists, subscriptions).

@@ -46,7 +46,17 @@ def search(query: str, filter: Optional[str] = None, limit: int = 20):
     """filter: songs | videos | albums | artists | playlists |
     community_playlists | featured_playlists | uploads (uploads needs auth)
     """
-    return get_yt().search(query, filter=filter, limit=limit)
+    results = get_yt().search(query, filter=filter, limit=limit)
+    # Searching an artist's name returns an artist "Top result" card whose songs
+    # ytmusicapi parses with artists=None (the card implies them). Those rows
+    # became "Unknown Artist" tracks, which also broke lyrics lookup.
+    card_artists = next((r.get("artists") for r in results
+                         if r.get("category") == "Top result" and r.get("resultType") == "artist"), None)
+    if card_artists:
+        for r in results:
+            if r.get("videoId") and not r.get("artists"):
+                r["artists"] = card_artists
+    return results
 
 
 def get_search_suggestions(query: str):
