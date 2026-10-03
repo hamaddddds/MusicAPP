@@ -2,6 +2,14 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
+#[cfg(windows)]
+mod windows_media;
+#[cfg(windows)]
+use windows_media::update_native_media;
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn update_native_media() {}
 
 
 extern "C" {
@@ -180,6 +188,11 @@ fn kill_stale_backends(path: &std::path::Path) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    #[cfg(windows)]
+    if let Err(error) = windows_media::register_identity(&context.config().identifier, "Music Venue") {
+        eprintln!("Windows app identity: {error}");
+    }
     unsafe {
         InitializeCore();
     }
@@ -188,6 +201,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(windows)]
+            app.manage(windows_media::MediaState::new(None));
             #[cfg(windows)]
             if let Ok(exe) = std::env::current_exe() {
                 kill_stale_backends(&exe.with_file_name("backend.exe"));
@@ -224,7 +239,8 @@ pub fn run() {
             resolve_audio_url,
             download_track,
             show_main_window,
-            save_image_to_disk
+            save_image_to_disk,
+            update_native_media
         ])
         .on_window_event(|_window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } => {
@@ -232,6 +248,6 @@ pub fn run() {
             }
             _ => {}
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import {
@@ -21,6 +22,7 @@ import DottedSurface, { type DotMode } from "./components/DottedSurface";
 import WorksWheel from "./components/WorksWheel";
 import IdleCrowd from "./components/IdleCrowd";
 import { useIdle } from "./lib/useIdle";
+import { searchMusic } from "./lib/musicSearch";
 import { pickArtwork, sanitizeStoredArtwork, videoArtwork } from "./lib/artwork";
 import SyncedLyrics from "./components/SyncedLyrics";
 import { fetchLyrics, type Lyrics } from "./lib/lyrics";
@@ -41,6 +43,7 @@ interface ArtistHead { artistId?: string; channelId?: string; name: string; thum
 interface ArtistPage { artist: ArtistHead | null; songs: Track[]; albums: any[]; singles: any[]; }
 
 const isTauri = "__TAURI_INTERNALS__" in window;
+const hasNativeMedia = isTauri && navigator.userAgent.includes("Windows");
 const API_URL = "http://127.0.0.1:8000";
 const getJson = (path: string) => fetch(`${API_URL}${path}`).then(r => r.ok ? r.json() : null).catch(() => null);
 
@@ -223,8 +226,6 @@ export default function App() {
   const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
   const [searchTopResult, setSearchTopResult] = useState<any>(null);
   const [searchSongsResults, setSearchSongsResults] = useState<Track[]>([]);
-  const [searchVideos, setSearchVideos] = useState<Track[]>([]);
-  const [searchAlbums, setSearchAlbums] = useState<any[]>([]);
   const [artistView, setArtistView] = useState<ArtistPage | null>(null);
   const [artistLoading, setArtistLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -505,27 +506,13 @@ export default function App() {
     setShowSuggest(false);
     setSearchHistory((prev) => [query, ...prev.filter((x) => x !== query)].slice(0, 8));
     try {
-      const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
-      const d = await res.json();
+      const { topResult, songs } = await searchMusic(API_URL, query);
       if (request !== searchRequestRef.current) return;
-      if (!Array.isArray(d)) throw new Error();
-
-      let topResult = null;
-      if (d.length > 0 && d[0].category === "Top result") {
-        topResult = d[0];
-      }
-
-      const songs = d.filter((x: any) => x.resultType === "song" && x !== topResult);
-      const videos = d.filter((x: any) => x.resultType === "video" && x !== topResult);
-      const albums = d.filter((x: any) => x.resultType === "album" && x !== topResult);
-
       setSearchTopResult(topResult);
-      setSearchAlbums(albums);
       setSearchSongsResults(mapTracks(songs));
-      setSearchVideos(mapTracks(videos));
     } catch {
       if (request !== searchRequestRef.current) return;
-      setSearchTopResult(null); setSearchAlbums([]); setSearchSongsResults([]); setSearchVideos([]);
+      setSearchTopResult(null); setSearchSongsResults([]);
     }
     if (request === searchRequestRef.current) setSearchLoading(false);
   }, []);
@@ -1051,13 +1038,47 @@ export default function App() {
   }, [currentTrack?.videoId, currentTrack?.title, currentTrack?.artist, currentTrack?.duration, duration]);
 
   useEffect(() => {
-    if (!("mediaSession" in navigator) || !currentTrack) return;
+    if (hasNativeMedia || !("mediaSession" in navigator) || !currentTrack) return;
     navigator.mediaSession.metadata = new MediaMetadata({ title: currentTrack.title, artist: currentTrack.artist, album: "Music Venue", artwork: [{ src: currentTrack.artwork, sizes: "512x512", type: "image/jpeg" }] });
     navigator.mediaSession.setActionHandler("play", () => setIsPlaying(true));
     navigator.mediaSession.setActionHandler("pause", () => setIsPlaying(false));
     navigator.mediaSession.setActionHandler("previoustrack", () => playPrev());
     navigator.mediaSession.setActionHandler("nexttrack", () => advance(true));
   }, [currentTrack, playPrev, advance]);
+
+  const mediaPosition = Math.floor(currentTime);
+  useEffect(() => {
+    if (!hasNativeMedia || !currentTrack) return;
+    invoke("update_native_media", { snapshot: {
+      title: currentTrack.title, artist: currentTrack.artist, artwork: currentTrack.artwork,
+      duration, position: mediaPosition, playing: isPlaying,
+    } }).catch(error => console.warn("Windows media update failed", error));
+  }, [currentTrack, duration, mediaPosition, isPlaying]);
+
+  useEffect(() => {
+    if (!hasNativeMedia) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    listen<{ action: string; position?: number }>("native-media-action", ({ payload }) => {
+      switch (payload.action) {
+        case "play": setIsPlaying(true); break;
+        case "pause": setIsPlaying(false); break;
+        case "toggle": setIsPlaying(value => !value); break;
+        case "next": advance(true); break;
+        case "previous": playPrev(); break;
+        case "seek": case "seekBy": {
+          const audio = audioRef.current;
+          if (audio && Number.isFinite(payload.position)) {
+            const target = (payload.position ?? 0) + (payload.action === "seekBy" ? audio.currentTime : 0);
+            audio.currentTime = Math.max(0, Math.min(durationRef.current, target));
+          }
+          break;
+        }
+      }
+    }).then(off => { if (disposed) off(); else unlisten = off; })
+      .catch(error => console.warn("Windows media controls unavailable", error));
+    return () => { disposed = true; unlisten?.(); };
+  }, [advance, playPrev]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1565,7 +1586,7 @@ export default function App() {
           <motion.div key={activeTab} custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
             {searchLoading ? (
               <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div>
-            ) : searchTopResult || searchSongsResults.length || searchVideos.length || searchAlbums.length ? (
+            ) : searchTopResult || searchSongsResults.length ? (
               <>
                 {searchTopResult && (
                   <div className={`top-result-card ${topResultIsArtist ? 'is-artist' : ''}`}>
@@ -1595,7 +1616,6 @@ export default function App() {
 
                 {searchSongsResults.length > 0 && <section className="search-section"><div className="section-head"><h2>Songs</h2></div><div className="grid-container">{searchSongsResults.map((t) => renderAlbumCard(t, searchSongsResults))}</div></section>}
 
-                {searchVideos.length > 0 && <section className="search-section"><div className="section-head"><h2>Videos</h2><span className="section-badge muted">Live, Covers &amp; Remixes</span></div><div className="grid-container">{searchVideos.map((t) => renderAlbumCard(t, searchVideos))}</div></section>}
               </>
             ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Search for your favorite songs"}</p><span>Type an artist name or song title in the search box.</span></div>}
           </motion.div>
