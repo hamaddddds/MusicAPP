@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, memo, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -9,7 +9,7 @@ import {
   X, Minus, Square, Maximize, Repeat, Repeat1, Shuffle,
   ListMusic, Mic2, ChevronRight, ChevronDown, MoreHorizontal,
   ListPlus, CornerDownRight, Download, Share2, User, Ban, RefreshCw,
-  Settings, Moon, Upload, Check,
+  Settings, Moon, Upload, Check, Sparkles,
   UserCircle, ChevronLeft, UserPlus, UserMinus, Trash2, SlidersHorizontal
 } from "lucide-react";
 import { SubscribedArtist, syncAppStateToGist, Playlist } from "./lib/github";
@@ -19,6 +19,8 @@ import NowPlayingArtwork from "./components/NowPlayingArtwork";
 import TrackActions from "./components/TrackActions";
 import MusicVenueMark from "./components/MusicVenueMark";
 import DottedSurface, { type DotMode } from "./components/DottedSurface";
+import AmbientBackdrop from "./components/AmbientBackdrop";
+import { cssRgb, type Palette } from "./lib/ambient";
 import WorksWheel from "./components/WorksWheel";
 import IdleCrowd from "./components/IdleCrowd";
 import { useIdle } from "./lib/useIdle";
@@ -36,6 +38,7 @@ import { SPOTIFY_CLIENT_ID, connectSpotify, fetchTaste, type SpotifySession, typ
 interface Track { videoId: string; title: string; artist: string; artwork: string; duration?: number; }
 type RepeatMode = "off" | "all" | "one";
 type ShuffleMode = "off" | "random" | "smart";
+type ThemeId = "ambient" | "dark" | "amoled";
 interface HistEntry extends Track { count: number; last: number; }
 interface CtxMenu { x: number; y: number; track: Track; context: Track[]; playlistId?: string; }
 interface UpdateInfo { version: string; obj: any; }
@@ -226,6 +229,9 @@ export default function App() {
   const [quickPicks, setQuickPicks] = useState<Track[]>(() => load("mv:quickpicks", { tracks: [] } as any).tracks || []);
   const [searchTopResult, setSearchTopResult] = useState<any>(null);
   const [searchSongsResults, setSearchSongsResults] = useState<Track[]>([]);
+  /** The query the results on screen belong to; changing it replays their entrance. */
+  const [searchResultsFor, setSearchResultsFor] = useState("");
+  const liveSearchTimer = useRef<number | undefined>(undefined);
   const [artistView, setArtistView] = useState<ArtistPage | null>(null);
   const [artistLoading, setArtistLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -235,7 +241,16 @@ export default function App() {
   const [history, setHistory] = useState<Record<string, HistEntry>>(() => load("mv:history", {}));
   const [blocked, setBlocked] = useState<string[]>(() => load("mv:blocked", []));
 
-  const [theme, setTheme] = useState<string>(() => load<string>("mv:theme", "dark") === 'amoled' ? 'amoled' : 'dark');
+  // Ambient Light is the default look; Dot Black and Pure Black stay one click away in Settings.
+  const [theme, setTheme] = useState<ThemeId>(() => {
+    const saved = load<string>("mv:theme-v2", "ambient");
+    return saved === "dark" || saved === "amoled" ? saved : "ambient";
+  });
+  const [ambientIntensity, setAmbientIntensity] = useState(() => {
+    const saved = load("mv:ambient-intensity", 0.85);
+    return Number.isFinite(saved) ? Math.min(1, Math.max(0.2, saved)) : 0.85;
+  });
+  const [palette, setPalette] = useState<Palette | null>(null);
   const [dotTheme, setDotTheme] = useState<DotMode>(() => load<DotMode>("mv:dot-theme", "wave"));
   const [spotify, setSpotify] = useState<SpotifySession | null>(() => load("mv:spotify", null));
   const [spotifyTaste, setSpotifyTaste] = useState<SpotifyTaste | null>(() => load("mv:spotify-taste", null));
@@ -265,8 +280,6 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [justUpdatedChangelog, setJustUpdatedChangelog] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
-  const [libraryOpen, setLibraryOpen] = useState(true);
-  const [followingOpen, setFollowingOpen] = useState(true);
 
   const [lyrics, setLyrics] = useState<Lyrics[] | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -410,8 +423,20 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem("mv:theme", JSON.stringify(theme));
+    localStorage.setItem("mv:theme-v2", JSON.stringify(theme));
   }, [theme]);
+
+  useEffect(() => { localStorage.setItem("mv:ambient-intensity", JSON.stringify(ambientIntensity)); }, [ambientIntensity]);
+
+  // The playing cover's colours tint the whole UI; the CSS registers these so they morph between songs.
+  useEffect(() => {
+    const style = document.documentElement.style;
+    const colours = { "--amb-accent": palette?.accent, "--amb-glow": palette?.glow, "--amb-base": palette?.base };
+    for (const [name, rgb] of Object.entries(colours)) {
+      if (rgb && theme === "ambient") style.setProperty(name, cssRgb(rgb));
+      else style.removeProperty(name);
+    }
+  }, [palette, theme]);
 
   useEffect(() => {
     localStorage.setItem("mv:dot-theme", JSON.stringify(dotTheme));
@@ -500,22 +525,31 @@ export default function App() {
     setLoading(false);
   }, [history, blocked]);
 
-  const runSearch = useCallback(async (query: string) => {
+  const rememberSearch = useCallback((query: string) => {
+    const q = query.trim();
+    if (q) setSearchHistory((prev) => [q, ...prev.filter((x) => x !== q)].slice(0, 8));
+  }, []);
+
+  /** `remember: false` is for searches nobody asked to keep: typing-as-you-go and the Radio tab. */
+  const runSearch = useCallback(async (query: string, { remember = true } = {}) => {
+    const q = query.trim();
+    if (!q) return;
+    window.clearTimeout(liveSearchTimer.current);
     const request = ++searchRequestRef.current;
     setSearchLoading(true);
-    setShowSuggest(false);
-    setSearchHistory((prev) => [query, ...prev.filter((x) => x !== query)].slice(0, 8));
+    if (remember) { setShowSuggest(false); rememberSearch(q); }
     try {
-      const { topResult, songs } = await searchMusic(API_URL, query);
+      const { topResult, songs } = await searchMusic(API_URL, q);
       if (request !== searchRequestRef.current) return;
       setSearchTopResult(topResult);
       setSearchSongsResults(mapTracks(songs));
+      setSearchResultsFor(q);
     } catch {
       if (request !== searchRequestRef.current) return;
-      setSearchTopResult(null); setSearchSongsResults([]);
+      setSearchTopResult(null); setSearchSongsResults([]); setSearchResultsFor(q);
     }
     if (request === searchRequestRef.current) setSearchLoading(false);
-  }, []);
+  }, [rememberSearch]);
 
   const fetchSuggestions = useCallback((q: string) => {
     window.clearTimeout(suggestTimer.current);
@@ -527,6 +561,20 @@ export default function App() {
       } catch { setSuggestions([]); }
     }, 180);
   }, []);
+
+  // Results follow the search box as you type; Enter or picking a result saves the search to history.
+  const typeSearch = (value: string) => {
+    setSearchQuery(value);
+    setActiveTab("search");
+    fetchSuggestions(value);
+    window.clearTimeout(liveSearchTimer.current);
+    if (!value.trim()) {
+      searchRequestRef.current++; // drop any answer still on its way
+      setSearchLoading(false); setSearchTopResult(null); setSearchSongsResults([]); setSearchResultsFor("");
+      return;
+    }
+    liveSearchTimer.current = window.setTimeout(() => runSearch(value, { remember: false }), 300);
+  };
 
   const openArtist = useCallback(async (opts: { artistId?: string; name?: string }) => {
     setActiveTab("artist");
@@ -1243,7 +1291,10 @@ export default function App() {
   // const volumeBarRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) { setActiveTab("search"); runSearch(searchQuery); } };
-  const handleTabClick = (tab: string) => { if (tab === "home" && activeTab === "home") { reshuffleHome(); return; } setActiveTab(tab); if (tab === "home" && !Object.keys(shelves).length) loadHome(); else if (tab === "radio") runSearch("Lo-fi radio chill"); };
+  const handleTabClick = (tab: string) => { if (tab === "home" && activeTab === "home") { reshuffleHome(); return; } setActiveTab(tab); if (tab === "home" && !Object.keys(shelves).length) loadHome(); else if (tab === "radio") runSearch("Lo-fi radio chill", { remember: false }); };
+  /** Playing something you found while typing is what makes a search worth keeping. */
+  const keepSearch = () => { if (activeTab === "search") rememberSearch(searchQuery); };
+  const pickSuggestion = (s: string) => { setSearchQuery(s); fetchSuggestions(s); runSearch(s); };
 
   const getPageTitle = () => {
     switch (activeTab) {
@@ -1271,6 +1322,7 @@ export default function App() {
     }
     : null;
 
+  const hasSearchResults = !!searchTopResult || searchSongsResults.length > 0;
   const topResultIsArtist = searchTopResult?.resultType === 'artist';
   const topResultName = topResultIsArtist
     ? searchTopResult.artists?.[0]?.name || searchTopResult.artist || searchTopResult.name || searchTopResult.title
@@ -1295,8 +1347,17 @@ export default function App() {
     } finally { setTopResultLoading(false); }
   };
 
-  const renderAlbumCard = (track: Track, context: Track[]) => (
-    <div key={track.videoId} className="album-card glass-card" onClick={() => playTrack(track, [track])} onContextMenu={(e) => openCtx(e, track, context)}>
+  const railItem = (key: string, label: string, icon: React.ReactNode, active: boolean, onClick: () => void, trailing?: React.ReactNode, labelNode?: React.ReactNode) => (
+    <button key={key} type="button" className={`rail-item${active ? " active" : ""}`} onClick={onClick} aria-label={label} aria-current={active ? "page" : undefined}>
+      {active && <NavPill />}
+      <span className="rail-icon">{icon}</span>
+      <span className="rail-label">{labelNode ?? label}</span>
+      {trailing}
+    </button>
+  );
+
+  const renderAlbumCard = (track: Track, context: Track[], onPick?: () => void) => (
+    <div key={track.videoId} className="album-card glass-card" onClick={() => { onPick?.(); playTrack(track, [track]); }} onContextMenu={(e) => openCtx(e, track, context)}>
       <div className="album-art-wrap">
         <img src={track.artwork} alt={track.title} className="album-artwork" loading="lazy" />
       </div>
@@ -1369,60 +1430,38 @@ export default function App() {
       <audio ref={audioRef} src={playerUrl || undefined} crossOrigin="anonymous" onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)} onLoadedMetadata={(e) => {
         if (pendingResume.current > 0) { e.currentTarget.currentTime = Math.min(pendingResume.current, Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : pendingResume.current); pendingResume.current = 0; }
       }} onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)} onEnded={handleEnded} onError={handleAudioError} onPlay={() => { setIsPlaying(true); initAudioContext(); }} onWaiting={() => setStreamLoading(true)} onCanPlay={() => setStreamLoading(false)} onPlaying={() => setStreamLoading(false)} onPause={(e) => { if (e.currentTarget.readyState >= 2 && !streamLoading) setIsPlaying(false); }} />
+      {theme === "ambient" && <AmbientBackdrop artwork={currentTrack?.artwork} level={beatRef} intensity={ambientIntensity} onPalette={setPalette} />}
       <AnimatePresence initial={false}>
         <motion.div key={dotTheme} className="dot-field" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }}><DottedSurface mode={dotTheme} level={beatRef} /></motion.div>
       </AnimatePresence>
-      <aside className="sidebar">
-        <div className="drag-region" onMouseDown={handleDrag} />
-        <div className="sidebar-brand"><MusicVenueMark /><span>Music Venue</span></div>
-        <div className="sidebar-section">
-          <div className={`nav-item ${activeTab === "home" ? "active" : ""}`} onClick={() => handleTabClick("home")}>{activeTab === "home" && <NavPill />}<Home size={20} /> Listen Now</div>
-          <div className={`nav-item ${activeTab === "search" ? "active" : ""}`} onClick={() => setActiveTab("search")}>{activeTab === "search" && <NavPill />}<Search size={20} /> Search</div>
-          <div className={`nav-item ${activeTab === "radio" ? "active" : ""}`} onClick={() => handleTabClick("radio")}>{activeTab === "radio" && <NavPill />}<Radio size={20} /> Radio</div>
-        </div>
-        <div className="sidebar-section">
-          <div className="nav-item" onClick={() => setLibraryOpen(!libraryOpen)} style={{ fontWeight: 600 }}>
-            <ListMusic size={20} /> Library
-            <ChevronDown size={16} style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: libraryOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+      {/* Minimal rail: icons only, opening over the page (never pushing it) while the pointer rests on it. */}
+      <aside className="rail-slot">
+        <nav className="rail" aria-label="Main">
+          <div className="drag-region" onMouseDown={handleDrag} />
+          <div className="rail-brand"><MusicVenueMark /><span className="rail-label">Music Venue</span></div>
+          <div className="rail-group">
+            {railItem("home", "Listen Now", <Home size={20} />, activeTab === "home", () => handleTabClick("home"))}
+            {railItem("search", "Search", <Search size={20} />, activeTab === "search", () => setActiveTab("search"))}
+            {railItem("radio", "Radio", <Radio size={20} />, activeTab === "radio", () => handleTabClick("radio"))}
           </div>
-          {libraryOpen && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 8 }}>
-              <div className={`nav-item ${activeTab === "favorites" ? "active" : ""}`} onClick={() => setActiveTab("favorites")}>{activeTab === "favorites" && <NavPill />}<Heart size={18} /> Liked Music {favorites.length > 0 && <span className="nav-count">{favorites.length}</span>}</div>
-              {playlists.map(pl => (
-                <div key={pl.id} className={`nav-item ${activeTab === "playlistDetail" && activePlaylistId === pl.id ? "active" : ""}`} onClick={() => { setActivePlaylistId(pl.id); setActiveTab("playlistDetail"); }}>
-                  {activeTab === "playlistDetail" && activePlaylistId === pl.id && <NavPill />}<ListMusic size={18} /> {pl.name}
-                </div>
-              ))}
-              <div className="nav-item" onClick={() => setShowQueue(true)}><ListMusic size={18} /> Queue</div>
-            </div>
-          )}
-        </div>
-        {subscribedArtists.length > 0 && (
-          <div className="sidebar-section">
-            <div className="nav-item" onClick={() => setFollowingOpen(!followingOpen)} style={{ fontWeight: 600 }}>
-              <UserPlus size={20} /> Following
-              <span className="nav-count" style={{ marginLeft: 'auto', marginRight: 8 }}>{subscribedArtists.length}</span>
-              <ChevronDown size={16} style={{ transition: 'transform 0.2s', transform: followingOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-            </div>
-            {followingOpen && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 8 }}>
-                {subscribedArtists.map(a => (
-                  <div key={a.artistId} className={`nav-item ${activeTab === "artist" && artistView?.artist?.artistId === a.artistId ? "active" : ""}`} onClick={() => openArtist({ artistId: a.artistId, name: a.name })}>
-                    {activeTab === "artist" && artistView?.artist?.artistId === a.artistId && <NavPill />}<img src={a.thumbnails?.[0]?.url || ""} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="rail-group rail-scroll">
+            <span className="rail-heading"><span>Library</span></span>
+            {railItem("favorites", "Liked Music", <Heart size={20} />, activeTab === "favorites", () => setActiveTab("favorites"), favorites.length > 0 && <span className="rail-badge">{favorites.length}</span>)}
+            {playlists.map(pl => railItem(`pl-${pl.id}`, pl.name,
+              pl.image ? <img src={pl.image} alt="" className="rail-thumb" /> : <span className="rail-tile">{pl.name.charAt(0).toUpperCase()}</span>,
+              activeTab === "playlistDetail" && activePlaylistId === pl.id, () => { setActivePlaylistId(pl.id); setActiveTab("playlistDetail"); }))}
+            {railItem("queue", "Queue", <ListMusic size={20} />, false, () => setShowQueue(true))}
+            {subscribedArtists.length > 0 && <span className="rail-heading"><span>Following</span></span>}
+            {subscribedArtists.map(a => railItem(`ar-${a.artistId}`, a.name, <img src={a.thumbnails?.[0]?.url || ""} alt="" className="rail-thumb round" />,
+              activeTab === "artist" && artistView?.artist?.artistId === a.artistId, () => openArtist({ artistId: a.artistId, name: a.name })))}
           </div>
-        )}
-        <div className="sidebar-bottom">
-          <Button className={`sidebar-profile ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
-            {profile.avatar ? <img src={profile.avatar} alt={profile.name} className="profile-avatar-img" /> : <span className="profile-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>}
-            <div className="profile-brief"><span className="profile-name">{profile.name || "Guest"}</span><span className="profile-sub">Settings</span></div>
-            <Settings size={16} />
-          </Button>
-        </div>
+          <div className="rail-bottom">
+            {railItem("profile", "Profile & settings",
+              profile.avatar ? <img src={profile.avatar} alt="" className="rail-avatar" /> : <span className="rail-avatar" style={{ background: profile.color }}>{(profile.name || "G").charAt(0).toUpperCase()}</span>,
+              activeTab === "profile", () => setActiveTab("profile"), <Settings size={15} className="rail-trail" />,
+              <span className="rail-profile-text"><b>{profile.name || "Guest"}</b><small>Settings</small></span>)}
+          </div>
+        </nav>
       </aside>
       <main className="main-content" ref={mainRef}>
         <header className="header">
@@ -1430,18 +1469,19 @@ export default function App() {
           <div className="header-center">
             <div className="search-box-wrap" ref={searchBoxRef}>
               <form onSubmit={handleSearch} className="search-box">
-                <Search size={16} />
-                <Input type="text" placeholder="Artists, songs, or albums" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); fetchSuggestions(e.target.value); setShowSuggest(true); }} onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} />
-                {searchQuery && <Button type="button" className="search-clear" onClick={() => { setSearchQuery(""); setSuggestions([]); }}><X size={14} /></Button>}
+                {searchLoading && activeTab === "search" ? <RefreshCw size={16} className="spin" /> : <Search size={16} />}
+                <Input type="text" placeholder="Artists, songs, or albums" value={searchQuery} onChange={(e) => typeSearch(e.target.value)} onFocus={() => { setActiveTab("search"); setShowSuggest(true); }} onKeyDown={(e) => { if (e.key === "Escape") setShowSuggest(false); }} />
+                {searchQuery && <Button type="button" className="search-clear" aria-label="Clear search" onClick={() => typeSearch("")}><X size={14} /></Button>}
               </form>
-              {showSuggest && (
+              {/* While typing, results fill the page live; the dropdown only offers recent searches for an empty box. */}
+              {showSuggest && !searchQuery.trim() && (
                 <div className="search-dropdown">
-                  {searchQuery.trim() ? (suggestions.length ? suggestions.map((s) => <Button key={s} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s); runSearch(s); }}><Search size={15} /><span>{s}</span></Button>) : <div className="suggest-empty">Press Enter to search ...{searchQuery}...</div>) : searchHistory.length ? (
+                  {searchHistory.length ? (
                     <>
                       <div className="suggest-head"><span>Recent searches</span><Button onMouseDown={(e) => { e.preventDefault(); setSearchHistory([]); }}>Clear all</Button></div>
-                      {searchHistory.map((h) => <Button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h); runSearch(h); }}><Clock size={15} /><span>{h}</span><span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span></Button>)}
+                      {searchHistory.map((h) => <Button key={h} className="suggest-item" onMouseDown={(e) => { e.preventDefault(); pickSuggestion(h); }}><Clock size={15} /><span>{h}</span><span className="suggest-remove" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSearchHistory((prev) => prev.filter((x) => x !== h)); }}><X size={13} /></span></Button>)}
                     </>
-                  ) : <div className="suggest-empty">No search history.</div>}
+                  ) : <div className="suggest-empty">Start typing — results appear as you type.</div>}
                 </div>
               )}
             </div>
@@ -1584,15 +1624,22 @@ export default function App() {
         )}
         {(activeTab === "search" || activeTab === "radio") && (
           <motion.div key={activeTab} custom={pageTransition} variants={pageVariants} initial="initial" animate="in" exit="out" className="page">
-            {searchLoading ? (
+            {activeTab === "search" && searchQuery.trim() && suggestions.length > 0 && (
+              <div className="search-chips" aria-label="Related searches">
+                {suggestions.filter((s) => s.toLowerCase() !== searchQuery.trim().toLowerCase()).slice(0, 6).map((s, i) => (
+                  <button key={s} type="button" className="search-chip" style={{ "--i": i } as CSSProperties} onClick={() => pickSuggestion(s)}><Search size={13} />{s}</button>
+                ))}
+              </div>
+            )}
+            {searchLoading && hasSearchResults && <div className="search-progress" aria-hidden="true" />}
+            {searchLoading && !hasSearchResults ? (
               <div className="grid-container">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="album-card skeleton"><div className="album-art-wrap sk" /></div>)}</div>
-            ) : searchTopResult || searchSongsResults.length ? (
-              <>
+            ) : hasSearchResults ? (
+              // Keyed by query: each new answer replays the entrance; while the next one loads, the old one dims.
+              <div key={searchResultsFor} className={`search-results ${searchLoading ? "is-refreshing" : ""}`} aria-busy={searchLoading}>
                 {searchTopResult && (
                   <div className={`top-result-card ${topResultIsArtist ? 'is-artist' : ''}`}>
-                    <button className="top-result-main" onClick={() => topResultIsArtist
-                      ? openArtist({ artistId: topArtistId, name: topResultName })
-                      : playTopResult()} aria-label={topResultIsArtist ? `Open ${topResultName}` : `Play ${topResultName}`}>
+                    <button className="top-result-main" onClick={() => { keepSearch(); if (topResultIsArtist) openArtist({ artistId: topArtistId, name: topResultName }); else playTopResult(); }} aria-label={topResultIsArtist ? `Open ${topResultName}` : `Play ${topResultName}`}>
                       <img src={pickArtwork(searchTopResult, searchTopResult.videoId)} alt="" className="top-result-img" />
                       <span className="top-result-text">
                         <span className="section-badge">Top result</span>
@@ -1603,21 +1650,22 @@ export default function App() {
                       </span>
                     </button>
                     <div className="top-result-actions">
-                      <button className="top-result-primary" disabled={topResultLoading} onClick={() => playTopResult()}>
+                      <button className="top-result-primary" disabled={topResultLoading} onClick={() => { keepSearch(); playTopResult(); }}>
                         {topResultLoading ? <RefreshCw size={18} className="spin" /> : topResultIsArtist ? <Shuffle size={18} /> : <Play size={18} fill="currentColor" />}
                         {topResultIsArtist ? 'Shuffle' : 'Play'}
                       </button>
                       {topResultIsArtist
-                        ? <><button className="top-result-mix" disabled={topResultLoading} onClick={() => playTopResult(true)}><Radio size={18} /> Mix</button><button className="top-result-open" aria-label={`View ${topResultName}`} onClick={() => openArtist({ artistId: topArtistId, name: topResultName })}><ChevronRight size={22} /></button></>
+                        ? <><button className="top-result-mix" disabled={topResultLoading} onClick={() => { keepSearch(); playTopResult(true); }}><Radio size={18} /> Mix</button><button className="top-result-open" aria-label={`View ${topResultName}`} onClick={() => { keepSearch(); openArtist({ artistId: topArtistId, name: topResultName }); }}><ChevronRight size={22} /></button></>
                         : <Button size="icon" className="top-result-more" aria-label={`More options for ${topResultName}`} onClick={e => { if (topResultTrack) openCtx(e, topResultTrack, [topResultTrack]); }}><MoreHorizontal size={18} /></Button>}
                     </div>
                   </div>
                 )}
 
-                {searchSongsResults.length > 0 && <section className="search-section"><div className="section-head"><h2>Songs</h2></div><div className="grid-container">{searchSongsResults.map((t) => renderAlbumCard(t, searchSongsResults))}</div></section>}
-
-              </>
-            ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Search for your favorite songs"}</p><span>Type an artist name or song title in the search box.</span></div>}
+                {searchSongsResults.length > 0 && <section className="search-section"><div className="section-head"><h2>Songs</h2></div><div className="grid-container">{searchSongsResults.map((t) => renderAlbumCard(t, searchSongsResults, keepSearch))}</div></section>}
+              </div>
+            ) : activeTab === "search" && searchQuery.trim() && searchResultsFor ? (
+              <div className="empty-state big"><Search size={44} /><p>No results for “{searchResultsFor}”</p><span>Check the spelling, or try an artist name instead.</span></div>
+            ) : <div className="empty-state big"><Search size={44} /><p>{activeTab === "radio" ? "Radio" : "Search for your favorite songs"}</p><span>Start typing an artist or song — results show up as you type.</span></div>}
           </motion.div>
         )}
         {activeTab === "shelf" && activeShelf && (
@@ -1669,7 +1717,7 @@ export default function App() {
                 <div className="setting-block">
                   <h3>Appearance</h3><p className="setting-desc">A quieter space for your music.</p>
                   <div className="theme-grid mono-theme-grid">
-                    {[{ id: "dark", label: "Dot Black", Icon: MusicVenueMark }, { id: "amoled", label: "Pure Black", Icon: Moon }].map((tOpt) => (
+                    {([{ id: "ambient", label: "Ambient Light", Icon: Sparkles }, { id: "dark", label: "Dot Black", Icon: MusicVenueMark }, { id: "amoled", label: "Pure Black", Icon: Moon }] as const).map((tOpt) => (
                       <Button key={tOpt.id} className={`theme-card ${theme === tOpt.id ? "active" : ""}`} onClick={() => setTheme(tOpt.id)}>
                         <span className={`theme-swatch th-${tOpt.id}`}><span className="tsw-bar" /></span>
                         <div className="theme-card-label"><tOpt.Icon /> {tOpt.label}</div>
@@ -1677,6 +1725,13 @@ export default function App() {
                       </Button>
                     ))}
                   </div>
+                  {theme === "ambient" && (
+                    <div className="ambient-setting">
+                      <div><strong>Glow</strong><span>The background takes its light from the playing cover.</span></div>
+                      <Slider value={[Math.round(ambientIntensity * 100)]} min={20} max={100} step={1} onValueChange={(v) => setAmbientIntensity(v[0] / 100)} aria-label="Ambient glow strength" />
+                      <span className="ambient-setting-value">{Math.round(ambientIntensity * 100)}%</span>
+                    </div>
+                  )}
                   <h3 className="dot-theme-heading">Dot motion</h3><p className="setting-desc">Choose how the dots move behind the interface.</p>
                   <div className="theme-grid dot-theme-grid">
                     {([{ id: "grid", label: "Quiet Grid" }, { id: "flow", label: "Dot Flow" }, { id: "wave", label: "Dotted Wave" }, { id: "orbit", label: "Orbit Field" }] as const).map((tOpt) => (
@@ -1810,6 +1865,7 @@ export default function App() {
       <AnimatePresence>
         {nowPlayingOpen && currentTrack && (
           <motion.div className="now-playing" initial={{ y: "100%", opacity: 1 }} animate={{ y: 0, opacity: 1 }} exit={{ y: "100%", opacity: 1 }} transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}>
+            {theme === "ambient" && <AmbientBackdrop className="is-stage" artwork={currentTrack.artwork} level={beatRef} intensity={Math.max(ambientIntensity, 0.7)} />}
             <div className="np-dot-bg" aria-hidden="true" />
             <Button aria-label="Close now playing" className="np-close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={26} /></Button>
             <div className="np-body">

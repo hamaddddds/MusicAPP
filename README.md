@@ -36,7 +36,9 @@ Music Venue pairs the lightweight speed of **Tauri** with the rich metadata of *
 - **State persistence** — your playback position and volume survive app restarts.
 
 ### 🎨 Customization
-- **Themes** — Light, Dark, and Amoled to suit your eyes.
+- **Ambient Light** — the background takes its light and colour from the playing cover, like ambient mode on YouTube, and the accent colour follows each song. Adjustable glow.
+- **Themes** — Ambient Light, Dot Black, and Pure Black to suit your eyes.
+- **Instant search** — results appear as you type, no Enter needed.
 - **Custom CSS** — paste your own styles to reshape the app.
 - **In-app auto-updater** — check for updates right from the app.
 - **Favorites & Queue** — save tracks to a local list (`localStorage`) and manage your up-next queue with ease.

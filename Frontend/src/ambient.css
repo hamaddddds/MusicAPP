@@ -1,0 +1,181 @@
+/* Music Venue / Ambient Light.
+   The playing cover lights the room, like ambient mode around a YouTube video: a blurred copy of it
+   fills the window behind the glass, a bloom rises from the player like light spilling off a screen,
+   and the accent takes the cover's colour. Only opacity and transforms animate. */
+
+/* Registered so a new song's colours morph in instead of snapping. */
+@property --amb-accent { syntax: '<color>'; inherits: true; initial-value: rgb(232 232 236); }
+@property --amb-glow { syntax: '<color>'; inherits: true; initial-value: rgb(140 140 155); }
+@property --amb-base { syntax: '<color>'; inherits: true; initial-value: rgb(20 20 24); }
+:root { transition: --amb-accent 1.4s ease, --amb-glow 1.4s ease, --amb-base 1.4s ease; }
+
+/* ── Backdrop ── */
+.ambient-backdrop { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; contain: strict; opacity: var(--amb-intensity, 1); transition: opacity .6s ease; }
+.ambient-backdrop.is-stage { position: absolute; z-index: 0; }
+.ambient-stack { position: absolute; inset: -20%; animation: ambient-drift 46s ease-in-out infinite alternate; will-change: transform; }
+.ambient-layer { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transform: scale(calc(1 + var(--beat, 0) * .07)); transition: opacity 1.6s ease; }
+.ambient-layer.is-ready { opacity: .95; }
+.ambient-layer.css-blur { filter: blur(48px) saturate(1.6) brightness(.85); }
+@keyframes ambient-drift {
+  0% { transform: translate3d(-2%, 1%, 0) scale(1.04) rotate(-2deg); }
+  50% { transform: translate3d(2%, -2%, 0) scale(1.12) rotate(3deg); }
+  100% { transform: translate3d(-1%, 2%, 0) scale(1.08) rotate(-1deg); }
+}
+/* The player is the light source: its glow swells with the bass. */
+.ambient-bloom {
+  position: absolute; left: -10%; right: -10%; bottom: -35%; height: 80%; transform-origin: 22% 100%;
+  background:
+    radial-gradient(ellipse 60% 55% at 22% 100%, color-mix(in srgb, var(--amb-glow) 60%, transparent), transparent 70%),
+    radial-gradient(ellipse 70% 50% at 72% 100%, color-mix(in srgb, var(--amb-accent) 22%, transparent), transparent 70%);
+  opacity: calc(.5 + var(--beat, 0) * .5); transform: scale(calc(1 + var(--beat, 0) * .08));
+}
+/* Keeps text readable: darker at the top where titles sit and at the edges, open in the middle. */
+.ambient-veil {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 120% 90% at 50% 45%, transparent 35%, rgba(4,4,6,.55) 100%),
+    linear-gradient(180deg, rgba(6,6,8,.62) 0%, rgba(6,6,8,.3) 38%, rgba(6,6,8,.18) 70%, rgba(6,6,8,.4) 100%);
+}
+.ambient-backdrop.is-stage .ambient-bloom { display: none; }
+.ambient-backdrop.is-stage .ambient-veil { background: radial-gradient(ellipse at 28% 50%, transparent 15%, rgba(4,4,6,.55) 100%), linear-gradient(90deg, rgba(6,6,8,.15), rgba(6,6,8,.6)); }
+/* Nothing playing yet: a slow aurora so the room is never dark. */
+.ambient-idle { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s ease; }
+.ambient-idle.is-on { opacity: 1; }
+.ambient-idle i { position: absolute; top: -30%; left: -15%; width: 70vmax; height: 70vmax; border-radius: 50%; background: radial-gradient(circle, rgba(124,92,255,.3), transparent 62%); animation: idle-float 28s ease-in-out infinite alternate; }
+.ambient-idle i:nth-child(2) { top: 35%; left: 45%; background: radial-gradient(circle, rgba(255,84,130,.22), transparent 62%); animation-duration: 34s; animation-delay: -10s; }
+.ambient-idle i:nth-child(3) { top: 50%; left: -25%; background: radial-gradient(circle, rgba(56,189,220,.18), transparent 62%); animation-duration: 31s; animation-delay: -18s; }
+@keyframes idle-float { to { transform: translate3d(12%, 10%, 0) scale(1.15); } }
+
+/* ── Theme tokens: glass tinted by the cover ── */
+:root[data-theme="ambient"] {
+  --accent: var(--amb-accent);
+  --accent-soft: color-mix(in srgb, var(--amb-accent) 16%, transparent);
+  --sidebar-bg: color-mix(in srgb, var(--amb-base) 45%, rgba(8,8,10,.3));
+  --player-bg: color-mix(in srgb, var(--amb-base) 55%, rgba(10,10,12,.45));
+  --panel-bg: color-mix(in srgb, var(--amb-base) 60%, rgba(14,14,16,.82));
+  --lg-edge: color-mix(in srgb, var(--amb-accent) 14%, rgba(255,255,255,.1));
+}
+:root[data-theme="ambient"] .app-container { background: #060608; }
+:root[data-theme="ambient"] .dot-field .dotted-surface { opacity: .4; }
+:root[data-theme="ambient"] .header { background: linear-gradient(rgba(6,6,8,.5), rgba(6,6,8,0)); }
+:root[data-theme="ambient"] .nav-pill { background: linear-gradient(115deg, color-mix(in srgb, var(--amb-accent) 24%, transparent), rgba(255,255,255,.04)); border-color: color-mix(in srgb, var(--amb-accent) 32%, rgba(255,255,255,.1)); box-shadow: 0 6px 22px color-mix(in srgb, var(--amb-glow) 22%, transparent), inset 0 1px 0 rgba(255,255,255,.16); }
+:root[data-theme="ambient"] .listen-hero .eyebrow { color: var(--amb-accent); }
+:root[data-theme="ambient"] .mono-status-dot { background: var(--amb-accent); box-shadow: 0 0 10px var(--amb-glow); }
+:root[data-theme="ambient"] .hero-play,
+:root[data-theme="ambient"] .top-result-primary { background: var(--amb-accent); border-color: transparent; color: #0b0b0e; box-shadow: 0 8px 28px color-mix(in srgb, var(--amb-glow) 38%, transparent); }
+:root[data-theme="ambient"] .hero-play:hover,
+:root[data-theme="ambient"] .top-result-primary:hover { background: color-mix(in srgb, var(--amb-accent) 82%, white); }
+:root[data-theme="ambient"] .slider-range { background-color: var(--amb-accent); }
+:root[data-theme="ambient"] .player-bar { box-shadow: 0 -16px 60px color-mix(in srgb, var(--amb-glow) 24%, transparent), inset 0 1px 0 color-mix(in srgb, var(--amb-accent) 35%, rgba(255,255,255,.08)); }
+:root[data-theme="ambient"] .player-bar .btn-play,
+:root[data-theme="ambient"] .np-controls .btn-play.big { background: var(--amb-accent); color: #0b0b0e; }
+:root[data-theme="ambient"] .track-row.playing { background: linear-gradient(120deg, color-mix(in srgb, var(--amb-accent) 14%, transparent), rgba(255,255,255,.02)); border-color: color-mix(in srgb, var(--amb-accent) 26%, transparent); }
+:root[data-theme="ambient"] .album-card.glass-card:hover { border-color: color-mix(in srgb, var(--amb-accent) 40%, transparent); box-shadow: 0 20px 42px rgba(0,0,0,.4), 0 0 30px color-mix(in srgb, var(--amb-glow) 18%, transparent), inset 0 1px 0 rgba(255,255,255,.18); }
+
+/* ── Now Playing: the stage glows around the cover ── */
+:root[data-theme="ambient"] .now-playing { background: #050507; }
+:root[data-theme="ambient"] .now-playing .np-dot-bg { opacity: .2; }
+:root[data-theme="ambient"] .np-action-dock { background: linear-gradient(160deg, rgba(255,255,255,.1), rgba(255,255,255,.03)), rgba(8,8,10,.35); border-color: rgba(255,255,255,.14); backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6); }
+.np-art-card { isolation: isolate; }
+.np-art-glow { display: none; }
+:root[data-theme="ambient"] .np-art-glow { display: block; position: absolute; z-index: -1; top: 0; left: 0; width: 100%; aspect-ratio: 1; border-radius: 25px; object-fit: cover; filter: blur(42px) saturate(1.9); opacity: .85; pointer-events: none; animation: np-glow-breathe 7s ease-in-out infinite alternate; }
+@keyframes np-glow-breathe { from { opacity: .65; transform: scale(1.05); } to { opacity: .95; transform: scale(1.16); } }
+
+/* ── Settings ── */
+.mono-theme-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.th-ambient { background: radial-gradient(circle at 28% 35%, #ff5f8fa0, transparent 58%), radial-gradient(circle at 76% 72%, #5fb4ffa0, transparent 58%), radial-gradient(circle at 60% 20%, #b07cff80, transparent 50%), #0d0d10; }
+.th-ambient .tsw-bar { background: #ffffff1c; }
+.mono-theme-grid .theme-card-label { white-space: nowrap; font-size: 12px; }
+.ambient-setting { display: grid; grid-template-columns: minmax(0, 1fr) 40px; align-items: center; gap: 12px 14px; margin-top: 16px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--lg-edge); background: var(--lg-fill), rgba(255,255,255,.02); }
+.ambient-setting > div:first-child { grid-column: 1 / -1; }
+.ambient-setting strong { display: block; margin-bottom: 2px; font-size: 13px; font-weight: 650; }
+.ambient-setting span { font-size: 11px; color: var(--text-secondary); }
+.ambient-setting .ambient-setting-value { font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; color: var(--text-primary); }
+
+/* ── Minimal rail: icons at rest, labels when the pointer (or keyboard focus) arrives ── */
+.rail-slot { position: relative; z-index: 60; flex: 0 0 84px; }
+.rail {
+  position: absolute; top: 10px; bottom: 98px; left: 10px; width: 64px;
+  display: flex; flex-direction: column; gap: 4px; padding: 0 9px 10px; overflow: hidden;
+  border: 1px solid var(--lg-edge); border-radius: 24px;
+  background: var(--lg-fill), var(--sidebar-bg); box-shadow: var(--lg-lift);
+  backdrop-filter: blur(22px) saturate(1.6); -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  transition: width .42s cubic-bezier(.2,.9,.25,1), box-shadow .35s ease;
+}
+/* Open over the page, so it darkens to stay legible on top of content. */
+.rail::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: rgba(8,8,10,.62); opacity: 0; transition: opacity .3s ease; pointer-events: none; }
+.rail:hover, .rail:has(:focus-visible) { width: 232px; transition-delay: .1s; box-shadow: 0 30px 80px rgba(0,0,0,.55), var(--lg-lift); }
+.rail:hover::before, .rail:has(:focus-visible)::before { opacity: 1; transition-delay: .1s; }
+.rail .drag-region { flex: none; height: 12px; width: auto; margin: 0 -9px; }
+.rail-brand { display: flex; align-items: center; gap: 12px; flex: none; height: 44px; padding: 0 7px; margin-bottom: 8px; white-space: nowrap; font-size: 17px; font-weight: 700; letter-spacing: -.6px; color: var(--text-primary); }
+.rail-brand .mv-mark { flex: none; width: 30px; height: 30px; color: #f2f2f2; }
+.rail-group { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.rail-scroll { flex: 1 1 auto; min-height: 0; margin-top: 4px; overflow-x: hidden; overflow-y: auto; }
+.rail-item {
+  position: relative; isolation: isolate; flex: none; display: flex; align-items: center; gap: 12px;
+  width: 100%; height: 44px; padding: 0 11px; border: 0; border-radius: 14px; background: none;
+  color: var(--text-secondary); font-size: 13px; font-weight: 560; text-align: left; white-space: nowrap; cursor: pointer;
+}
+.rail-item:hover { color: var(--text-primary); background: rgba(255,255,255,.06); }
+.rail-item.active { color: var(--text-primary); }
+.rail-item.active .rail-icon { color: var(--accent); }
+.rail-icon { display: grid; place-items: center; flex: none; width: 22px; height: 22px; transition: transform .3s cubic-bezier(.3,1.6,.5,1); }
+.rail-item:hover .rail-icon { transform: scale(1.12); }
+.rail-label, .rail-badge, .rail-trail, .rail-heading > span { opacity: 0; transition: opacity .16s ease, transform .3s cubic-bezier(.2,.9,.25,1); }
+.rail-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; transform: translateX(-8px); }
+.rail:hover :is(.rail-label, .rail-badge, .rail-trail, .rail-heading > span),
+.rail:has(:focus-visible) :is(.rail-label, .rail-badge, .rail-trail, .rail-heading > span) { opacity: 1; transform: none; transition-delay: .18s; }
+.rail-badge { flex: none; margin-left: auto; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,.1); color: var(--text-secondary); font-size: 10px; font-weight: 650; text-align: center; }
+.rail-trail { flex: none; margin-left: auto; color: var(--text-tertiary); }
+.rail-thumb, .rail-tile { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; object-fit: cover; box-shadow: 0 0 0 1px rgba(255,255,255,.1); }
+.rail-thumb.round { border-radius: 50%; }
+.rail-tile { font-size: 11px; font-weight: 700; color: var(--text-primary); background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 35%, #2a2a30), #18181c); }
+/* Collapsed, a section heading is a short rule; open, it reads its name. */
+.rail-heading { position: relative; flex: none; display: flex; align-items: center; height: 24px; margin-top: 8px; padding: 0 12px; white-space: nowrap; font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-tertiary); }
+.rail-heading::before { content: ''; position: absolute; left: 13px; width: 18px; height: 1px; background: rgba(255,255,255,.16); transition: opacity .2s ease; }
+.rail:hover .rail-heading::before, .rail:has(:focus-visible) .rail-heading::before { opacity: 0; }
+.rail-bottom { flex: none; margin-top: auto; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.06); }
+.rail-bottom .rail-item { height: 50px; padding: 0 8px; }
+.rail-bottom .rail-icon { width: 28px; height: 28px; }
+.rail-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; object-fit: cover; color: #fff; font-size: 12px; font-weight: 700; box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
+.rail-profile-text { display: flex; flex-direction: column; gap: 1px; line-height: 1.2; }
+.rail-profile-text b { overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 650; color: var(--text-primary); }
+.rail-profile-text small { font-size: 11px; color: var(--text-tertiary); }
+
+/* ── Instant search ── */
+.search-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 34px; }
+.search-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--lg-edge); background: var(--lg-fill), rgba(255,255,255,.03); color: var(--text-secondary);
+  font-size: 12px; font-weight: 550; cursor: pointer;
+  animation: chip-in .38s cubic-bezier(.2,.9,.25,1) both; animation-delay: calc(var(--i, 0) * 35ms);
+}
+.search-chip svg { opacity: .6; }
+.search-chip:hover { color: var(--text-primary); background: var(--lg-fill), rgba(255,255,255,.08); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+@keyframes chip-in { from { opacity: 0; transform: translateY(6px) scale(.95); } }
+.search-progress { position: relative; height: 2px; margin: -20px 34px -12px; overflow: hidden; border-radius: 2px; background: rgba(255,255,255,.06); }
+.search-progress::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 40%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: search-scan 1s ease-in-out infinite; }
+@keyframes search-scan { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+.search-results { display: flex; flex-direction: column; gap: 24px; transition: opacity .25s ease, filter .25s ease; }
+.search-results.is-refreshing { opacity: .5; filter: saturate(.6); }
+.search-results .top-result-card { animation: result-in .55s cubic-bezier(.2,.9,.25,1) both; }
+.search-results .grid-container > * { animation: result-in .5s cubic-bezier(.2,.9,.25,1) both; animation-delay: 360ms; }
+.search-results .grid-container > :nth-child(1) { animation-delay: 60ms; }
+.search-results .grid-container > :nth-child(2) { animation-delay: 90ms; }
+.search-results .grid-container > :nth-child(3) { animation-delay: 120ms; }
+.search-results .grid-container > :nth-child(4) { animation-delay: 150ms; }
+.search-results .grid-container > :nth-child(5) { animation-delay: 180ms; }
+.search-results .grid-container > :nth-child(6) { animation-delay: 210ms; }
+.search-results .grid-container > :nth-child(7) { animation-delay: 240ms; }
+.search-results .grid-container > :nth-child(8) { animation-delay: 270ms; }
+.search-results .grid-container > :nth-child(9) { animation-delay: 300ms; }
+.search-results .grid-container > :nth-child(10) { animation-delay: 330ms; }
+@keyframes result-in { from { opacity: 0; transform: translateY(14px) scale(.97); } }
+
+@media (max-width: 640px) {
+  :root[data-theme="ambient"] .np-art-glow { display: none; }
+  .search-chips { margin-inline: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambient-stack, .ambient-idle i, .np-art-glow, .search-chip, .search-results .top-result-card, .search-results .grid-container > *, .search-progress::after { animation: none !important; }
+}

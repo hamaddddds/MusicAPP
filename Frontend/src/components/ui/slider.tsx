@@ -18,11 +18,11 @@ const Slider = React.forwardRef<
     {...props}
   >
     <SliderPrimitive.Track className={cn(
-      "relative grow overflow-hidden rounded-full",
+      "slider-track relative grow overflow-hidden rounded-full",
       orientation === "horizontal" ? "h-1.5 w-full bg-white/20" : "w-1.5 h-full bg-white/20"
     )}>
       <SliderPrimitive.Range className={cn(
-        "absolute rounded-full transition-colors duration-200 bg-white",
+        "slider-range absolute rounded-full transition-colors duration-200 bg-white",
         orientation === "horizontal" ? "h-full" : "w-full"
       )} />
     </SliderPrimitive.Track>
