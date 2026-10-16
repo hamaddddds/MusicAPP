@@ -6,6 +6,7 @@ import "./index.css";
 import "./glass.css";
 import "./polish.css";
 import "./dot-theme.css";
+import "./ambient.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

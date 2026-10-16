@@ -6,6 +6,8 @@ export default function NowPlayingArtwork({ artwork, title, liked, queueOpen, on
   onLike: () => void; onShare: () => void; onQueue: () => void;
 }) {
   return <div className="np-art-card">
+    {/* Ambient theme: the cover lights the stage around itself, like ambient mode around a video. */}
+    <img src={artwork} alt="" aria-hidden="true" className="np-art-glow" />
     <motion.div className="np-art-frame" initial={{ opacity: 0, scale: .94 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 180, damping: 24 }}>
       <img src={artwork} alt={`${title} cover`} className="np-art" />
       <div className="np-art-shine" aria-hidden="true" />
